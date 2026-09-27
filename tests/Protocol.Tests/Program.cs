@@ -35,6 +35,8 @@ ReportingTests.RunAll();
 CollectTests.RunAll();
 DiffEvalTests.RunAll();
 SampleFixtureTests.RunAll();
+CasAndBundleTests.RunAll();
+PresentationTests.RunAll();
 
 static void CanonicalizesObjectsAndStrings()
 {

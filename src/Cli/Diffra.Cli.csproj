@@ -5,6 +5,7 @@
     <RootNamespace>Diffra.Cli</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="../Protocol/Diffra.Protocol.csproj" />
   </ItemGroup>
 </Project>

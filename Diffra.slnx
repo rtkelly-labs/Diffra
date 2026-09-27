@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Protocol/Diffra.Protocol.csproj" />
+    <Project Path="src/Cli/Diffra.Cli.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Protocol.Tests/Protocol.Tests.csproj" />

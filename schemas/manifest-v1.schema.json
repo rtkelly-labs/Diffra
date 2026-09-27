@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diffra.dev/schemas/manifest-v1.schema.json",
+  "title": "Diffra Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "subject", "groups", "artifacts", "evidenceIds", "provenance"],
+  "properties": {
+    "schema": { "const": "https://diffra.dev/schemas/manifest-v1.schema.json" },
+    "id": { "$ref": "#/$defs/digest" },
+    "subject": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "id", "commit"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "id": { "type": "string", "minLength": 1 },
+        "commit": { "type": "string", "minLength": 1 },
+        "repository": { "type": "string", "minLength": 1 }
+      }
+    },
+    "groups": { "type": "array", "items": { "$ref": "#/$defs/group" } },
+    "artifacts": { "type": "array", "items": { "$ref": "#/$defs/artifact" } },
+    "evidenceIds": { "type": "array", "items": { "$ref": "#/$defs/digest" }, "uniqueItems": true },
+    "provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["producerId", "producerVersion", "environment", "source"],
+      "properties": {
+        "producerId": { "type": "string", "minLength": 1 },
+        "producerVersion": { "type": "string", "minLength": 1 },
+        "environment": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string" } },
+        "source": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "group": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "name", "role", "required", "artifactIds", "evidenceIds", "groups"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "role": { "type": "string", "minLength": 1 },
+        "required": { "type": "boolean" },
+        "baselineRole": { "enum": ["merge-base", "approved-main", "previous-release"] },
+        "retention": { "type": "string", "minLength": 1 },
+        "gate": { "type": "string", "minLength": 1 },
+        "artifactIds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "evidenceIds": { "type": "array", "items": { "$ref": "#/$defs/digest" }, "uniqueItems": true },
+        "groups": { "type": "array", "items": { "$ref": "#/$defs/group" } }
+      }
+    },
+    "artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "digest", "mediaType", "sizeBytes", "path"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "digest": { "$ref": "#/$defs/digest" },
+        "mediaType": { "type": "string", "pattern": "^[^/\\s]+/[^\\s]+$" },
+        "sizeBytes": { "type": "integer", "minimum": 0 },
+        "path": { "type": "string", "minLength": 1 },
+        "producerId": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

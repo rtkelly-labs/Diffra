@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diffra.dev/schemas/assessment-v1.schema.json",
+  "title": "Diffra Assessment v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "deltaId", "deltaStatus", "policy", "outcome", "findings", "provenance"],
+  "properties": {
+    "schema": { "const": "https://diffra.dev/schemas/assessment-v1.schema.json" },
+    "id": { "$ref": "#/$defs/digest" },
+    "deltaId": { "$ref": "#/$defs/digest" },
+    "deltaStatus": { "enum": ["unchanged", "changed", "unavailable", "invalid", "incompatible", "inconclusive", "unsupported"] },
+    "policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "version", "rulesDigest"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "rulesDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "outcome": { "enum": ["pass", "warn", "fail", "needs-review", "inconclusive"] },
+    "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["evaluator", "version", "inputDeltaId"],
+      "properties": {
+        "evaluator": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "inputDeltaId": { "$ref": "#/$defs/digest" }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "deltaStatus": { "enum": ["unavailable", "invalid", "incompatible", "inconclusive", "unsupported"] } }, "required": ["deltaStatus"] },
+      "then": { "properties": { "outcome": { "enum": ["fail", "needs-review", "inconclusive"] } } }
+    },
+    {
+      "if": { "properties": { "outcome": { "const": "pass" } }, "required": ["outcome"] },
+      "then": { "properties": { "findings": { "items": { "properties": { "status": { "const": "pass" } } } } } }
+    }
+  ],
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "finding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "status", "message", "changePaths"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["pass", "warn", "fail", "needs-review", "inconclusive"] },
+        "message": { "type": "string", "minLength": 1 },
+        "changePaths": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "observed": {},
+        "expected": {}
+      }
+    }
+  }
+}

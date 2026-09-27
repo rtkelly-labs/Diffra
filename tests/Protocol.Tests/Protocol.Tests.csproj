@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Diffra.Protocol.Tests</AssemblyName>
+    <RootNamespace>Diffra.Protocol.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Protocol/Diffra.Protocol.csproj" />
+  </ItemGroup>
+</Project>

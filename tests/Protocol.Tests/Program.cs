@@ -37,6 +37,7 @@ DiffEvalTests.RunAll();
 SampleFixtureTests.RunAll();
 CasAndBundleTests.RunAll();
 PresentationTests.RunAll();
+DogfoodPipelineTests.RunAll();
 
 static void CanonicalizesObjectsAndStrings()
 {

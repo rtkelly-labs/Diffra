@@ -1,0 +1,17 @@
+# Local task notes and scratch data
+TODO.md
+/temp/
+/.temp/
+
+# .NET build output
+[Bb]in/
+[Oo]bj/
+/artifacts/
+TestResults/
+
+# IDE and user-specific files
+.vs/
+.idea/
+*.user
+*.suo
+*.sln.docstates

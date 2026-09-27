@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diffra.dev/schemas/evidence-v1.schema.json",
+  "title": "Diffra Evidence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "status", "typeId", "typeVersion", "typeResolution", "subject", "producer", "environment", "provenance", "payloadDigest", "payload", "artifactRefs"],
+  "properties": {
+    "schema": { "const": "https://diffra.dev/schemas/evidence-v1.schema.json" },
+    "id": { "$ref": "#/$defs/digestId" },
+    "status": { "enum": ["produced", "unavailable", "invalid", "inconclusive"] },
+    "typeId": { "type": "string", "minLength": 1 },
+    "typeVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+(?:\\.[0-9]+)?$" },
+    "typeResolution": { "enum": ["recognized", "opaque"] },
+    "subject": { "$ref": "#/$defs/subject" },
+    "producer": { "$ref": "#/$defs/producer" },
+    "environment": { "$ref": "#/$defs/environment" },
+    "provenance": { "$ref": "#/$defs/provenance" },
+    "payloadDigest": { "$ref": "#/$defs/digest" },
+    "payload": {},
+    "artifactRefs": { "type": "array", "items": { "$ref": "#/$defs/artifactRef" } },
+    "message": { "type": "string" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "enum": ["unavailable", "invalid", "inconclusive"] } }, "required": ["status"] },
+      "then": { "required": ["message"] }
+    }
+  ],
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "digestId": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "subject": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "id", "commit"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "id": { "type": "string", "minLength": 1 },
+        "commit": { "type": "string", "minLength": 1 },
+        "repository": { "type": "string", "minLength": 1 }
+      }
+    },
+    "producer": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "version", "configDigest"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "configDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "environment": {
+      "type": "object", "additionalProperties": false,
+      "required": ["platform", "runtime", "tools"],
+      "properties": {
+        "platform": { "type": "string", "minLength": 1 },
+        "runtime": { "type": "string", "minLength": 1 },
+        "tools": {
+          "type": "array", "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["id", "version"],
+            "properties": { "id": { "type": "string", "minLength": 1 }, "version": { "type": "string", "minLength": 1 } }
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source", "artifactDigests"],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "artifactDigests": { "type": "array", "items": { "$ref": "#/$defs/digest" }, "uniqueItems": true }
+      }
+    },
+    "artifactRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "digest", "mediaType", "sizeBytes"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "digest": { "$ref": "#/$defs/digest" },
+        "mediaType": { "type": "string", "pattern": "^[^/\\s]+/[^\\s]+$" },
+        "sizeBytes": { "type": "integer", "minimum": 0 },
+        "path": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

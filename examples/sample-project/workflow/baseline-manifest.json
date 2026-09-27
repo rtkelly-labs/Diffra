@@ -1,0 +1,38 @@
+{
+  "schema": "https://diffra.dev/schemas/manifest-v1.schema.json",
+  "subject": {
+    "kind": "git-repository",
+    "id": "example/project",
+    "commit": "1111111111111111111111111111111111111111"
+  },
+  "groups": [
+    {
+      "id": "quality",
+      "name": "Quality",
+      "role": "quality",
+      "required": true,
+      "baselineRole": "merge-base",
+      "retention": "fixture",
+      "gate": "required",
+      "artifactIds": [],
+      "evidenceIds": [
+        "sha256:e0582f1ced6d0a9c9a88f6e82a03ffa50499c8cc3a0ed6969cc5931806e964f5"
+      ],
+      "groups": []
+    }
+  ],
+  "artifacts": [],
+  "evidenceIds": [
+    "sha256:e0582f1ced6d0a9c9a88f6e82a03ffa50499c8cc3a0ed6969cc5931806e964f5"
+  ],
+  "provenance": {
+    "producerId": "org.example.fixture",
+    "producerVersion": "1.0",
+    "environment": {
+      "platform": "macOS 15.7.7",
+      "runtime": ".NET 10.0.12"
+    },
+    "source": "git:1111111111111111111111111111111111111111"
+  },
+  "id": "sha256:ad62f2fc5de477c7f325e65643c3f55b5b36556c885b3072d4dabf8f3216fca4"
+}

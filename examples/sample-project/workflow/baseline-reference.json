@@ -1,0 +1,21 @@
+{
+  "schema": "https://diffra.dev/schemas/baseline-reference-v1.schema.json",
+  "role": "merge-base",
+  "status": "trusted",
+  "evidenceId": "sha256:e0582f1ced6d0a9c9a88f6e82a03ffa50499c8cc3a0ed6969cc5931806e964f5",
+  "subjectCommit": "1111111111111111111111111111111111111111",
+  "manifestDigest": "sha256:6d560cfbd938993f08de299e278b1610dbdb19404b32579dd125c931edda12fd",
+  "resolver": {
+    "id": "org.example.fixture-resolver",
+    "version": "1.0",
+    "resolvedCommit": "1111111111111111111111111111111111111111",
+    "sourceRef": "local-fixture"
+  },
+  "sourceStore": "local-fixture",
+  "trust": {
+    "issuer": "fixture-only",
+    "decisionId": "demonstration",
+    "decisionDigest": "sha256:2b9cc4a9db471dbe900f09fbe469af30efdd8a740f938e325120903fb274339d"
+  },
+  "id": "sha256:958abd08efdf8e0f48edf97262f98998a59bad0ac53d5b361553c899f632fb69"
+}

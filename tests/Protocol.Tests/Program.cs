@@ -34,6 +34,7 @@ ComparisonTests.RunAll();
 ReportingTests.RunAll();
 CollectTests.RunAll();
 DiffEvalTests.RunAll();
+SampleFixtureTests.RunAll();
 
 static void CanonicalizesObjectsAndStrings()
 {

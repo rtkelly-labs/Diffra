@@ -1,0 +1,6 @@
+{
+  "id": "org.example.complexity-budget",
+  "version": "1.0.0",
+  "warnAboveAbsoluteIncrease": "0",
+  "failAboveAbsoluteIncrease": "3"
+}

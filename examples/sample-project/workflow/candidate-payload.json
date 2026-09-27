@@ -1,0 +1,8 @@
+{
+  "scope": "example/project",
+  "methodology": "sample-metrics-v1",
+  "metrics": {
+    "complexity": { "value": "5", "unit": "cyclomatic-complexity" },
+    "methodCount": { "value": "2", "unit": "methods" }
+  }
+}

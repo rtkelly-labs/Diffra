@@ -35,6 +35,12 @@ ReportingTests.RunAll();
 CollectTests.RunAll();
 DiffEvalTests.RunAll();
 SampleFixtureTests.RunAll();
+CasAndBundleTests.RunAll();
+PresentationTests.RunAll();
+CoverageTests.RunAll();
+TimeSeriesGraphTests.RunAll();
+CloudEventsTests.RunAll();
+DogfoodPipelineTests.RunAll();
 
 static void CanonicalizesObjectsAndStrings()
 {

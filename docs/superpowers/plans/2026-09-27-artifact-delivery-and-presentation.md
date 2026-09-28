@@ -25,34 +25,34 @@
 
 ### Task 1: Delivery Index & Review Bundle Schema & Models
 
-**Files:** `schemas/delivery-index-v1.schema.json`, `src/Protocol/DeliveryIndex.cs`, `tests/Protocol.Tests/DeliveryIndexTests.cs`.
+**Files:** `schemas/delivery-index-v1.schema.json`, `src/Protocol/DeliveryIndex.cs`, `tests/Protocol.Tests/PresentationTests.cs`.
 
-- [ ] Define JSON schema for `diffra-delivery-index.json` (repository, release tag, source commit, asset entries with SHA-256 and byte size).
-- [ ] Implement typed models and canonical identity for `DeliveryIndex` and `Inventory`.
-- [ ] Add tests verifying digest validation, unknown field handling, and sorting of inventory entries.
+- [x] Define JSON schema for `diffra-delivery-index.json` (repository, release tag, source commit, asset entries with SHA-256 and byte size).
+- [x] Implement typed models and canonical identity for `DeliveryIndex` and `Inventory`.
+- [x] Add tests verifying digest validation, unknown field handling, and sorting of inventory entries.
 
 ### Task 2: Review Bundle Materialization
 
-**Files:** `src/Protocol/PresentationBundle.cs`, `tests/Protocol.Tests/PresentationBundleTests.cs`.
+**Files:** `src/Protocol/PresentationBundle.cs`, `tests/Protocol.Tests/PresentationTests.cs`.
 
-- [ ] Implement bundle layout generator creating `review-bundle/` (`index.html`, `diffra-delivery-index.json`, `inventory.json`, `documents/`, `assets/sha256/<digest>`).
-- [ ] Rewrite HTML report asset references to use safe relative local paths (`assets/sha256/...`).
-- [ ] Ensure atomic bundle creation: stage in temporary directory, verify all digests, and atomically move.
-- [ ] Add tests verifying malformed assets, digest mismatches, and path traversal are rejected.
+- [x] Implement bundle layout generator creating `review-bundle/` (`index.html`, `diffra-delivery-index.json`, `inventory.json`, `documents/`, `assets/sha256/<digest>`).
+- [x] Rewrite HTML report asset references to use safe relative local paths (`assets/sha256/...`).
+- [x] Ensure atomic bundle creation: stage in temporary directory, verify all digests, and atomically move.
+- [x] Add tests verifying malformed assets, digest mismatches, and path traversal are rejected.
 
 ### Task 3: Local Presentation Server (`diffra present serve`)
 
-**Files:** `src/Cli/PresentCommand.cs`, `src/Cli/Program.cs`, `tests/Protocol.Tests/ServeTests.cs`.
+**Files:** `src/Cli/PresentCommand.cs`, `src/Cli/Program.cs`, `tests/Protocol.Tests/PresentationTests.cs`.
 
-- [ ] Implement `diffra present serve <path>` using ASP.NET Core loopback web host (`127.0.0.1`).
-- [ ] Restrict serving exclusively to the prepared directory using a PhysicalFileProvider.
-- [ ] Add middleware enforcing CSP (`default-src 'self'`), disabling directory browsing, and rejecting unexpected Host headers.
-- [ ] Add integration test verifying the server returns `index.html` with CSP headers and serves assets by SHA-256 path without external network access.
+- [x] Implement `diffra present serve <path>` using ASP.NET Core loopback web host (`127.0.0.1`).
+- [x] Restrict serving exclusively to the prepared directory using a PhysicalFileProvider.
+- [x] Add middleware enforcing CSP (`default-src 'self'`), disabling directory browsing, and rejecting unexpected Host headers.
+- [x] Add integration test verifying the server returns `index.html` with CSP headers and serves assets by SHA-256 path without external network access.
 
 ### Task 4: Content-Addressed Store & Bundle Export/Import
 
-**Files:** `src/Protocol/ContentAddressedStore.cs`, `src/Cli/BundleCommands.cs`, `tests/Protocol.Tests/CasTests.cs`.
+**Files:** `src/Protocol/ContentAddressedStore.cs`, `src/Cli/BundleCommands.cs`, `tests/Protocol.Tests/CasAndBundleTests.cs`.
 
-- [ ] Implement local immutable CAS with atomic writes and SHA-256 verification.
-- [ ] Implement `diffra bundle export` (producing a self-contained `.diffra.tar.gz` or `.zip`) and `diffra bundle import`.
-- [ ] Test round-trip export and import reproducing identical document identities.
+- [x] Implement local immutable CAS with atomic writes and SHA-256 verification.
+- [x] Implement `diffra bundle export` (producing a self-contained `.diffra.tar.gz` or `.zip`) and `diffra bundle import`.
+- [x] Test round-trip export and import reproducing identical document identities.

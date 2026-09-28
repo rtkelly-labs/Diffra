@@ -1,0 +1,35 @@
+{
+  "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
+  "id": "sha256:d5582e0955b4e45ee669ed0abf48f79ebb1831f1b0ae94064100a24dcc9a6b88",
+  "status": "produced",
+  "typeId": "diffra.metrics.dogfood",
+  "typeVersion": "1.0",
+  "typeResolution": "recognized",
+  "subject": {
+    "kind": "git-repository",
+    "id": "diffra/core",
+    "commit": "0000000000000000000000000000000000000000"
+  },
+  "producer": {
+    "id": "diffra.dogfood",
+    "version": "0.1.0",
+    "configDigest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "environment": {
+    "platform": "macOS 15.7.7",
+    "runtime": ".NET 10.0.12",
+    "tools": [
+      {
+        "id": "dotnet-sdk",
+        "version": "10.0.401"
+      }
+    ]
+  },
+  "provenance": {
+    "source": "git:0000000000000000000000000000000000000000",
+    "artifactDigests": []
+  },
+  "payloadDigest": "sha256:0730da6cbc850ba08fff809432d9fd7dff764751aa59ef32d0c7b9abaa65acfa",
+  "payload": {"methodology":"static-analysis","metrics":{"aspireRuntimeDependencies":0,"compilerWarnings":0,"schemasCount":6,"sourceFilesCount":28},"scope":"diffra/core"},
+  "artifactRefs": []
+}

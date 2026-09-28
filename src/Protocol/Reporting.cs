@@ -19,7 +19,7 @@ public static class ReportRenderer
     public const string AssessmentSchema = "https://diffra.dev/schemas/assessment-v1.schema.json";
     public const string BaselineReferenceSchema = "https://diffra.dev/schemas/baseline-reference-v1.schema.json";
 
-    private const string HtmlCss = "body{font-family:system-ui,sans-serif;line-height:1.5;margin:0 auto;max-width:72rem;padding:1.5rem;color:#18212b;background:#f7f9fb}main{background:#fff;border:1px solid #d5dde5;border-radius:.5rem;padding:clamp(1rem,3vw,2rem)}h1,h2{line-height:1.2}h1{margin-top:0}dl{display:grid;grid-template-columns:minmax(10rem,15rem) 1fr;gap:.35rem 1rem}dt{font-weight:700}dd{margin:0;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%;margin:1rem 0}caption{text-align:left;font-weight:700;padding:.5rem 0}th,td{border:1px solid #c7d1dc;padding:.55rem;text-align:left;vertical-align:top}th{background:#eef3f7}code,pre{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}pre{white-space:pre-wrap;margin:0}.status{font-weight:700;text-transform:uppercase}.notice{border-left:.3rem solid #637d98;background:#eef3f7;padding:.75rem 1rem}li{margin:.5rem 0}@media(max-width:40rem){dl{grid-template-columns:1fr;gap:.1rem}dd{margin:0 0 .6rem}}";
+    private const string HtmlCss = ":root,[data-theme=\"sketch\"]{--ds-surface-base:#f7f9fb;--ds-surface-raised:#ffffff;--ds-surface-sunken:#eef3f7;--ds-text-primary:#18212b;--ds-text-secondary:#4b5563;--ds-text-muted:#6b7280;--ds-border-strong:#18212b;--ds-border-default:#d5dde5;--ds-intent-success:#107c41;--ds-intent-warning:#b45309;--ds-intent-danger:#b91c1c;--ds-intent-info:#0369a1}@media(prefers-color-scheme:dark){:root:not([data-theme=\"sketch\"]){--ds-surface-base:#0f172a;--ds-surface-raised:#1e293b;--ds-surface-sunken:#090d16;--ds-text-primary:#f8fafc;--ds-text-secondary:#cbd5e1;--ds-text-muted:#94a3b8;--ds-border-strong:#f8fafc;--ds-border-default:#334155;--ds-intent-success:#22c55e;--ds-intent-warning:#f59e0b;--ds-intent-danger:#ef4444;--ds-intent-info:#38bdf8}}[data-theme=\"midnight\"]{--ds-surface-base:#0f172a;--ds-surface-raised:#1e293b;--ds-surface-sunken:#090d16;--ds-text-primary:#f8fafc;--ds-text-secondary:#cbd5e1;--ds-text-muted:#94a3b8;--ds-border-strong:#f8fafc;--ds-border-default:#334155;--ds-intent-success:#22c55e;--ds-intent-warning:#f59e0b;--ds-intent-danger:#ef4444;--ds-intent-info:#38bdf8}body{font-family:system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,sans-serif;line-height:1.5;margin:0 auto;max-width:72rem;padding:1.5rem;color:var(--ds-text-primary);background:var(--ds-surface-base)}main{background:var(--ds-surface-raised);border:1px solid var(--ds-border-default);border-radius:.5rem;padding:clamp(1rem,3vw,2rem);box-shadow:0 1px 3px rgba(0,0,0,0.05)}h1,h2,h3{line-height:1.2}h1{margin-top:0;font-size:1.75rem}.verdict-banner{display:flex;align-items:center;gap:1rem;border-left:6px solid var(--ds-border-strong);background:var(--ds-surface-sunken);padding:1rem 1.25rem;margin:1.25rem 0;border-radius:.25rem}.verdict-pass{border-color:var(--ds-intent-success)}.verdict-warn{border-color:var(--ds-intent-warning)}.verdict-fail{border-color:var(--ds-intent-danger)}.verdict-title{font-size:1.25rem;font-weight:800;letter-spacing:.05em;display:block}.verdict-sub{margin:.25rem 0 0;color:var(--ds-text-secondary);font-size:.9rem}.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(10rem,1fr));gap:.75rem;margin:1.25rem 0}.stat-card{background:var(--ds-surface-sunken);border:1px solid var(--ds-border-default);border-radius:.375rem;padding:.75rem 1rem;display:flex;flex-direction:column}.stat-label{font-size:.75rem;font-weight:700;color:var(--ds-text-muted);letter-spacing:.05em;text-transform:uppercase}.stat-value{font-size:1.5rem;font-weight:800;margin-top:.25rem}dl{display:grid;grid-template-columns:minmax(10rem,15rem) 1fr;gap:.35rem 1rem}dt{font-weight:700}dd{margin:0;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%;margin:1rem 0}caption{text-align:left;font-weight:700;padding:.5rem 0}th,td{border:1px solid var(--ds-border-default);padding:.55rem;text-align:left;vertical-align:top}th{background:var(--ds-surface-sunken)}code,pre{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}pre{white-space:pre-wrap;margin:0}.status{font-weight:700;text-transform:uppercase}.notice{border-left:.3rem solid var(--ds-intent-info);background:var(--ds-surface-sunken);padding:.75rem 1rem}li{margin:.5rem 0}@media(max-width:40rem){dl{grid-template-columns:1fr;gap:.1rem}dd{margin:0 0 .6rem}}";
 
     /// <summary>Renders a validated Delta and optional matching Assessment.</summary>
     public static string Render(
@@ -78,6 +78,8 @@ public static class ReportRenderer
             .Append(HtmlCss)
             .Append("</style></head><body><main><h1>Diffra comparison report</h1>");
 
+        AppendVerdictBannerHtml(builder, assessment, delta);
+        AppendStatGridHtml(builder, delta, assessment, baseline);
         AppendDeltaSummaryHtml(builder, delta, baseline);
         AppendChangesHtml(builder, delta.GetProperty("changes"));
         if (assessment is { } assessmentValue)
@@ -90,6 +92,42 @@ public static class ReportRenderer
         }
 
         return builder.Append("</main></body></html>").ToString();
+    }
+
+    private static void AppendVerdictBannerHtml(StringBuilder builder, JsonElement? assessment, JsonElement delta)
+    {
+        if (assessment is { } a)
+        {
+            var outcome = a.GetProperty("outcome").GetString()!;
+            var (vClass, vTitle, vSub) = outcome switch
+            {
+                "pass" => ("verdict-pass", "PASS", "All evaluated policy rules passed successfully."),
+                "warn" => ("verdict-warn", "WARN", "Policy rules evaluated with warnings requiring review."),
+                "fail" => ("verdict-fail", "FAIL", "One or more policy rules failed."),
+                _ => ("verdict-notice", outcome.ToUpperInvariant(), "Assessment completed with status: " + outcome)
+            };
+            builder.Append("<div class=\"verdict-banner ").Append(vClass).Append("\"><div><span class=\"verdict-title\">")
+                .Append(vTitle).Append("</span><p class=\"verdict-sub\">").Append(vSub).Append("</p></div></div>");
+        }
+        else
+        {
+            builder.Append("<div class=\"verdict-banner\"><div><span class=\"verdict-title\">NO POLICY VERDICT</span><p class=\"verdict-sub\">Report describes measured changes without policy assessment.</p></div></div>");
+        }
+    }
+
+    private static void AppendStatGridHtml(StringBuilder builder, JsonElement delta, JsonElement? assessment, JsonElement? baseline)
+    {
+        var status = delta.GetProperty("status").GetString()!;
+        var changesCount = delta.GetProperty("changes").GetArrayLength();
+        var findingsCount = assessment?.GetProperty("findings").GetArrayLength() ?? 0;
+        var baselineRole = baseline?.GetProperty("role").GetString() ?? "none";
+
+        builder.Append("<div class=\"stat-grid\">");
+        builder.Append("<div class=\"stat-card\"><span class=\"stat-label\">Status</span><span class=\"stat-value\">").Append(Escape(status)).Append("</span></div>");
+        builder.Append("<div class=\"stat-card\"><span class=\"stat-label\">Changes</span><span class=\"stat-value\">").Append(changesCount).Append("</span></div>");
+        builder.Append("<div class=\"stat-card\"><span class=\"stat-label\">Findings</span><span class=\"stat-value\">").Append(findingsCount).Append("</span></div>");
+        builder.Append("<div class=\"stat-card\"><span class=\"stat-label\">Baseline</span><span class=\"stat-value\">").Append(Escape(baselineRole)).Append("</span></div>");
+        builder.Append("</div>");
     }
 
     private static void AppendDeltaSummaryHtml(StringBuilder builder, JsonElement delta, JsonElement? baseline)

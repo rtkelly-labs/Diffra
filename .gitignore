@@ -2,6 +2,7 @@
 TODO.md
 /temp/
 /.temp/
+/dogfood-run/
 
 # .NET build output
 [Bb]in/

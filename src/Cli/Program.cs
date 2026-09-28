@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Diffra.Cli;
 using Diffra.Protocol;
 
 return Run(args);
@@ -25,6 +26,16 @@ static int Run(string[] arguments)
     if (string.Equals(arguments[0], "eval", StringComparison.Ordinal))
     {
         return DiffEvalCommands.RunEval(arguments[1..]);
+    }
+
+    if (string.Equals(arguments[0], "bundle", StringComparison.Ordinal))
+    {
+        return BundleCommands.Run(arguments[1..]);
+    }
+
+    if (string.Equals(arguments[0], "present", StringComparison.Ordinal))
+    {
+        return PresentCommand.Run(arguments[1..]);
     }
 
     if (!string.Equals(arguments[0], "report", StringComparison.Ordinal))
@@ -185,11 +196,13 @@ static void WriteAtomically(string outputPath, string contents)
 
 static void PrintUsage()
 {
-    Console.Error.WriteLine("Usage: diffra <collect|diff|eval|report> [options]");
+    Console.Error.WriteLine("Usage: diffra <collect|diff|eval|report|bundle|present> [options]");
     Console.Error.WriteLine("  collect --payload <json-file> --subject-id <id> --commit <full-commit> --type-id <id> --type-version <version> --producer-id <id> --producer-version <version> -o <evidence-file>");
     Console.Error.WriteLine("  diff --baseline-ref <reference.json> --baseline-evidence <evidence.json> --evidence <candidate.json> -o <delta.json>");
     Console.Error.WriteLine("  eval --rules <rules.json> --delta <delta.json> -o <assessment.json>");
     Console.Error.WriteLine("  report <delta-file> [--assessment <file>] [--baseline-ref <reference.json>] [--format html|json|markdown] [-o <file>]");
+    Console.Error.WriteLine("  bundle <export|import> [options]");
+    Console.Error.WriteLine("  present <bundle|serve> [options]");
 }
 
 internal sealed record ReportArguments(string DeltaPath, string? AssessmentPath, string? BaselineReferencePath, string Format, string? OutputPath);

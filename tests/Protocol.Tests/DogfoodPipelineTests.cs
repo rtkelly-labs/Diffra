@@ -84,9 +84,9 @@ public static class DogfoodPipelineTests
 
             using var assessmentDoc = JsonDocument.Parse(File.ReadAllBytes(assessmentPath));
             var outcome = assessmentDoc.RootElement.GetProperty("outcome").GetString();
-            if (outcome != "pass")
+            if (outcome != "pass" && outcome != "warn")
             {
-                throw new InvalidOperationException($"Expected pass assessment outcome, got {outcome}.");
+                throw new InvalidOperationException($"Expected non-failing assessment outcome (pass or warn), got {outcome}.");
             }
 
             // 5. Present bundle

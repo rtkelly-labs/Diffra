@@ -1,0 +1,10 @@
+# Normalise to LF everywhere. Fixture digests are taken over LF bytes,
+# so CRLF checkouts (core.autocrlf=true on Windows) break SampleFixtureTests.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.bundle binary

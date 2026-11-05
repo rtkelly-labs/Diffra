@@ -54,14 +54,14 @@ jobs:
             --mutate "**/Comparison.cs" \
             --mutate "**/Assessment.cs" \
             --reporter html --reporter json --reporter progress --reporter cleartext \
-            --output "$GITHUB_WORKSPACE/.stryker" \
+            --output "$GITHUB_WORKSPACE/stryker-output" \
             --break-at 0
           echo "STRYKER_SECONDS=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
 
       - name: Summarise
         if: always()
         run: |
-          report=$(find "$GITHUB_WORKSPACE/.stryker" -name 'mutation-report.json' | head -1)
+          report=$(find "$GITHUB_WORKSPACE/stryker-output" -name 'mutation-report.json' | head -1)
           {
             echo "## Stryker.NET: Comparison.cs, Assessment.cs"
             echo
@@ -93,6 +93,6 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: stryker-report
-          path: .stryker
+          path: stryker-output
           retention-days: 14
           if-no-files-found: warn

@@ -296,8 +296,8 @@ namespace Diffra.CanonicalJson.Differential
         // code point order disagree (U+E000..U+FFFF sorts after surrogate pairs in UTF-16 order).
         private static readonly string[] KeyPieces =
         [
-            "", "a", "A", "b", "1", "10", "_", "é", "é", "é", "€", " ",
-            "", "￿", "�", "😀", "𐀀", "􏿿", "\u0000", "\u001F", "\u007F",
+            "", "a", "A", "b", "1", "10", "_", "\u00E9", "e\u0301", "\u00E9", "\u20AC", "\u2028",
+            "\uE000", "\uFFFF", "\uFFFD", "\uD83D\uDE00", "\uD800\uDC00", "\uDBFF\uDFFF", "\u0000", "\u001F", "\u007F",
             "\"", "\\", "/", " ",
         ];
 
@@ -310,7 +310,7 @@ namespace Diffra.CanonicalJson.Differential
 
         private static readonly char[] SpecialCharacters =
         [
-            ' ', ' ', '﻿', '�', '￿', '​', '́', 'é', '\u007F', '\u0080', ' ',
+            '\u2028', '\u2029', '\uFEFF', '\uFFFD', '\uFFFF', '\u200B', '\u0301', '\u00E9', '\u007F', '\u0080', '\u00A0',
         ];
 
         private readonly Random random = new(seed);

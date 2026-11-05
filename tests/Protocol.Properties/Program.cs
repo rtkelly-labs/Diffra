@@ -104,9 +104,25 @@ Check(
     input => Json.Render(input.Item1) + "  vs  " + Json.Render(input.Item2));
 
 Check(
-    "keyed: duplicate ids in a keyed collection are reported, not thrown",
+    "keyed: duplicate ids fall back to ordered comparison instead of throwing",
     Gen.Select(Generators.DuplicateIdArray, Generators.DuplicateIdArray),
-    input => _ = Structural.Compare(Json.Render(input.Item1), Json.Render(input.Item2), ArrayComparisonMode.KeyedCollection),
+    input =>
+    {
+        var baseline = Json.Render(input.Item1);
+        var candidate = Json.Render(input.Item2);
+        static bool HasDuplicateId(J array) => ((JArr)array).Items
+            .Select(item => ((JStr)((JObj)item).Members[0].Value).Value)
+            .GroupBy(id => id, StringComparer.Ordinal)
+            .Any(group => group.Count() > 1);
+        var keyed = Structural.Normalize(Structural.Compare(baseline, candidate, ArrayComparisonMode.KeyedCollection));
+        if (!HasDuplicateId(input.Item1) && !HasDuplicateId(input.Item2))
+        {
+            return;
+        }
+
+        var ordered = Structural.Normalize(Structural.Compare(baseline, candidate, ArrayComparisonMode.OrderedSequence));
+        Assert.Equal(string.Join("\n", ordered), string.Join("\n", keyed), "keyed result differs from ordered fallback");
+    },
     input => Json.Render(input.Item1) + "  vs  " + Json.Render(input.Item2));
 
 var keyedNonEmpty = 0L;

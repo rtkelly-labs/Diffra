@@ -8,3 +8,6 @@
 *.woff binary
 *.woff2 binary
 *.bundle binary
+
+# Fuzz regression inputs are raw bytes.
+tests/Protocol.Fuzz/regressions/** binary

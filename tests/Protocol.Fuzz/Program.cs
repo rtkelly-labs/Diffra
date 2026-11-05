@@ -375,6 +375,16 @@ namespace Diffra.Protocol.Fuzz
             var bundles = BundleSeeds(repositoryRoot).ToList();
             Emit(corpusRoot, "bundle", bundles);
             Emit(corpusRoot, "bundle-zip", bundles.Select(ToZip));
+
+            // Inputs that once produced a finding, kept so every campaign replays them first.
+            var regressions = Path.Combine(repositoryRoot, "tests", "Protocol.Fuzz", "regressions");
+            if (System.IO.Directory.Exists(regressions))
+            {
+                foreach (var targetDirectory in System.IO.Directory.EnumerateDirectories(regressions))
+                {
+                    Emit(corpusRoot, Path.GetFileName(targetDirectory), System.IO.Directory.EnumerateFiles(targetDirectory).Order(StringComparer.Ordinal).Select(File.ReadAllBytes));
+                }
+            }
         }
 
         private static IEnumerable<byte[]> BundleSeeds(string repositoryRoot)

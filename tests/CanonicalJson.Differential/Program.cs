@@ -8,7 +8,10 @@
 //   compare --out <dir> --references <name,name>
 //       Compares Diffra's output with the RFC 8785 expected output and with each independent
 //       reference implementation's output in <dir>/<name>. A reference writes <id>.json on
-//       success or <id>.err on rejection.
+//       success or <id>.err on rejection. It also checks the harness itself: a faithful
+//       re-serializer must reproduce Diffra's bytes, every deliberately broken re-serializer must be
+//       caught by at least one case, and a fixed list of invalid inputs must be rejected with
+//       JsonException.
 //
 // The only pre-registered divergence is the documented subset rule: Diffra rejects fractional and
 // exponent number tokens and integers outside the JavaScript safe range. Anything else fails.
@@ -115,6 +118,8 @@ static int Compare(Dictionary<string, string> options)
     var generated = 0;
     var agreements = references.ToDictionary(name => name, _ => 0, StringComparer.Ordinal);
     var referenceVectorAgreements = references.ToDictionary(name => name, _ => 0, StringComparer.Ordinal);
+    var faithfulMatches = 0;
+    var mutantKills = Reserializer.Mutants.ToDictionary(mutant => mutant, _ => 0);
 
     foreach (var id in ids)
     {
@@ -184,6 +189,64 @@ static int Compare(Dictionary<string, string> options)
                 agreements[reference]++;
             }
         }
+
+        // Harness mutation check: re-serialize the accepted input with a faithful writer and with
+        // deliberately broken writers. The faithful writer must reproduce Diffra's bytes; each broken
+        // writer must disagree with at least one oracle (RFC expected output or a reference) on at
+        // least one case, otherwise the corpus could not have caught that bug in Diffra.
+        var oracles = references
+            .Select(reference => Outcome.Read(root, reference, id).Bytes)
+            .Append(expected)
+            .OfType<byte[]>()
+            .ToArray();
+        using (var parsed = JsonDocument.Parse(File.ReadAllBytes(input)))
+        {
+            var faithful = Reserializer.Write(parsed.RootElement, Mutant.None);
+            if (faithful.AsSpan().SequenceEqual(diffra.Bytes))
+            {
+                faithfulMatches++;
+            }
+            else
+            {
+                failures.Add($"{id}: the harness's faithful re-serializer differs from Diffra. {Difference(faithful, diffra.Bytes)}");
+            }
+
+            foreach (var mutant in Reserializer.Mutants)
+            {
+                var broken = Reserializer.Write(parsed.RootElement, mutant);
+                if (oracles.Any(oracle => !oracle.AsSpan().SequenceEqual(broken)))
+                {
+                    mutantKills[mutant]++;
+                }
+            }
+        }
+    }
+
+    // Negative cases: inputs outside JSON or outside the v1 subset that Diffra must reject with
+    // JsonException. Acceptance, or any other exception type, is a failure.
+    var negativeRejected = 0;
+    foreach (var (name, bytes) in NegativeCases.All)
+    {
+#pragma warning disable CA1031 // Any exception type other than JsonException is itself the finding.
+        try
+        {
+            var output = CanonicalJson.Canonicalize(bytes);
+            failures.Add($"negative case '{name}': Diffra accepted it and produced {Excerpt(output, 0)}");
+        }
+        catch (JsonException)
+        {
+            negativeRejected++;
+        }
+        catch (Exception exception)
+        {
+            failures.Add($"negative case '{name}': Diffra threw {exception.GetType().Name} instead of JsonException: {exception.Message}");
+        }
+#pragma warning restore CA1031
+    }
+
+    foreach (var mutant in Reserializer.Mutants.Where(mutant => mutantKills[mutant] == 0))
+    {
+        failures.Add($"harness mutant '{mutant}' survived: no case distinguishes it from the oracles, so the corpus would miss that bug.");
     }
 
     var report = new StringBuilder();
@@ -200,7 +263,18 @@ static int Compare(Dictionary<string, string> options)
         report.AppendLine(CultureInfo.InvariantCulture, $"| `{reference}` agreement with RFC vectors (oracle check) | {referenceVectorAgreements[reference]} |");
     }
 
+    report.AppendLine(CultureInfo.InvariantCulture, $"| Faithful re-serializer matches Diffra | {faithfulMatches} |");
+    report.AppendLine(CultureInfo.InvariantCulture, $"| Harness mutants killed | {Reserializer.Mutants.Count(mutant => mutantKills[mutant] > 0)} of {Reserializer.Mutants.Length} |");
+    report.AppendLine(CultureInfo.InvariantCulture, $"| Negative cases rejected with JsonException | {negativeRejected} of {NegativeCases.All.Length} |");
     report.AppendLine(CultureInfo.InvariantCulture, $"| Unexpected divergences | {failures.Count} |");
+    report.AppendLine();
+    report.AppendLine("| Harness mutant | Cases that kill it |");
+    report.AppendLine("| --- | --- |");
+    foreach (var mutant in Reserializer.Mutants)
+    {
+        report.AppendLine(CultureInfo.InvariantCulture, $"| `{mutant}` | {mutantKills[mutant]} |");
+    }
+
     report.AppendLine();
     AppendList(report, "Unexpected divergences", failures);
     AppendList(report, "Notes", notes);
@@ -616,5 +690,204 @@ namespace Diffra.CanonicalJson.Differential
                 text.Append(" \t\n\r"[random.Next(4)]);
             }
         }
+    }
+
+    /// <summary>Deliberate canonicalization bugs used to check that the corpus can detect them.</summary>
+    internal enum Mutant
+    {
+        None,
+        InputMemberOrder,
+        CodePointMemberOrder,
+        EscapeNonAscii,
+        EscapeSolidus,
+        UppercaseHexEscapes,
+        NoShortEscapes,
+        EscapeDelete,
+        EscapeLineSeparators,
+        KeepNegativeZero,
+        TrailingNewline,
+    }
+
+    /// <summary>
+    /// An independent JCS writer for the v1 subset. With <see cref="Mutant.None"/> it must match
+    /// Diffra byte for byte; every other mutant introduces one plausible canonicalization bug.
+    /// </summary>
+    internal static class Reserializer
+    {
+        public static readonly Mutant[] Mutants = Enum.GetValues<Mutant>().Where(mutant => mutant != Mutant.None).ToArray();
+
+        public static byte[] Write(JsonElement root, Mutant mutant)
+        {
+            var builder = new StringBuilder();
+            WriteValue(builder, root, mutant);
+            if (mutant == Mutant.TrailingNewline)
+            {
+                builder.Append('\n');
+            }
+
+            return Encoding.UTF8.GetBytes(builder.ToString());
+        }
+
+        private static void WriteValue(StringBuilder builder, JsonElement element, Mutant mutant)
+        {
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.Object:
+                {
+                    IEnumerable<JsonProperty> properties = element.EnumerateObject();
+                    properties = mutant switch
+                    {
+                        Mutant.InputMemberOrder => properties,
+                        Mutant.CodePointMemberOrder => properties.OrderBy(property => property.Name, CodePointComparer.Instance),
+                        _ => properties.OrderBy(property => property.Name, StringComparer.Ordinal),
+                    };
+                    builder.Append('{');
+                    var first = true;
+                    foreach (var property in properties)
+                    {
+                        if (!first)
+                        {
+                            builder.Append(',');
+                        }
+
+                        first = false;
+                        WriteString(builder, property.Name, mutant);
+                        builder.Append(':');
+                        WriteValue(builder, property.Value, mutant);
+                    }
+
+                    builder.Append('}');
+                    break;
+                }
+                case JsonValueKind.Array:
+                {
+                    builder.Append('[');
+                    var first = true;
+                    foreach (var item in element.EnumerateArray())
+                    {
+                        if (!first)
+                        {
+                            builder.Append(',');
+                        }
+
+                        first = false;
+                        WriteValue(builder, item, mutant);
+                    }
+
+                    builder.Append(']');
+                    break;
+                }
+                case JsonValueKind.String:
+                    WriteString(builder, element.GetString()!, mutant);
+                    break;
+                case JsonValueKind.Number:
+                    var token = element.GetRawText();
+                    builder.Append(mutant == Mutant.KeepNegativeZero
+                        ? token
+                        : long.Parse(token, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture));
+                    break;
+                default:
+                    builder.Append(element.GetRawText());
+                    break;
+            }
+        }
+
+        private static void WriteString(StringBuilder builder, string value, Mutant mutant)
+        {
+            builder.Append('"');
+            foreach (var character in value)
+            {
+                switch (character)
+                {
+                    case '"':
+                        builder.Append("\\\"");
+                        break;
+                    case '\\':
+                        builder.Append("\\\\");
+                        break;
+                    case '/' when mutant == Mutant.EscapeSolidus:
+                        builder.Append("\\/");
+                        break;
+                    case '\b' or '\t' or '\n' or '\f' or '\r' when mutant != Mutant.NoShortEscapes:
+                        builder.Append(character switch
+                        {
+                            '\b' => "\\b",
+                            '\t' => "\\t",
+                            '\n' => "\\n",
+                            '\f' => "\\f",
+                            _ => "\\r",
+                        });
+                        break;
+                    default:
+                        var escape = character < 0x20
+                            || (character == 0x7F && mutant == Mutant.EscapeDelete)
+                            || (character > 0x7E && mutant == Mutant.EscapeNonAscii)
+                            || (character is '\u2028' or '\u2029' && mutant == Mutant.EscapeLineSeparators);
+                        if (escape)
+                        {
+                            builder.Append("\\u").Append(((int)character).ToString(
+                                mutant == Mutant.UppercaseHexEscapes ? "X4" : "x4",
+                                CultureInfo.InvariantCulture));
+                        }
+                        else
+                        {
+                            builder.Append(character);
+                        }
+
+                        break;
+                }
+            }
+
+            builder.Append('"');
+        }
+    }
+
+    /// <summary>Orders strings by Unicode code point (UTF-8 byte order) instead of UTF-16 code unit.</summary>
+    internal sealed class CodePointComparer : IComparer<string>
+    {
+        public static readonly CodePointComparer Instance = new();
+
+        public int Compare(string? x, string? y) =>
+            Encoding.UTF8.GetBytes(x ?? string.Empty).AsSpan().SequenceCompareTo(Encoding.UTF8.GetBytes(y ?? string.Empty));
+    }
+
+    /// <summary>Inputs that Diffra's v1 canonicalizer must reject with JsonException.</summary>
+    internal static class NegativeCases
+    {
+        public static readonly (string Name, byte[] Bytes)[] All =
+        [
+            ("empty input", []),
+            ("duplicate member", "{\"a\":1,\"a\":2}"u8.ToArray()),
+            ("duplicate member via escape", "{\"a\":1,\"\\u0061\":2}"u8.ToArray()),
+            ("nested duplicate member", "[{\"k\":{\"x\":1,\"x\":1}}]"u8.ToArray()),
+            ("fraction", "1.5"u8.ToArray()),
+            ("zero fraction", "1.0"u8.ToArray()),
+            ("exponent", "1e2"u8.ToArray()),
+            ("negative zero fraction", "-0.0"u8.ToArray()),
+            ("above the safe-integer range", "9007199254740992"u8.ToArray()),
+            ("below the safe-integer range", "-9007199254740992"u8.ToArray()),
+            ("beyond Int64", "99999999999999999999"u8.ToArray()),
+            ("leading zero", "01"u8.ToArray()),
+            ("plus sign", "+1"u8.ToArray()),
+            ("NaN", "NaN"u8.ToArray()),
+            ("Infinity", "[Infinity]"u8.ToArray()),
+            ("lone high surrogate escape", "\"\\ud800\""u8.ToArray()),
+            ("lone low surrogate escape", "\"\\udc00\""u8.ToArray()),
+            ("reversed surrogate escapes", "\"\\udc00\\ud800\""u8.ToArray()),
+            ("lone surrogate in member name", "{\"\\ud83d\":1}"u8.ToArray()),
+            ("invalid UTF-8 byte", [0x22, 0xFF, 0x22]),
+            ("overlong UTF-8", [0x22, 0xC0, 0xAF, 0x22]),
+            ("UTF-8 encoded surrogate", [0x22, 0xED, 0xA0, 0x80, 0x22]),
+            ("truncated UTF-8", [0x22, 0xE2, 0x82, 0x22]),
+            ("byte-order mark", [0xEF, 0xBB, 0xBF, 0x31]),
+            ("raw control character in string", [0x22, 0x01, 0x22]),
+            ("invalid escape", "\"\\x41\""u8.ToArray()),
+            ("trailing comma", "[1,]"u8.ToArray()),
+            ("comment", "[1/*c*/]"u8.ToArray()),
+            ("single-quoted string", "'a'"u8.ToArray()),
+            ("unquoted member name", "{a:1}"u8.ToArray()),
+            ("trailing content", "1 2"u8.ToArray()),
+            ("nesting deeper than 64", Encoding.ASCII.GetBytes(new string('[', 65) + new string(']', 65))),
+        ];
     }
 }

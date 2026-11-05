@@ -198,7 +198,8 @@ public static class EvidenceBundle
             declaredArtifacts[digest["sha256:".Length..]] = digest;
         }
 
-        // Pass 1: decide what to import and verify every digest without touching the store.
+        // Pass 1: decide what to import, read every entry and verify every digest without touching the store.
+        // Reading here as well means a corrupt entry is rejected before anything is written.
         var plan = new List<(ZipArchiveEntry Entry, string? ExpectedDigest, bool IsDocument)>();
         foreach (var entry in archive.Entries)
         {
@@ -228,14 +229,17 @@ public static class EvidenceBundle
             }
         }
 
-        foreach (var (entry, expectedDigest, _) in plan)
+        var staged = new List<(byte[] Bytes, string? ExpectedDigest, bool IsDocument)>(plan.Count);
+        foreach (var (entry, expectedDigest, isDocument) in plan)
         {
+            var bytes = ReadEntry(entry);
+            staged.Add((bytes, expectedDigest, isDocument));
             if (expectedDigest is null)
             {
                 continue;
             }
 
-            var actualDigest = ContentAddressedStore.ComputeDigest(ReadEntry(entry));
+            var actualDigest = ContentAddressedStore.ComputeDigest(bytes);
             if (!string.Equals(actualDigest, expectedDigest, StringComparison.Ordinal))
             {
                 throw new InvalidOperationException($"Payload digest mismatch for bundle entry '{entry.FullName}'. Expected '{expectedDigest}' but computed '{actualDigest}'.");
@@ -246,9 +250,9 @@ public static class EvidenceBundle
         var importedDigests = new List<string> { store.Put(manifestBytes) };
         var docCount = 1;
         var artifactCount = 0;
-        foreach (var (entry, expectedDigest, isDocument) in plan)
+        foreach (var (bytes, expectedDigest, isDocument) in staged)
         {
-            importedDigests.Add(store.Put(ReadEntry(entry), expectedDigest));
+            importedDigests.Add(store.Put(bytes, expectedDigest));
             if (isDocument)
             {
                 docCount++;

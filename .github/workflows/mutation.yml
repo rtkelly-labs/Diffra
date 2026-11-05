@@ -43,6 +43,7 @@ jobs:
       - name: Install Stryker.NET
         run: dotnet tool install dotnet-stryker --version 5.0.0 --tool-path "$RUNNER_TEMP/stryker"
 
+      # Score floor: 81.2% after the gap tests in run 42128535455. Fail if mutation coverage regresses.
       - name: Run Stryker
         working-directory: tests/Protocol.Tests.Stryker
         run: |
@@ -55,7 +56,7 @@ jobs:
             --mutate "**/Assessment.cs" \
             --reporter html --reporter json --reporter progress --reporter cleartext \
             --output "$GITHUB_WORKSPACE/stryker-output" \
-            --break-at 0
+            --break-at 80
           echo "STRYKER_SECONDS=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
 
       - name: Summarise

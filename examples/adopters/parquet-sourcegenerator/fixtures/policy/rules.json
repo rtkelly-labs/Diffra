@@ -1,0 +1,20 @@
+{
+  "schema": "https://diffra.dev/schemas/assessment-rules-v1.schema.json",
+  "id": "policy:parquet-sourcegenerator-golden-gate",
+  "version": "1.0.0",
+  "rules": {
+    "apiSurface": {
+      "disallowBreakingChanges": true,
+      "disallowRemovals": true,
+      "disallowModifications": true
+    },
+    "complexity": {
+      "maxMeanComplexity": 30.0,
+      "outlierThreshold": 25,
+      "failOnOutlierGrowth": true
+    },
+    "compilation": {
+      "requireCompilationClean": true
+    }
+  }
+}

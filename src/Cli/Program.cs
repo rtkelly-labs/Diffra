@@ -38,6 +38,11 @@ static int Run(string[] arguments)
         return PresentCommand.Run(arguments[1..]);
     }
 
+    if (string.Equals(arguments[0], "baseline", StringComparison.Ordinal))
+    {
+        return BaselineCommands.Run(arguments[1..]);
+    }
+
     if (!string.Equals(arguments[0], "report", StringComparison.Ordinal))
     {
         Console.Error.WriteLine($"Unknown command '{arguments[0]}'.");
@@ -196,13 +201,14 @@ static void WriteAtomically(string outputPath, string contents)
 
 static void PrintUsage()
 {
-    Console.Error.WriteLine("Usage: diffra <collect|diff|eval|report|bundle|present> [options]");
+    Console.Error.WriteLine("Usage: diffra <collect|diff|eval|report|bundle|present|baseline> [options]");
     Console.Error.WriteLine("  collect --payload <json-file> --subject-id <id> --commit <full-commit> --type-id <id> --type-version <version> --producer-id <id> --producer-version <version> -o <evidence-file>");
     Console.Error.WriteLine("  diff --baseline-ref <reference.json> --baseline-evidence <evidence.json> --evidence <candidate.json> -o <delta.json>");
     Console.Error.WriteLine("  eval --rules <rules.json> --delta <delta.json> -o <assessment.json>");
     Console.Error.WriteLine("  report <delta-file> [--assessment <file>] [--baseline-ref <reference.json>] [--format html|json|markdown] [-o <file>]");
     Console.Error.WriteLine("  bundle <export|import> [options]");
     Console.Error.WriteLine("  present <bundle|serve> [options]");
+    Console.Error.WriteLine("  baseline <verify|resolve|update> [options]");
 }
 
 internal sealed record ReportArguments(string DeltaPath, string? AssessmentPath, string? BaselineReferencePath, string Format, string? OutputPath);

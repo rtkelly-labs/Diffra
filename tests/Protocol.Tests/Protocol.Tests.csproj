@@ -6,5 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Protocol/Diffra.Protocol.csproj" />
+    <Compile Include="../../examples/adopters/parquet-sourcegenerator/Adapter.cs" Link="Adapter.cs" />
   </ItemGroup>
 </Project>

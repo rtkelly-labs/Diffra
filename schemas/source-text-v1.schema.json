@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diffra.dev/schemas/source-text-v1.schema.json",
+  "title": "Diffra Source Text v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "scope", "language", "lineCount", "characterCount", "contentDigest"],
+  "properties": {
+    "schema": { "const": "https://diffra.dev/schemas/source-text-v1.schema.json" },
+    "scope": { "type": "string", "minLength": 1 },
+    "language": { "type": "string", "minLength": 1 },
+    "lineCount": { "type": "integer", "minimum": 0 },
+    "characterCount": { "type": "integer", "minimum": 0 },
+    "contentDigest": { "$ref": "#/$defs/digest" },
+    "rawSourcePath": { "type": ["string", "null"] }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  }
+}

@@ -43,6 +43,7 @@ CloudEventsTests.RunAll();
 GraphTests.RunAll();
 BaselineTrustTests.RunAll();
 DogfoodPipelineTests.RunAll();
+AdopterIntegrationTests.RunAll();
 
 static void CanonicalizesObjectsAndStrings()
 {

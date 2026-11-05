@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diffra.dev/schemas/api-surface-v1.schema.json",
+  "title": "Diffra API Surface v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "scope", "methodology", "members"],
+  "properties": {
+    "schema": { "const": "https://diffra.dev/schemas/api-surface-v1.schema.json" },
+    "scope": { "type": "string", "minLength": 1 },
+    "methodology": { "type": "string", "minLength": 1 },
+    "members": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/member" }
+    }
+  },
+  "$defs": {
+    "member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "signature"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["namespace", "class", "struct", "interface", "enum", "method", "property", "field", "event"] },
+        "signature": { "type": "string", "minLength": 1 },
+        "returnType": { "type": ["string", "null"] },
+        "parameters": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        },
+        "isStatic": { "type": "boolean" },
+        "isAsync": { "type": "boolean" }
+      }
+    }
+  }
+}

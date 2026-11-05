@@ -17,16 +17,16 @@
       "properties": {
         "totalMethods": { "type": "integer", "minimum": 0 },
         "totalComplexity": { "type": "integer", "minimum": 0 },
-        "meanComplexity": { "type": "number", "minimum": 0.0 },
+        "meanComplexity": { "type": ["string", "number"] },
         "quantiles": {
           "type": "object",
           "additionalProperties": false,
           "required": ["p50", "p75", "p90", "p99"],
           "properties": {
-            "p50": { "type": "number", "minimum": 0.0 },
-            "p75": { "type": "number", "minimum": 0.0 },
-            "p90": { "type": "number", "minimum": 0.0 },
-            "p99": { "type": "number", "minimum": 0.0 }
+            "p50": { "type": ["string", "number"] },
+            "p75": { "type": ["string", "number"] },
+            "p90": { "type": ["string", "number"] },
+            "p99": { "type": ["string", "number"] }
           }
         },
         "outliers": {

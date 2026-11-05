@@ -1,0 +1,37 @@
+#nullable enable
+SampleDomain.Models.PocoOrderParquet
+SampleDomain.Models.PocoOrderParquetExtensions
+SampleDomain.Models.PocoOrderParquetFilteredSource
+SampleDomain.Models.PocoOrderParquetFilteredSource.AsAsyncEnumerable(System.Threading.CancellationToken cancellationToken = default) -> System.Collections.Generic.IAsyncEnumerable<PocoOrder>
+SampleDomain.Models.PocoOrderParquetFilteredSource.ToListAsync(System.Threading.CancellationToken cancellationToken = default) -> System.Threading.Tasks.Task<System.Collections.Generic.List<PocoOrder>>
+SampleDomain.Models.PocoOrderParquetFilteredSource.ToArrayAsync(System.Threading.CancellationToken cancellationToken = default) -> System.Threading.Tasks.Task<PocoOrder[]>
+SampleDomain.Models.PocoOrderParquetFilteredSource.WithOptions(Parquet.SourceGenerator.ParquetSerializerOptions options) -> PocoOrderParquetFilteredSource
+SampleDomain.Models.PocoOrderParquetMemorySource
+SampleDomain.Models.PocoOrderParquetMemorySource.AsAsyncEnumerable(System.Threading.CancellationToken cancellationToken = default) -> System.Collections.Generic.IAsyncEnumerable<PocoOrder>
+SampleDomain.Models.PocoOrderParquetMemorySource.Parallel() -> PocoOrderParquetParallelSource
+SampleDomain.Models.PocoOrderParquetMemorySource.ToArrayAsync(System.Threading.CancellationToken cancellationToken = default) -> System.Threading.Tasks.Task<PocoOrder[]>
+SampleDomain.Models.PocoOrderParquetMemorySource.ToListAsync(System.Threading.CancellationToken cancellationToken = default) -> System.Threading.Tasks.Task<System.Collections.Generic.List<PocoOrder>>
+SampleDomain.Models.PocoOrderParquetMemorySource.Where(System.Func<SampleDomain.Models.PocoOrderRowGroupMetadata, bool> predicate) -> PocoOrderParquetFilteredSource
+SampleDomain.Models.PocoOrderParquetMemorySource.WithOptions(Parquet.SourceGenerator.ParquetSerializerOptions options) -> PocoOrderParquetMemorySource
+SampleDomain.Models.PocoOrderParquetParallelSource
+SampleDomain.Models.PocoOrderParquetParallelSource.ToArrayAsync(System.Threading.CancellationToken cancellationToken = default) -> System.Threading.Tasks.Task<PocoOrder[]>
+SampleDomain.Models.PocoOrderParquetParallelSource.ToListAsync(System.Threading.CancellationToken cancellationToken = default) -> System.Threading.Tasks.Task<System.Collections.Generic.List<PocoOrder>>
+SampleDomain.Models.PocoOrderParquetParallelSource.WithOptions(Parquet.SourceGenerator.ParquetSerializerOptions options) -> PocoOrderParquetParallelSource
+SampleDomain.Models.PocoOrderParquetStreamSource
+SampleDomain.Models.PocoOrderParquetStreamSource.AsAsyncEnumerable(System.Threading.CancellationToken cancellationToken = default) -> System.Collections.Generic.IAsyncEnumerable<PocoOrder>
+SampleDomain.Models.PocoOrderParquetStreamSource.ToArrayAsync(System.Threading.CancellationToken cancellationToken = default) -> System.Threading.Tasks.Task<PocoOrder[]>
+SampleDomain.Models.PocoOrderParquetStreamSource.ToListAsync(System.Threading.CancellationToken cancellationToken = default) -> System.Threading.Tasks.Task<System.Collections.Generic.List<PocoOrder>>
+SampleDomain.Models.PocoOrderParquetStreamSource.Where(System.Func<SampleDomain.Models.PocoOrderRowGroupMetadata, bool> predicate) -> PocoOrderParquetFilteredSource
+SampleDomain.Models.PocoOrderParquetStreamSource.WithOptions(Parquet.SourceGenerator.ParquetSerializerOptions options) -> PocoOrderParquetStreamSource
+SampleDomain.Models.PocoOrderRowGroupMetadata
+SampleDomain.Models.PocoOrderRowGroupMetadata.HasStatistics.get -> bool
+SampleDomain.Models.PocoOrderRowGroupMetadata.Id.get -> Parquet.SourceGenerator.ParquetColumnStatistics<int>
+SampleDomain.Models.PocoOrderRowGroupMetadata.RowCount.get -> long
+SampleDomain.Models.PocoOrderRowGroupMetadata.RowGroupIndex.get -> int
+static SampleDomain.Models.PocoOrderParquet.From(System.IO.Stream stream) -> PocoOrderParquetStreamSource
+static SampleDomain.Models.PocoOrderParquet.From(System.ReadOnlyMemory<byte> parquetBytes) -> PocoOrderParquetMemorySource
+static SampleDomain.Models.PocoOrderParquetExtensions.WriteParquetAsync(this System.Collections.Generic.IAsyncEnumerable<PocoOrder> items, System.IO.Stream stream, Parquet.SourceGenerator.ParquetSerializerOptions? options = null, System.Threading.CancellationToken cancellationToken = default) -> System.Threading.Tasks.Task
+static SampleDomain.Models.PocoOrderParquetExtensions.WriteParquetAsync(this System.Collections.Generic.IReadOnlyCollection<PocoOrder> items, System.IO.Stream stream, Parquet.SourceGenerator.ParquetSerializerOptions? options = null, System.Threading.CancellationToken cancellationToken = default) -> System.Threading.Tasks.Task
+static SampleDomain.Models.PocoOrderParquetExtensions.WriteParquetBatchedAsync(this System.Collections.Generic.IEnumerable<PocoOrder> items, System.IO.Stream stream, Parquet.SourceGenerator.ParquetSerializerOptions? options = null, System.Threading.CancellationToken cancellationToken = default) -> System.Threading.Tasks.Task
+static readonly SampleDomain.Models.PocoOrderParquetExtensions.Schema -> Parquet.Schema.ParquetSchema
+static SampleDomain.Models.PocoOrderParquetExtensions.WriteParquetFastAsync(this System.ReadOnlyMemory<byte> buffer, System.IO.Stream stream) -> System.Threading.Tasks.Task

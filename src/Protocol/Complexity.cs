@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -65,13 +66,13 @@ public sealed record ComplexityPayload(
             {
                 ["totalMethods"] = Summary.TotalMethods,
                 ["totalComplexity"] = Summary.TotalComplexity,
-                ["meanComplexity"] = Summary.MeanComplexity,
+                ["meanComplexity"] = Summary.MeanComplexity.ToString("F2", CultureInfo.InvariantCulture),
                 ["quantiles"] = new JsonObject
                 {
-                    ["p50"] = Summary.Quantiles.P50,
-                    ["p75"] = Summary.Quantiles.P75,
-                    ["p90"] = Summary.Quantiles.P90,
-                    ["p99"] = Summary.Quantiles.P99,
+                    ["p50"] = Summary.Quantiles.P50.ToString("F2", CultureInfo.InvariantCulture),
+                    ["p75"] = Summary.Quantiles.P75.ToString("F2", CultureInfo.InvariantCulture),
+                    ["p90"] = Summary.Quantiles.P90.ToString("F2", CultureInfo.InvariantCulture),
+                    ["p99"] = Summary.Quantiles.P99.ToString("F2", CultureInfo.InvariantCulture),
                 },
                 ["outliers"] = outliersArray,
             },
@@ -88,14 +89,18 @@ public sealed record ComplexityPayload(
         var summaryElem = root.GetProperty("summary");
         var totalMethods = summaryElem.GetProperty("totalMethods").GetInt32();
         var totalComplexity = summaryElem.GetProperty("totalComplexity").GetInt32();
-        var meanComplexity = summaryElem.GetProperty("meanComplexity").GetDouble();
+
+        var meanElem = summaryElem.GetProperty("meanComplexity");
+        var meanComplexity = meanElem.ValueKind == JsonValueKind.String
+            ? double.Parse(meanElem.GetString()!, CultureInfo.InvariantCulture)
+            : meanElem.GetDouble();
 
         var quantilesElem = summaryElem.GetProperty("quantiles");
         var quantiles = new ComplexityQuantiles(
-            quantilesElem.GetProperty("p50").GetDouble(),
-            quantilesElem.GetProperty("p75").GetDouble(),
-            quantilesElem.GetProperty("p90").GetDouble(),
-            quantilesElem.GetProperty("p99").GetDouble());
+            ParseDoubleProperty(quantilesElem, "p50"),
+            ParseDoubleProperty(quantilesElem, "p75"),
+            ParseDoubleProperty(quantilesElem, "p90"),
+            ParseDoubleProperty(quantilesElem, "p99"));
 
         var outliers = new List<MethodComplexity>();
         foreach (var item in summaryElem.GetProperty("outliers").EnumerateArray())
@@ -155,6 +160,14 @@ public sealed record ComplexityPayload(
 
         double fraction = position - lower;
         return Math.Round(sorted[lower] + (fraction * (sorted[upper] - sorted[lower])), 2);
+    }
+
+    private static double ParseDoubleProperty(JsonElement elem, string name)
+    {
+        var prop = elem.GetProperty(name);
+        return prop.ValueKind == JsonValueKind.String
+            ? double.Parse(prop.GetString()!, CultureInfo.InvariantCulture)
+            : prop.GetDouble();
     }
 }
 

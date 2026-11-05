@@ -91,7 +91,7 @@ Check(
 
 Check(
     "keyed: change paths are unambiguous",
-    Gen.Select(Generators.Document, Generators.Document),
+    Gen.Select(Generators.PointerDocument, Generators.PointerDocument),
     input =>
     {
         var changes = Structural.Compare(Json.Render(input.Item1), Json.Render(input.Item2), ArrayComparisonMode.OrderedSequence);
@@ -101,6 +101,12 @@ Check(
             Assert.Fail($"path '{duplicate.Key}' reported {duplicate.Count()} times: {string.Join(", ", duplicate.Select(change => change.Kind))}");
         }
     },
+    input => Json.Render(input.Item1) + "  vs  " + Json.Render(input.Item2));
+
+Check(
+    "keyed: duplicate ids in a keyed collection are reported, not thrown",
+    Gen.Select(Generators.DuplicateIdArray, Generators.DuplicateIdArray),
+    input => _ = Structural.Compare(Json.Render(input.Item1), Json.Render(input.Item2), ArrayComparisonMode.KeyedCollection),
     input => Json.Render(input.Item1) + "  vs  " + Json.Render(input.Item2));
 
 var keyedNonEmpty = 0L;
@@ -422,6 +428,14 @@ namespace Diffra.Protocol.Properties
 
         public static readonly Gen<J> KeyedDocument = KeyedObject(3);
 
+        // Objects over a tiny key set that includes "x/y", so an unescaped path "/x/y" can collide with x -> y.
+        public static readonly Gen<J> PointerDocument = PointerObject(2);
+
+        // Keyed collections whose ids come from {a, b}, so duplicates are common.
+        public static readonly Gen<J> DuplicateIdArray = Gen.Select(Gen.OneOfConst("a", "b"), Gen.Int[0, 2])
+            .Array[1, 4]
+            .Select(items => (J)new JArr(items.Select(item => (J)new JObj([("id", new JStr(item.Item1)), ("n", new JInt(item.Item2))])).ToArray()));
+
         // Numeric evidence payloads: nested objects whose leaves are integers or {value, unit} measurements.
         private static readonly Gen<J> Measurement = Gen.Frequency<J>(
             (3, Gen.Long[-50, 50].Select(value => (J)new JInt(value))),
@@ -452,6 +466,13 @@ namespace Diffra.Protocol.Properties
 
         private static Gen<J> Object(int depth) =>
             Gen.Select(Name, Value(depth)).Array[0, 5].Select(members => (J)new JObj(Distinct(members)));
+
+        private static Gen<J> PointerObject(int depth) =>
+            Gen.Select(
+                    Gen.OneOfConst("x", "y", "x/y", "~", "~1"),
+                    depth == 0 ? Gen.Int[0, 2].Select(value => (J)new JInt(value)) : Gen.Frequency<J>((1, Gen.Int[0, 2].Select(value => (J)new JInt(value))), (1, PointerObject(depth - 1))))
+                .Array[0, 4]
+                .Select(members => (J)new JObj(Distinct(members)));
 
         private static Gen<J> KeyedValue(int depth) => depth == 0
             ? SmallLeaf
@@ -544,9 +565,36 @@ namespace Diffra.Protocol.Properties
         public static List<string> Normalize(IReadOnlyList<StructuralChange> changes) =>
             changes.Select(change => $"{change.Path} {change.Kind} {Canonical(change.Before)} {Canonical(change.After)}").ToList();
 
+        // Removed or added subtrees are reported verbatim, so keyed collections inside them keep input order.
+        // Sort them by id before comparing, because the invariant is about the change set, not the input order.
         private static string Canonical(System.Text.Json.Nodes.JsonNode? node) => node is null
             ? "null"
-            : Encoding.UTF8.GetString(CanonicalJson.Canonicalize(Encoding.UTF8.GetBytes(node.ToJsonString())));
+            : Encoding.UTF8.GetString(CanonicalJson.Canonicalize(Encoding.UTF8.GetBytes(SortKeyed(node)!.ToJsonString())));
+
+        private static System.Text.Json.Nodes.JsonNode? SortKeyed(System.Text.Json.Nodes.JsonNode? node)
+        {
+            switch (node)
+            {
+                case System.Text.Json.Nodes.JsonArray array:
+                    var items = array.Select(SortKeyed).ToList();
+                    if (items.TrueForAll(item => item is System.Text.Json.Nodes.JsonObject obj && obj["id"] is System.Text.Json.Nodes.JsonValue id && id.GetValueKind() == JsonValueKind.String))
+                    {
+                        items = [.. items.OrderBy(item => item!["id"]!.GetValue<string>(), StringComparer.Ordinal)];
+                    }
+
+                    return new System.Text.Json.Nodes.JsonArray([.. items]);
+                case System.Text.Json.Nodes.JsonObject obj:
+                    var copy = new System.Text.Json.Nodes.JsonObject();
+                    foreach (var member in obj)
+                    {
+                        copy[member.Key] = SortKeyed(member.Value);
+                    }
+
+                    return copy;
+                default:
+                    return node?.DeepClone();
+            }
+        }
     }
 
     internal sealed record PipelineResult(string DeltaId, string Status, string AssessmentId, string Outcome, string Changes);

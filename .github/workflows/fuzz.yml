@@ -53,6 +53,8 @@ jobs:
         run: |
           dotnet tool install --tool-path "$RUNNER_TEMP/sharpfuzz" SharpFuzz.CommandLine --version "$SHARPFUZZ_VERSION"
           dotnet publish tests/Protocol.Fuzz/Protocol.Fuzz.csproj --configuration Release --output "$RUNNER_TEMP/fuzz"
+          # Uninstrumented copy for seeding and replay: instrumented code needs libFuzzer's coverage map.
+          cp -R "$RUNNER_TEMP/fuzz" "$RUNNER_TEMP/fuzz-plain"
           "$RUNNER_TEMP/sharpfuzz/sharpfuzz" "$RUNNER_TEMP/fuzz/Diffra.Protocol.dll"
 
       - name: Download libfuzzer-dotnet
@@ -62,7 +64,7 @@ jobs:
           chmod +x "$RUNNER_TEMP/libfuzzer-dotnet"
 
       - name: Seed corpus
-        run: dotnet "$RUNNER_TEMP/fuzz/Diffra.Protocol.Fuzz.dll" seed "$FUZZ_CORPUS" "$GITHUB_WORKSPACE"
+        run: dotnet "$RUNNER_TEMP/fuzz-plain/Diffra.Protocol.Fuzz.dll" seed "$FUZZ_CORPUS" "$GITHUB_WORKSPACE"
 
       - name: Fuzz
         id: fuzz

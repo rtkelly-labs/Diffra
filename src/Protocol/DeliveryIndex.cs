@@ -85,6 +85,19 @@ public static class DeliveryIndex
     /// </summary>
     public static Document Verify(ReadOnlySpan<byte> utf8Json)
     {
+        // Missing or mistyped properties are malformed input, so surface them as JsonException.
+        try
+        {
+            return VerifyCore(utf8Json);
+        }
+        catch (Exception exception) when (exception is KeyNotFoundException or FormatException)
+        {
+            throw new JsonException($"Malformed delivery index: {exception.Message}", exception);
+        }
+    }
+
+    private static Document VerifyCore(ReadOnlySpan<byte> utf8Json)
+    {
         using var json = CanonicalJson.Parse(utf8Json);
         var root = json.RootElement;
 

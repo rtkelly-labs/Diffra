@@ -72,6 +72,19 @@ public sealed record CoveragePayload(
 
     public static CoveragePayload FromJsonElement(JsonElement root)
     {
+        // Missing or mistyped properties are malformed input, so surface them as JsonException.
+        try
+        {
+            return FromJsonElementCore(root);
+        }
+        catch (Exception exception) when (exception is KeyNotFoundException or FormatException)
+        {
+            throw new JsonException($"Malformed CoveragePayload: {exception.Message}", exception);
+        }
+    }
+
+    private static CoveragePayload FromJsonElementCore(JsonElement root)
+    {
         var scope = root.GetProperty("scope").GetString()!;
         var methodology = root.GetProperty("methodology").GetString()!;
 
@@ -121,10 +134,15 @@ public sealed record CoveragePayload(
         return string.Join(", ", ranges);
     }
 
+    /// <summary>Upper bound on the number of line numbers one interval string may expand to.</summary>
+    public const int MaximumExpandedLines = 1_000_000;
+
     /// <summary>Expands a canonical interval string (e.g. '14-16, 25') back into a set of line numbers.</summary>
+    /// <exception cref="InvalidOperationException">The intervals expand to more than <see cref="MaximumExpandedLines"/> lines.</exception>
     public static HashSet<int> ParseLineRanges(string intervals)
     {
         var result = new HashSet<int>();
+        long expanded = 0;
         if (string.IsNullOrWhiteSpace(intervals)) return result;
 
         foreach (var segment in intervals.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
@@ -138,7 +156,15 @@ public sealed record CoveragePayload(
                      int.TryParse(parts[0], CultureInfo.InvariantCulture, out var start) &&
                      int.TryParse(parts[1], CultureInfo.InvariantCulture, out var end))
             {
-                for (int n = start; n <= end; n++) result.Add(n);
+                if (end < start) continue;
+                expanded += (long)end - start + 1;
+                if (expanded > MaximumExpandedLines)
+                {
+                    throw new InvalidOperationException($"Line ranges expand to more than {MaximumExpandedLines} lines.");
+                }
+
+                // long counter: an int counter overflows and never terminates when end is int.MaxValue.
+                for (long n = start; n <= end; n++) result.Add((int)n);
             }
         }
         return result;

@@ -116,7 +116,10 @@ namespace Diffra.Protocol.Fuzz
             switch (data[0] % 5)
             {
                 case 0:
-                    _ = CoveragePayload.FromJsonElement(root);
+                    foreach (var file in CoveragePayload.FromJsonElement(root).Files)
+                    {
+                        _ = CoveragePayload.ParseLineRanges(file.UncoveredLineRanges);
+                    }
                     break;
                 case 1:
                     _ = ComplexityPayload.FromJsonElement(root);
@@ -329,6 +332,16 @@ namespace Diffra.Protocol.Fuzz
     {
         private static readonly string[] FixtureFolders = ["examples", "baselines"];
 
+        // One complete document per payload parser, indexed by the selector byte, so mutations get past the required properties.
+        private static readonly string[] PayloadSeeds =
+        [
+            """{"scope":"diffra/protocol","methodology":"coverlet","summary":{"lines":{"total":100,"covered":95,"missed":5,"rate":0.95},"branches":{"total":20,"covered":18,"missed":2,"rate":0.9},"methods":{"total":10,"covered":10,"missed":0,"rate":1}},"files":[{"path":"src/a.cs","lines":{"total":10,"covered":8,"missed":2,"rate":0.8},"branches":{"total":2,"covered":1,"missed":1,"rate":0.5},"uncoveredLineRanges":"45, 88-90"}]}""",
+            """{"scope":"diffra/protocol","methodology":"roslyn","unit":"cyclomatic","summary":{"totalMethods":2,"totalComplexity":7,"meanComplexity":3.5,"quantiles":{"p50":3,"p75":4,"p90":4,"p99":4},"outliers":[{"methodId":"A.B()","complexity":4,"linesOfCode":20}]},"methods":[{"methodId":"A.B()","complexity":4,"linesOfCode":20},{"methodId":"A.C()","complexity":3,"linesOfCode":9}]}""",
+            """{"specversion":"1.0","id":"sha256:1111111111111111111111111111111111111111111111111111111111111111","source":"diffra://repo/example/subject/core","type":"dev.diffra.evidence.v1","time":"2026-01-02T03:04:05Z","dataschema":"https://diffra.dev/schemas/evidence-v1.schema.json","data":{"value":1},"subject":"commit:2222222222222222222222222222222222222222","diffraoutcome":"pass","diffragithubpr":12,"traceparent":"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"}""",
+            """{"metricId":"diffra.coverage.lines.rate","subjectId":"diffra/core","unit":"percent","points":[{"commit":"1111111111111111111111111111111111111111","timestamp":"2026-01-01T00:00:00Z","value":85,"tag":"v0.1.0"}],"candidate":{"commit":"3333333333333333333333333333333333333333","value":91,"delta":2.5},"thresholds":{"min":80,"max":100}}""",
+            """{"schema":"https://diffra.dev/schemas/promotion-approval-v1.schema.json","decisionId":"d1","issuer":"ci","headCommit":"2222222222222222222222222222222222222222","evidenceId":"sha256:1111111111111111111111111111111111111111111111111111111111111111","payloadDigest":"sha256:1111111111111111111111111111111111111111111111111111111111111111","policyId":"p","policyVersion":"1","rulesDigest":"sha256:1111111111111111111111111111111111111111111111111111111111111111","verificationRunEvidenceId":"sha256:1111111111111111111111111111111111111111111111111111111111111111","timestamp":"2026-01-02T03:04:05Z"}""",
+        ];
+
         public static void Write(string corpusRoot, string repositoryRoot)
         {
             var fixtures = FixtureFolders
@@ -351,8 +364,13 @@ namespace Diffra.Protocol.Fuzz
             Emit(corpusRoot, "evidence", fixtures);
             Emit(corpusRoot, "document", fixtures.SelectMany(fixture => Enumerable.Range(0, 4).Select(kind => Prefix((byte)kind, fixture))));
             Emit(corpusRoot, "delivery-index", [.. fixtures, deliveryIndex]);
-            Emit(corpusRoot, "payloads", fixtures.SelectMany(fixture => Enumerable.Range(0, 5).Select(kind => Prefix((byte)kind, fixture))));
-            Emit(corpusRoot, "line-ranges", ["14-16, 25"u8.ToArray(), "1"u8.ToArray(), "3-1,7"u8.ToArray()]);
+            Emit(corpusRoot, "payloads", [
+                .. fixtures.SelectMany(fixture => Enumerable.Range(0, 5).Select(kind => Prefix((byte)kind, fixture))),
+                .. PayloadSeeds.Select((seed, kind) => Prefix((byte)kind, Encoding.UTF8.GetBytes(seed)))]);
+            Emit(corpusRoot, "line-ranges", [
+                "14-16, 25"u8.ToArray(), "1"u8.ToArray(), "3-1,7"u8.ToArray(), "0-2147483647"u8.ToArray(),
+                // Regression: expanded to ~540 million lines and timed out before ParseLineRanges was bounded.
+                Encoding.UTF8.GetBytes("1651-" + new string('0', 91) + "541746516")]);
 
             var bundles = BundleSeeds(repositoryRoot).ToList();
             Emit(corpusRoot, "bundle", bundles);

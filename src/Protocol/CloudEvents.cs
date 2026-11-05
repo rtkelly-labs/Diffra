@@ -55,6 +55,19 @@ public sealed record DiffraCloudEvent(
 
     public static DiffraCloudEvent FromJsonElement(JsonElement root)
     {
+        // Missing or mistyped properties are malformed input, so surface them as JsonException.
+        try
+        {
+            return FromJsonElementCore(root);
+        }
+        catch (Exception exception) when (exception is KeyNotFoundException or FormatException)
+        {
+            throw new JsonException($"Malformed DiffraCloudEvent: {exception.Message}", exception);
+        }
+    }
+
+    private static DiffraCloudEvent FromJsonElementCore(JsonElement root)
+    {
         var specVersion = root.GetProperty("specversion").GetString();
         if (specVersion != SpecVersion)
         {

@@ -71,12 +71,17 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p "$FUZZ_FINDINGS"
-          "$RUNNER_TEMP/libfuzzer-dotnet" \
+          # Own session: on a timeout libFuzzer signals its process group, which would otherwise take the step down.
+          set +e
+          timeout --kill-after=30 "$((FUZZ_SECONDS + 120))" setsid --wait "$RUNNER_TEMP/libfuzzer-dotnet" \
             -max_total_time="$FUZZ_SECONDS" -timeout=10 -print_final_stats=1 \
             -artifact_prefix="$FUZZ_FINDINGS/libfuzzer-" \
             --target_path=dotnet --target_arg="$RUNNER_TEMP/fuzz/Diffra.Protocol.Fuzz.dll" \
-            "$FUZZ_CORPUS/$FUZZ_TARGET" 2>&1 | tee "$RUNNER_TEMP/fuzz.log"
-          exit "${PIPESTATUS[0]}"
+            "$FUZZ_CORPUS/$FUZZ_TARGET" > "$RUNNER_TEMP/fuzz.log" 2>&1
+          status=$?
+          pkill -f "Diffra.Protocol.Fuzz.dll" || true
+          tail -n 80 "$RUNNER_TEMP/fuzz.log"
+          exit "$status"
 
       - name: Summarize
         if: always()

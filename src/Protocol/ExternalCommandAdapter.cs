@@ -115,8 +115,11 @@ public static class ExternalCommandAdapter
         }
         catch (Exception ex)
         {
-            // Every failure path (timeout, caller cancellation, output overflow) terminates the child.
+            // Every failure path (timeout, caller cancellation, output overflow) stops the remaining
+            // readers and terminates the child, then observes the other tasks so none fault unobserved.
+            await cts.CancelAsync().ConfigureAwait(false);
             await TerminateAsync(process).ConfigureAwait(false);
+            await ObserveRemainingAsync(exitTask, stdoutTask, stderrTask).ConfigureAwait(false);
             if (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested)
             {
                 throw new TimeoutException($"External process '{options.Executable}' exceeded timeout of {timeout.TotalSeconds:F0}s.", ex);
@@ -255,6 +258,29 @@ public static class ExternalCommandAdapter
 
         await Task.WhenAny(
             process.WaitForExitAsync(CancellationToken.None),
+            Task.Delay(TimeSpan.FromSeconds(5), CancellationToken.None)).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Waits a bounded time for the given tasks to settle and observes their exceptions, so a task that
+    /// faults after the original failure never surfaces as an unobserved task exception.
+    /// </summary>
+    private static async Task ObserveRemainingAsync(params Task[] tasks)
+    {
+        // Each continuation observes its task's fault whenever it happens, including after the bounded
+        // wait below gives up, and never faults itself, so the aggregate cannot fault unobserved either.
+        var observed = new Task[tasks.Length];
+        for (var i = 0; i < tasks.Length; i++)
+        {
+            observed[i] = tasks[i].ContinueWith(
+                static t => { _ = t.Exception; },
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+
+        await Task.WhenAny(
+            Task.WhenAll(observed),
             Task.Delay(TimeSpan.FromSeconds(5), CancellationToken.None)).ConfigureAwait(false);
     }
 

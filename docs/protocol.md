@@ -62,7 +62,7 @@ A Baseline reference records the exact resolution of a selector:
 }
 ```
 
-`role` is `merge-base`, `approved-main`, or `previous-release`. `subjectCommit`, `manifestDigest`, and `evidenceId` identify the resolved baseline. `resolver` records the resolver ID/version and resolved commit; `sourceRef` is lookup context only. A mutable value such as `main` never establishes identity. Baseline `status` is `trusted`, `candidate`, `untrusted`, `missing`, `corrupt`, or `incompatible`. Gate comparisons require `trusted`. A trusted reference also carries a `trust` record with issuer and decision ID; the decision digest is optional when the trust system does not issue a separate approval document.
+`role` is `merge-base`, `approved-main`, or `previous-release`. `subjectCommit`, `manifestDigest`, and `evidenceId` identify the resolved baseline; a `missing` reference may omit them. `resolver` records the resolver ID/version and, unless the reference is `missing`, the resolved commit; `sourceRef` is lookup context only. A mutable value such as `main` never establishes identity. Baseline `status` is `trusted`, `candidate`, `untrusted`, `missing`, `corrupt`, or `incompatible`. Gate comparisons require `trusted`. A trusted reference also carries a `trust` record with issuer and decision ID; the decision digest is optional when the trust system does not issue a separate approval document. The decision digest is what binds the reference to a trust policy, because it hashes the promotion record that names that policy; see [trust and identity](trust-and-identity.md).
 
 ## Delta
 

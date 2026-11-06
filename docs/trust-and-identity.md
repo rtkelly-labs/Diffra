@@ -17,6 +17,16 @@ documentId = "sha256:" + lowercaseHex(
 artifactDigest = "sha256:" + lowercaseHex(SHA-256(exactArtifactBytes))
 ```
 
+`kind` is a fixed, case-sensitive, lowercase ASCII tag for the document kind:
+
+| Document | `kind` tag |
+| --- | --- |
+| Evidence | `evidence` |
+| Baseline reference | `baseline-reference` |
+| Delta | `delta` |
+| Assessment | `assessment` |
+| Manifest | `manifest` |
+
 The identity projection excludes the document's `id` field. Each document kind defines its projection below. Reject unknown document fields in v1 unless the schema explicitly permits them. The schema URI, type ID/version, comparator, policy, and configuration digests are strings in the projection; their source bytes have separate digests when required.
 
 ## Evidence identity
@@ -32,7 +42,7 @@ V1 includes the complete schema-validated `environment` and `provenance` objects
 
 `payloadDigest` hashes the canonical `payload` value. Include both `payloadDigest` and `payload` in the Evidence projection so validation can detect a payload/digest mismatch before accepting its ID. Artifact digests hash exact stored bytes before decoding or normalization. Therefore differently formatted JSON may produce equal typed payload digests while its source artifact digest changes. Preserve both. `artifactRefs` records stable IDs, media types, exact-byte digests, and byte sizes. An opaque Evidence document still receives an identity over its validated envelope and raw artifact references, but it has no semantic comparison result.
 
-The Baseline reference projection includes `schema`, `role`, top-level `status`, `subjectCommit`, `manifestDigest`, `evidenceId`, `resolver`, `sourceStore`, and `trust` when present. The Delta projection includes `schema`, `status`, `typeResolution`, `baselineId`, `candidateEvidenceId`, `comparator`, `changes`, and `provenance`. The Assessment projection includes `schema`, `deltaId`, `deltaStatus`, `policy`, `outcome`, `findings`, and `provenance`. Each projection excludes only `id`; optional absent fields stay absent and do not serialize as null.
+The Baseline reference projection includes `schema`, `role`, top-level `status`, `resolver`, `sourceStore`, and, when present, `subjectCommit`, `manifestDigest`, `evidenceId`, and `trust`. A reference with status `missing` may omit `subjectCommit`, `manifestDigest`, `evidenceId`, and `resolver.resolvedCommit`, because resolution found nothing to identify; every other status requires them. A reference's `manifestDigest` is the `artifactDigest` of the exact stored manifest bytes, not the manifest's `id`. The Manifest projection includes `schema`, `subject`, `groups`, `artifacts`, `evidenceIds`, and `provenance`. The Delta projection includes `schema`, `status`, `typeResolution`, `baselineId`, `candidateEvidenceId`, `comparator`, `changes`, and `provenance`. The Assessment projection includes `schema`, `deltaId`, `deltaStatus`, `policy`, `outcome`, `findings`, and `provenance`. Each projection excludes only `id`; optional absent fields stay absent and do not serialize as null.
 
 ## Baseline resolution and trust
 
@@ -48,7 +58,7 @@ V1 baseline roles are:
 
 Trust status is `trusted`, `candidate`, `untrusted`, `missing`, `corrupt`, or `incompatible`. Gate comparisons require `trusted`. `candidate` is reviewable but cannot satisfy a gate. `untrusted` means the source or approval is not accepted by the configured policy. `missing` means resolution found no required reference or bytes. `corrupt` means the referenced document or bytes fail digest/schema validation. `incompatible` means the reference exists but cannot serve the requested role or subject.
 
-The reference records the trust policy ID and digest. A local first implementation may trust a baseline only when its commit is on the configured protected mainline and its manifest digest matches stored content. A reviewer or trusted CI can supply a stronger approval record later. A producer-controlled trust field never establishes trust.
+A trusted reference is bound to its trust policy through `trust.decisionDigest`: the digest of the promotion or approval record, which names the trust policy ID and version. The reference does not repeat the policy fields. The v1 schema keeps `decisionDigest` optional; a reference without it, such as one written by the current merge-base resolver, is not bound to a trust policy. A local first implementation may trust a baseline only when its commit is on the configured protected mainline and its manifest digest matches stored content. A reviewer or trusted CI can supply a stronger approval record later. A producer-controlled trust field never establishes trust.
 
 ## Candidate promotion
 

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diffra.dev/schemas/delta-v1.schema.json",
+  "title": "Diffra Delta v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "status", "typeResolution", "baselineId", "candidateEvidenceId", "comparator", "changes", "provenance"],
+  "properties": {
+    "schema": { "const": "https://diffra.dev/schemas/delta-v1.schema.json" },
+    "id": { "$ref": "#/$defs/digest" },
+    "status": { "enum": ["unchanged", "changed", "unavailable", "invalid", "incompatible", "inconclusive", "unsupported"] },
+    "typeResolution": { "enum": ["recognized", "opaque"] },
+    "baselineId": { "$ref": "#/$defs/digest" },
+    "candidateEvidenceId": { "$ref": "#/$defs/digest" },
+    "comparator": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "version", "configDigest", "inputTypeId", "inputTypeVersion"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "configDigest": { "$ref": "#/$defs/digest" },
+        "inputTypeId": { "type": "string", "minLength": 1 },
+        "inputTypeVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+(?:\\.[0-9]+)?$" }
+      }
+    },
+    "changes": { "type": "array", "items": { "$ref": "#/$defs/change" } },
+    "provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["baselineEvidenceId", "candidateEvidenceId", "environment"],
+      "properties": {
+        "baselineEvidenceId": { "$ref": "#/$defs/digest" },
+        "candidateEvidenceId": { "$ref": "#/$defs/digest" },
+        "environment": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string" } }
+      }
+    },
+    "message": { "type": "string" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "typeResolution": { "const": "opaque" } }, "required": ["typeResolution"] },
+      "then": { "properties": { "status": { "enum": ["unsupported", "inconclusive"] } } }
+    },
+    {
+      "if": { "properties": { "status": { "const": "unchanged" } }, "required": ["status"] },
+      "then": { "properties": { "changes": { "maxItems": 0 } } }
+    },
+    {
+      "if": { "properties": { "status": { "const": "changed" } }, "required": ["status"] },
+      "then": { "properties": { "changes": { "minItems": 1 } } }
+    },
+    {
+      "if": { "properties": { "status": { "enum": ["unavailable", "invalid", "incompatible", "inconclusive", "unsupported"] } }, "required": ["status"] },
+      "then": { "required": ["message"] }
+    }
+  ],
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "change": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "kind", "value"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["added", "removed", "modified", "missing", "incompatible", "unavailable"] },
+        "value": {},
+        "unit": { "type": "string", "minLength": 1 },
+        "metadata": { "type": "object" }
+      }
+    }
+  }
+}

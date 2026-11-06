@@ -66,9 +66,11 @@ Candidate production and baseline promotion are separate operations. An update c
 
 1. A reviewer or trusted automation approves the exact candidate Evidence ID, subject commit, role, and applicable policy identity.
 2. A clean second production run at the same subject commit reproduces the same Evidence ID and artifact digests.
-3. The promotion record binds the approval, second-run result, trust policy, and Baseline reference ID.
+3. The promotion approval record captures the decision. It contains, and its digest therefore covers, exactly `schema`, `decisionId`, `issuer`, `headCommit`, approved `evidenceId` and `payloadDigest`, `policyId`, `policyVersion`, `rulesDigest`, the `verificationRunEvidenceId` of the second run, and `timestamp`. It does not contain the Baseline reference or its ID.
 
-Any change to the subject commit, Evidence ID, required artifact digest, policy identity, or trust policy invalidates approval. A pull request job cannot promote its own output. A missing baseline cannot self-heal through candidate production.
+The binding runs from the reference to the decision, not the other way round: a trusted reference's `trust.decisionDigest` is the digest of the approval record, and the reference ID covers `trust`. The approval record cannot name the reference ID, because that ID depends on the record's own digest.
+
+Any change to the subject commit, Evidence ID, payload digest, or policy identity (ID, version, or rules digest) invalidates approval. A pull request job cannot promote its own output. A missing baseline cannot self-heal through candidate production.
 
 ## Delta and Assessment identity
 

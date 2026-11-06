@@ -1,7 +1,7 @@
 # Diffra Agent Continuation Handover
 
 **Date**: 2026-09-28  
-**Repository**: `/Users/ryankelly/code/personal/Diffra`  
+**Repository**: `rtkelly-labs/Diffra`  
 **GitHub**: `rtkelly-labs/Diffra`  
 **Current Branch**: `feature/graph-host`  
 **Base Branch for PR #20**: `feature/cas-bundles`  
@@ -42,16 +42,16 @@ All previous milestones are stacked, reviewed, tested, and tracked on GitHub:
 ## 3. What Has Been Completed & Where Code Lives
 
 ### Core Protocol (`src/Protocol/`)
-- **Canonical JSON & Identity**: [`CanonicalJson.cs`](file:///Users/ryankelly/code/personal/Diffra/src/Protocol/CanonicalJson.cs), [`DocumentIdentity.cs`](file:///Users/ryankelly/code/personal/Diffra/src/Protocol/DocumentIdentity.cs), [`EvidenceIdentity.cs`](file:///Users/ryankelly/code/personal/Diffra/src/Protocol/EvidenceIdentity.cs).
-- **Comparison & Assessment**: [`Comparison.cs`](file:///Users/ryankelly/code/personal/Diffra/src/Protocol/Comparison.cs), [`Assessment.cs`](file:///Users/ryankelly/code/personal/Diffra/src/Protocol/Assessment.cs).
-- **Content-Addressed Store (CAS)**: [`ContentAddressedStore.cs`](file:///Users/ryankelly/code/personal/Diffra/src/Protocol/ContentAddressedStore.cs) (atomic writes, verified digests, corruption defense).
-- **Portable Evidence Bundles**: [`EvidenceBundle.cs`](file:///Users/ryankelly/code/personal/Diffra/src/Protocol/EvidenceBundle.cs) (`.diffra.bundle` export/import with Zip-Slip defense).
-- **Reporting & Design System**: [`Reporting.cs`](file:///Users/ryankelly/code/personal/Diffra/src/Protocol/Reporting.cs), [`DeliveryIndex.cs`](file:///Users/ryankelly/code/personal/Diffra/src/Protocol/DeliveryIndex.cs), [`PresentationBundle.cs`](file:///Users/ryankelly/code/personal/Diffra/src/Protocol/PresentationBundle.cs) (styled via `@rtkelly13/design-system` tokens, `sketch`/`midnight` themes, verdict banner, stat cards).
-- **Standardized Code Coverage**: [`Coverage.cs`](file:///Users/ryankelly/code/personal/Diffra/src/Protocol/Coverage.cs) ([ADR 0006](file:///Users/ryankelly/code/personal/Diffra/docs/adr/0006-standardized-code-coverage-evidence.md), [`schemas/coverage-v1.schema.json`](file:///Users/ryankelly/code/personal/Diffra/schemas/coverage-v1.schema.json)) — relative path normalization, interval encoding (`"14-16, 25"`), newly-uncovered line detection against Git diff hunks, zero-regression policy.
-- **Time-Series Longitudinal Graphing**: [`TimeSeriesGraph.cs`](file:///Users/ryankelly/code/personal/Diffra/src/Protocol/TimeSeriesGraph.cs) ([ADR 0007](file:///Users/ryankelly/code/personal/Diffra/docs/adr/0007-time-series-projections-and-evolution-graphing.md), [`schemas/timeseries-v1.schema.json`](file:///Users/ryankelly/code/personal/Diffra/schemas/timeseries-v1.schema.json)) — ASCII sparklines and offline-first Design System SVG evolution charts with zero runtime JS (strict CSP compliant).
-- **CNCF CloudEvents v1.0.2**: [`CloudEvents.cs`](file:///Users/ryankelly/code/personal/Diffra/src/Protocol/CloudEvents.cs) ([ADR 0009](file:///Users/ryankelly/code/personal/Diffra/docs/adr/0009-cloudevents-specification-and-event-driven-integration.md), [`schemas/cloudevent-diffra-v1.schema.json`](file:///Users/ryankelly/code/personal/Diffra/schemas/cloudevent-diffra-v1.schema.json)) — vendor-neutral event envelope, routing attributes (`diffraoutcome`, `diffragithash`, `traceparent`).
-- **Graph Composition Host & Engine**: [`Graph.cs`](file:///Users/ryankelly/code/personal/Diffra/src/Protocol/Graph.cs), [`GraphValidator.cs`](file:///Users/ryankelly/code/personal/Diffra/src/Protocol/GraphValidator.cs), [`GraphExecutor.cs`](file:///Users/ryankelly/code/personal/Diffra/src/Protocol/GraphExecutor.cs) — code-first builder, Kahn's algorithm topological sorting, DFS cycle path tracing, missing input & type compatibility validation, cascading fault isolation (`Blocked`/`Inconclusive`).
-- **External Command Adapter & Builder**: [`ExternalCommandAdapter.cs`](file:///Users/ryankelly/code/personal/Diffra/src/Protocol/ExternalCommandAdapter.cs), [`EvidenceDocumentBuilder.cs`](file:///Users/ryankelly/code/personal/Diffra/src/Protocol/EvidenceDocumentBuilder.cs) — safe process execution without shell interpolation, bounded buffer limits, cryptographic evidence parity with in-process producers.
+- **Canonical JSON & Identity**: [`CanonicalJson.cs`](../../src/Protocol/CanonicalJson.cs), [`DocumentIdentity.cs`](../../src/Protocol/DocumentIdentity.cs), [`EvidenceIdentity.cs`](../../src/Protocol/EvidenceIdentity.cs).
+- **Comparison & Assessment**: [`Comparison.cs`](../../src/Protocol/Comparison.cs), [`Assessment.cs`](../../src/Protocol/Assessment.cs).
+- **Content-Addressed Store (CAS)**: [`ContentAddressedStore.cs`](../../src/Protocol/ContentAddressedStore.cs) (atomic writes, verified digests, corruption defense).
+- **Portable Evidence Bundles**: [`EvidenceBundle.cs`](../../src/Protocol/EvidenceBundle.cs) (`.diffra.bundle` export/import with Zip-Slip defense).
+- **Reporting & Design System**: [`Reporting.cs`](../../src/Protocol/Reporting.cs), [`DeliveryIndex.cs`](../../src/Protocol/DeliveryIndex.cs), [`PresentationBundle.cs`](../../src/Protocol/PresentationBundle.cs) (styled via `@rtkelly13/design-system` tokens, `sketch`/`midnight` themes, verdict banner, stat cards).
+- **Standardized Code Coverage**: [`Coverage.cs`](../../src/Protocol/Coverage.cs) ([ADR 0006](../../docs/adr/0006-standardized-code-coverage-evidence.md), [`schemas/coverage-v1.schema.json`](../../schemas/coverage-v1.schema.json)) — relative path normalization, interval encoding (`"14-16, 25"`), newly-uncovered line detection against Git diff hunks, zero-regression policy.
+- **Time-Series Longitudinal Graphing**: [`TimeSeriesGraph.cs`](../../src/Protocol/TimeSeriesGraph.cs) ([ADR 0007](../../docs/adr/0007-time-series-projections-and-evolution-graphing.md), [`schemas/timeseries-v1.schema.json`](../../schemas/timeseries-v1.schema.json)) — ASCII sparklines and offline-first Design System SVG evolution charts with zero runtime JS (strict CSP compliant).
+- **CNCF CloudEvents v1.0.2**: [`CloudEvents.cs`](../../src/Protocol/CloudEvents.cs) ([ADR 0009](../../docs/adr/0009-cloudevents-specification-and-event-driven-integration.md), [`schemas/cloudevent-diffra-v1.schema.json`](../../schemas/cloudevent-diffra-v1.schema.json)) — vendor-neutral event envelope, routing attributes (`diffraoutcome`, `diffragithash`, `traceparent`).
+- **Graph Composition Host & Engine**: [`Graph.cs`](../../src/Protocol/Graph.cs), [`GraphValidator.cs`](../../src/Protocol/GraphValidator.cs), [`GraphExecutor.cs`](../../src/Protocol/GraphExecutor.cs) — code-first builder, Kahn's algorithm topological sorting, DFS cycle path tracing, missing input & type compatibility validation, cascading fault isolation (`Blocked`/`Inconclusive`).
+- **External Command Adapter & Builder**: [`ExternalCommandAdapter.cs`](../../src/Protocol/ExternalCommandAdapter.cs), [`EvidenceDocumentBuilder.cs`](../../src/Protocol/EvidenceDocumentBuilder.cs) — safe process execution without shell interpolation, bounded buffer limits, cryptographic evidence parity with in-process producers.
 
 ### CLI (`src/Cli/`)
 - `diffra collect`: Generates canonical Evidence from payload.
@@ -62,13 +62,13 @@ All previous milestones are stacked, reviewed, tested, and tracked on GitHub:
 - `diffra present bundle` / `diffra present serve`: Materializes presentation review bundles and serves on loopback via ASP.NET Core with strict CSP.
 
 ### Self-Dogfooding & Scripts (`scripts/`, `baselines/dogfood/`)
-- [`scripts/DogfoodMetrics.cs`](file:///Users/ryankelly/code/personal/Diffra/scripts/DogfoodMetrics.cs): Collects architectural facts (zero Aspire deps, 0 compiler warnings, schema counts, source file counts).
-- [`scripts/InitializeDogfoodBaseline.cs`](file:///Users/ryankelly/code/personal/Diffra/scripts/InitializeDogfoodBaseline.cs): Re-initializes baseline files in `baselines/dogfood/`.
-- [`scripts/RunDogfood.cs`](file:///Users/ryankelly/code/personal/Diffra/scripts/RunDogfood.cs): Executes candidate collection, merge-base diff, quality evaluation, presentation bundle generation, and `$GITHUB_STEP_SUMMARY` reporting.
+- [`scripts/DogfoodMetrics.cs`](../../scripts/DogfoodMetrics.cs): Collects architectural facts (zero Aspire deps, 0 compiler warnings, schema counts, source file counts).
+- [`scripts/InitializeDogfoodBaseline.cs`](../../scripts/InitializeDogfoodBaseline.cs): Re-initializes baseline files in `baselines/dogfood/`.
+- [`scripts/RunDogfood.cs`](../../scripts/RunDogfood.cs): Executes candidate collection, merge-base diff, quality evaluation, presentation bundle generation, and `$GITHUB_STEP_SUMMARY` reporting.
 
 ### CI & Safety Tooling (`.github/workflows/`)
-- [`ci.yml`](file:///Users/ryankelly/code/personal/Diffra/.github/workflows/ci.yml): Enforces No Python policy, zero Aspire check, vulnerability audit (`dotnet list package --vulnerable`), test suite execution, dogfood pipeline execution, review bundle upload, and pre-release CLI packaging (`Diffra.Cli.0.1.0-preview.1.nupkg`).
-- [`pr-title.yml`](file:///Users/ryankelly/code/personal/Diffra/.github/workflows/pr-title.yml): Enforces conventional commit titles via pinned semantic PR action.
+- [`ci.yml`](../../.github/workflows/ci.yml): Enforces No Python policy, zero Aspire check, vulnerability audit (`dotnet list package --vulnerable`), test suite execution, dogfood pipeline execution, review bundle upload, and pre-release CLI packaging (`Diffra.Cli.0.1.0-preview.1.nupkg`).
+- [`pr-title.yml`](../../.github/workflows/pr-title.yml): Enforces conventional commit titles via pinned semantic PR action.
 
 ---
 

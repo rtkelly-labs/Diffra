@@ -240,9 +240,21 @@ public static class PresentationBundle
         {
             Directory.Move(tempDir, fullOutput);
         }
-        catch
+        catch (Exception installException)
         {
-            Directory.Move(backupDir, fullOutput);
+            try
+            {
+                Directory.Move(backupDir, fullOutput);
+            }
+            catch (Exception restoreException)
+            {
+                // Surface both failures; the previous output is left intact in the backup directory.
+                throw new AggregateException(
+                    $"Failed to install the presentation at '{fullOutput}' and failed to restore the previous output. The previous output remains at '{backupDir}'.",
+                    installException,
+                    restoreException);
+            }
+
             throw;
         }
 

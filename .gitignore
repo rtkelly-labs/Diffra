@@ -3,6 +3,7 @@ TODO.md
 /temp/
 /.temp/
 /dogfood-run/
+dogfood-metrics.json
 
 # .NET build output
 [Bb]in/

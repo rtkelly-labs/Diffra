@@ -64,7 +64,7 @@ public static class CasAndBundleTests
         using var temp = new ScratchDirectory();
         var cas = new ContentAddressedStore(temp.DirectoryPath);
 
-        var data = Encoding.UTF8.GetBytes("repair me please");
+        var data = "repair me please"u8.ToArray();
         var digest = cas.Put(data);
 
         // Corrupt the stored object with garbage of exactly the same length.
@@ -219,7 +219,7 @@ public static class CasAndBundleTests
     private static void BundleImportRejectsMissingDeclaredArtifacts()
     {
         using var temp = new ScratchDirectory();
-        var missingDigest = ContentAddressedStore.ComputeDigest(Encoding.UTF8.GetBytes("never packaged"));
+        var missingDigest = ContentAddressedStore.ComputeDigest("never packaged"u8.ToArray());
         var manifestContent = $$"""
         {
           "schema": "https://diffra.dev/schemas/manifest-v1.schema.json",

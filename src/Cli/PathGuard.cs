@@ -7,7 +7,7 @@ internal static class PathGuard
     /// Windows and macOS file systems are case-insensitive by default, so paths that differ only
     /// in case name the same file there.
     /// </summary>
-    public static StringComparison Comparison =>
+    private static StringComparison Comparison =>
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;

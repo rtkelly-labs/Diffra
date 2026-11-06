@@ -46,7 +46,7 @@ The Baseline reference projection includes `schema`, `role`, top-level `status`,
 
 ## Baseline resolution and trust
 
-A Baseline reference records role, exact subject commit, manifest digest, Evidence ID, source store, selector, and trust decision. Resolve mutable selectors to immutable revisions before comparison. For Git, record the full merge-base commit object ID; never use `main` as the baseline identity.
+A Baseline reference records role, source store, selector, and, once resolved, exact subject commit, manifest digest, Evidence ID, and trust decision. Resolve mutable selectors to immutable revisions before comparison. For Git, record the full merge-base commit object ID; never use `main` as the baseline identity.
 
 V1 baseline roles are:
 

@@ -95,8 +95,8 @@ public static class PresentationBundle
             // Render HTML report
             var html = ReportRenderer.Render(
                 deltaBytes,
-                assessmentBytes is null ? null : new ReadOnlyMemory<byte>(assessmentBytes),
-                baselineRefBytes is null ? null : new ReadOnlyMemory<byte>(baselineRefBytes),
+                assessmentBytes is null ? (ReadOnlyMemory<byte>?)null : assessmentBytes,
+                baselineRefBytes is null ? (ReadOnlyMemory<byte>?)null : baselineRefBytes,
                 ReportFormat.Html);
             var indexHtmlPath = Path.Combine(tempDir, "index.html");
             File.WriteAllText(indexHtmlPath, html, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));

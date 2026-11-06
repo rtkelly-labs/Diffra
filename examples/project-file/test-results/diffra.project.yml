@@ -1,0 +1,33 @@
+# Test results from TRX and JUnit as a keyed map of variants.
+schema: https://diffra.dev/schemas/project-v1.schema.json
+scope: example/library
+
+dimensions:
+  os: { values: [linux, windows] }
+
+metrics:
+  tests:
+    type: diffra/test-results@1
+    from:
+      trx: "artifacts/tests/*.trx"
+      junit: "artifacts/tests/*.junit.xml"
+    fields:
+      results:
+        stratify: [os]
+        # This project quarantines known errors, so the candidate check only warns
+        # and a test that used to succeed and now errors still fails.
+        check:
+          warn: { tag: [error] }
+        versus:
+          fail: { transition: [{ from: success, to: error }] }
+          needs-review: { transition: [{ from: success, to: skipped }] }
+        keys: { added: pass, removed: needs-review }
+        when:
+          success:
+            duration:
+              versus:
+                warn: { increase: { above: 100%, and: { above: 500ms } } }
+          error:
+            kind:
+              versus:
+                needs-review: { changed: true }

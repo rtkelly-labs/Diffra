@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diffra.dev/schemas/collection-v1.schema.json",
+  "title": "Diffra Collection Root v1",
+  "description": "For one subject commit, every declared metric x planned stratum (and, for maps, every planned key) with its collection status. See ADR 0010.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "status", "subject", "project", "metrics", "provenance"],
+  "properties": {
+    "schema": { "const": "https://diffra.dev/schemas/collection-v1.schema.json" },
+    "id": { "$ref": "#/$defs/digest" },
+    "status": { "enum": ["complete", "incomplete"] },
+    "subject": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "id", "commit"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "id": { "type": "string", "minLength": 1 },
+        "commit": { "type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$" },
+        "repository": { "type": "string", "minLength": 1 }
+      }
+    },
+    "project": {
+      "type": "object", "additionalProperties": false,
+      "required": ["scope", "digest", "loadedFrom"],
+      "properties": {
+        "scope": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._/-]*$" },
+        "digest": { "$ref": "#/$defs/digest" },
+        "loadedFrom": {
+          "type": "object", "additionalProperties": false,
+          "required": ["role", "commit", "path"],
+          "properties": {
+            "role": { "enum": ["merge-base", "subject"] },
+            "commit": { "type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$" },
+            "path": { "type": "string", "pattern": "^[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*$" }
+          }
+        }
+      }
+    },
+    "metrics": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/metric" },
+      "contains": {
+        "properties": { "strata": { "contains": { "properties": { "status": { "const": "collected" } } } } }
+      }
+    },
+    "provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["producerId", "producerVersion", "source"],
+      "properties": {
+        "producerId": { "type": "string", "minLength": 1 },
+        "producerVersion": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "complete" } }, "required": ["status"] },
+      "then": {
+        "properties": {
+          "metrics": {
+            "items": {
+              "if": { "properties": { "required": { "const": true } } },
+              "then": { "properties": { "strata": { "items": { "properties": { "status": { "enum": ["collected", "not-applicable"] } } } } } }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "name": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+    "metric": {
+      "type": "object", "additionalProperties": false,
+      "required": ["metric", "type", "required", "methodology", "strata"],
+      "properties": {
+        "metric": { "$ref": "#/$defs/name" },
+        "field": { "$ref": "#/$defs/name" },
+        "type": { "type": "string", "minLength": 1 },
+        "required": { "type": "boolean" },
+        "methodology": { "type": "string", "minLength": 1 },
+        "strata": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/stratumEntry" } }
+      }
+    },
+    "stratumEntry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["stratum", "status"],
+      "properties": {
+        "stratum": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/name" },
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        },
+        "status": { "enum": ["collected", "missing", "failed", "not-applicable"] },
+        "evidenceId": { "$ref": "#/$defs/digest" },
+        "reason": { "type": "string", "minLength": 1 },
+        "keys": {
+          "type": "object",
+          "additionalProperties": { "enum": ["collected", "missing", "failed"] }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "collected" } } },
+          "then": {
+            "required": ["evidenceId"],
+            "not": { "required": ["reason"] },
+            "properties": { "keys": { "additionalProperties": { "const": "collected" } } }
+          },
+          "else": { "required": ["reason"] }
+        },
+        {
+          "if": { "properties": { "status": { "enum": ["missing", "not-applicable"] } } },
+          "then": { "not": { "required": ["evidenceId"] } }
+        }
+      ]
+    }
+  }
+}

@@ -11,6 +11,7 @@ public static class CoverageTests
         RejectsInvalidOrUnboundedLineIntervals();
         SerializesAndDeserializesCoveragePayload();
         DetectsNewlyUncoveredLinesAndDeltas();
+        ComparisonRejectsMalformedLineRanges();
         EvaluatesCoveragePoliciesCorrectly();
         Console.WriteLine("PASS coverage payload, intervals, delta comparator, and policy evaluator");
     }
@@ -37,6 +38,13 @@ public static class CoverageTests
         Throws<FormatException>(() => CoveragePayload.ParseLineRanges("0-2"));
         Throws<FormatException>(() => CoveragePayload.ParseLineRanges("0"));
         Throws<FormatException>(() => CoveragePayload.ParseLineRanges($"1-{CoveragePayload.MaxLineRangeSpan + 1}"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("-1"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("-1-3"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("1-"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("1--3"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("+5"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("abc"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("10, -1, 25"));
 
         var atLimit = CoveragePayload.ParseLineRanges($"1-{CoveragePayload.MaxLineRangeSpan}");
         Equal(CoveragePayload.MaxLineRangeSpan, atLimit.Count);
@@ -109,6 +117,28 @@ public static class CoverageTests
         Equal(1, delta.NewlyUncoveredLines.Count);
         Equal("src/Protocol/CanonicalJson.cs", delta.NewlyUncoveredLines[0].Path);
         Equal("50-51", delta.NewlyUncoveredLines[0].FormattedRange);
+    }
+
+    private static void ComparisonRejectsMalformedLineRanges()
+    {
+        var wellFormed = new FileCoverage(
+            "src/Protocol/CanonicalJson.cs",
+            CoverageCounter.Create(100, 90),
+            CoverageCounter.Create(20, 16),
+            "10-15");
+        var malformed = wellFormed with { UncoveredLineRanges = "-1" };
+
+        static CoveragePayload Payload(FileCoverage file) => new(
+            "diffra/protocol",
+            "coverlet",
+            CoverageCounter.Create(100, 90),
+            CoverageCounter.Create(20, 16),
+            CoverageCounter.Create(10, 9),
+            [file]);
+
+        // Malformed ranges in either the candidate or the baseline surface instead of being dropped.
+        Throws<FormatException>(() => CoverageEvaluator.Compare(Payload(wellFormed), Payload(malformed)));
+        Throws<FormatException>(() => CoverageEvaluator.Compare(Payload(malformed), Payload(wellFormed)));
     }
 
     private static void EvaluatesCoveragePoliciesCorrectly()

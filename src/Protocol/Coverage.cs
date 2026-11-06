@@ -125,7 +125,7 @@ public sealed record CoveragePayload(
     public const int MaxLineRangeSpan = 1_000_000;
 
     /// <summary>Expands a canonical interval string (e.g. '14-16, 25') back into a set of line numbers.</summary>
-    /// <exception cref="FormatException">A segment starts below line 1, ends before it starts, or spans more than <see cref="MaxLineRangeSpan"/> lines.</exception>
+    /// <exception cref="FormatException">A segment is not 'N' or 'N-M' with unsigned integers, starts below line 1, ends before it starts, or spans more than <see cref="MaxLineRangeSpan"/> lines.</exception>
     public static HashSet<int> ParseLineRanges(string intervals)
     {
         var result = new HashSet<int>();
@@ -133,8 +133,9 @@ public sealed record CoveragePayload(
 
         foreach (var segment in intervals.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
         {
-            var parts = segment.Split('-');
-            if (parts.Length == 1 && int.TryParse(parts[0], CultureInfo.InvariantCulture, out var single))
+            // Line numbers are unsigned digit runs, so a sign or an empty bound ('-1', '1-', '-1-3') is malformed.
+            var parts = segment.Split('-', StringSplitOptions.TrimEntries);
+            if (parts.Length == 1 && TryParseLineNumber(parts[0], out var single))
             {
                 if (single < 1)
                 {
@@ -144,8 +145,8 @@ public sealed record CoveragePayload(
                 result.Add(single);
             }
             else if (parts.Length == 2 &&
-                     int.TryParse(parts[0], CultureInfo.InvariantCulture, out var start) &&
-                     int.TryParse(parts[1], CultureInfo.InvariantCulture, out var end))
+                     TryParseLineNumber(parts[0], out var start) &&
+                     TryParseLineNumber(parts[1], out var end))
             {
                 if (start < 1)
                 {
@@ -164,9 +165,16 @@ public sealed record CoveragePayload(
 
                 for (long n = start; n <= end; n++) result.Add((int)n);
             }
+            else
+            {
+                throw new FormatException($"Invalid line range segment '{segment}': expected 'N' or 'N-M' with non-negative integer line numbers.");
+            }
         }
         return result;
     }
+
+    private static bool TryParseLineNumber(string text, out int value) =>
+        int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out value);
 
     private static JsonObject ToCounterNode(CoverageCounter counter) => new()
     {

@@ -47,9 +47,11 @@ public sealed class ContentAddressedStore
         var targetPath = GetObjectPath(computedDigest);
         if (File.Exists(targetPath))
         {
-            // Already present, verify its size matches
+            // Already present: skip the rewrite only when the stored bytes still hash to the digest.
+            // A corrupt object (even of the same size) is repaired by the atomic rewrite below.
             var existingInfo = new FileInfo(targetPath);
-            if (existingInfo.Length == bytes.Length)
+            if (existingInfo.Length == bytes.Length &&
+                string.Equals(ComputeDigest(File.ReadAllBytes(targetPath)), computedDigest, StringComparison.Ordinal))
             {
                 return computedDigest;
             }

@@ -279,7 +279,7 @@ public static class ExternalCommandAdapter
                 throw new InvalidOperationException($"External command output file exceeded maximum bounded buffer limit of {maxBytes} bytes.");
             }
 
-            destination.Write(buffer, 0, read);
+            await destination.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
         }
 
         return destination.ToArray();

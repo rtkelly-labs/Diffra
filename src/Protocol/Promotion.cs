@@ -36,6 +36,19 @@ public sealed record PromotionApprovalRecord(
 
     public static PromotionApprovalRecord FromJsonElement(JsonElement root)
     {
+        // Missing or mistyped properties are malformed input, so surface them as JsonException.
+        try
+        {
+            return FromJsonElementCore(root);
+        }
+        catch (Exception exception) when (exception is KeyNotFoundException or FormatException)
+        {
+            throw new JsonException($"Malformed PromotionApprovalRecord: {exception.Message}", exception);
+        }
+    }
+
+    private static PromotionApprovalRecord FromJsonElementCore(JsonElement root)
+    {
         return new PromotionApprovalRecord(
             Schema: root.GetProperty("schema").GetString()!,
             DecisionId: root.GetProperty("decisionId").GetString()!,

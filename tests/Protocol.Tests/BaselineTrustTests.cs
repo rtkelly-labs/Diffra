@@ -13,6 +13,7 @@ public static class BaselineTrustTests
         KeyedCollectionComparatorDistinguishesOrderedFromKeyed();
         KeyedCollectionComparatorDistinguishesNullMissingAndTypes();
         KeyedCollectionComparatorComparesDecodedPrimitives();
+        KeyedCollectionComparatorComparesNumbersExactly();
         ComplexityComputesQuantilesAndDetectsOutliers();
         ComplexityEvaluatorEnforcesPolicy();
         ComplexityEvaluatorTreatsIncompatibleMeasurementsAsInconclusive();
@@ -97,6 +98,39 @@ public static class BaselineTrustTests
         if (!changes.All(c => c.Kind == "modified"))
         {
             throw new InvalidOperationException("Value changes should be reported as modified.");
+        }
+    }
+
+    private static void KeyedCollectionComparatorComparesNumbersExactly()
+    {
+        // Parse the raw literals directly so each token keeps its original spelling.
+        AssertNumbersEqual("1", "1.0");
+        AssertNumbersEqual("1e2", "100");
+        AssertNumbersEqual("-0", "0");
+        AssertNumbersEqual("0.0e5", "0");
+        AssertNumbersEqual("12.50", "1.25E1");
+
+        // A decimal conversion would round 1e-29 to zero; exact comparison must not.
+        using var zero = JsonDocument.Parse("{\"n\":0}");
+        using var tiny = JsonDocument.Parse("{\"n\":1e-29}");
+        var changes = KeyedCollectionComparator.Compare(zero.RootElement, tiny.RootElement);
+        Equal(1, changes.Count);
+        Equal("/n", changes[0].Path);
+        Equal("modified", changes[0].Kind);
+
+        using var positive = JsonDocument.Parse("{\"n\":1}");
+        using var negative = JsonDocument.Parse("{\"n\":-1}");
+        Equal(1, KeyedCollectionComparator.Compare(positive.RootElement, negative.RootElement).Count);
+    }
+
+    private static void AssertNumbersEqual(string baselineNumber, string candidateNumber)
+    {
+        using var baseline = JsonDocument.Parse($"{{\"n\":{baselineNumber}}}");
+        using var candidate = JsonDocument.Parse($"{{\"n\":{candidateNumber}}}");
+        var changes = KeyedCollectionComparator.Compare(baseline.RootElement, candidate.RootElement);
+        if (changes.Count != 0)
+        {
+            throw new InvalidOperationException($"'{baselineNumber}' and '{candidateNumber}' should compare equal, but {changes.Count} change(s) were reported.");
         }
     }
 

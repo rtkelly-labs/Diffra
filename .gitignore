@@ -17,3 +17,9 @@ TestResults/
 *.user
 *.suo
 *.sln.docstates
+
+# Local TODO files
+todo.md
+
+# MSBuild binary logs
+*.binlog

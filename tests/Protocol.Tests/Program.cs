@@ -41,6 +41,7 @@ CoverageTests.RunAll();
 TimeSeriesGraphTests.RunAll();
 CloudEventsTests.RunAll();
 GraphTests.RunAll();
+BaselineTrustTests.RunAll();
 DogfoodPipelineTests.RunAll();
 
 static void CanonicalizesObjectsAndStrings()

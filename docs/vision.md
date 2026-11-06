@@ -21,6 +21,16 @@ Each baseline resolves to an exact subject commit and evidence identity. Approva
 belongs to a trusted process outside a candidate pull request. A candidate can
 propose evidence, but cannot declare its own reference trusted.
 
+## Operating principle: Diffra utilizes Diffra
+
+Diffra is built by utilizing Diffra. Every capability added to the system—typed observations,
+deterministic deltas, quality policy evaluations, CAS bundles, and presentation artifacts—is
+immediately integrated into Diffra's own development loop, test harness, and CI gates.
+
+Diffra does not treat self-verification as an afterthought or a separate test fixture. The
+codebase is its own first adopter and continuous client, ensuring that API boundaries, performance,
+and developer experience are battle-tested against real changes before external adopters rely on them.
+
 ## The first useful workflow
 
 The current .NET CLI accepts a bounded structured numeric payload. `collect`

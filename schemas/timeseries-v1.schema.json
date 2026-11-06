@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diffra.dev/schemas/timeseries-v1.schema.json",
+  "title": "Diffra Time-Series Projection v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "metricId", "subjectId", "unit", "points"],
+  "properties": {
+    "schema": { "const": "https://diffra.dev/schemas/timeseries-v1.schema.json" },
+    "metricId": { "type": "string", "minLength": 1 },
+    "subjectId": { "type": "string", "minLength": 1 },
+    "unit": { "type": "string", "minLength": 1 },
+    "points": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["commit", "timestamp", "value"],
+        "properties": {
+          "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "tag": { "type": "string" },
+          "value": { "type": "number" }
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "value", "delta"],
+      "properties": {
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "value": { "type": "number" },
+        "delta": { "type": "number" }
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "target": { "type": "number" }
+      }
+    }
+  }
+}

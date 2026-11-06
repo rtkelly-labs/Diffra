@@ -135,7 +135,7 @@ public sealed record CoveragePayload(
     }
 
     /// <summary>Upper bound on the number of line numbers one interval string may expand to.</summary>
-    public const int MaximumExpandedLines = 1_000_000;
+    private const int MaximumExpandedLines = 1_000_000;
 
     /// <summary>Expands a canonical interval string (e.g. '14-16, 25') back into a set of line numbers.</summary>
     /// <exception cref="InvalidOperationException">The intervals expand to more than <see cref="MaximumExpandedLines"/> lines.</exception>

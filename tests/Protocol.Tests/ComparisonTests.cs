@@ -202,7 +202,7 @@ internal static class ComparisonTests
             provenance = delta.Provenance,
             message = delta.Message
         }, SerializerOptions);
-        byte[] framed = [.. Encoding.UTF8.GetBytes("diffra/v1\0delta\0"), .. CanonicalJson.Canonicalize(projection)];
+        byte[] framed = [.. "diffra/v1\0delta\0"u8.ToArray(), .. CanonicalJson.Canonicalize(projection)];
         Equal($"sha256:{Convert.ToHexStringLower(SHA256.HashData(framed))}", delta.Id);
 
         // The id covers the comparison inputs, so a different candidate gives a different id.

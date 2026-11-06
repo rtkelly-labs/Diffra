@@ -93,7 +93,11 @@ public static class PresentationBundle
             }
 
             // Render HTML report
-            var html = ReportRenderer.Render(deltaBytes, assessmentBytes, baselineRefBytes, ReportFormat.Html);
+            var html = ReportRenderer.Render(
+                deltaBytes,
+                assessmentBytes is null ? null : new ReadOnlyMemory<byte>(assessmentBytes),
+                baselineRefBytes is null ? null : new ReadOnlyMemory<byte>(baselineRefBytes),
+                ReportFormat.Html);
             var indexHtmlPath = Path.Combine(tempDir, "index.html");
             File.WriteAllText(indexHtmlPath, html, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 

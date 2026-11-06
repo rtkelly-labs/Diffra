@@ -49,8 +49,9 @@ static int Run(string[] arguments)
     {
         var options = ParseReportArguments(arguments.AsSpan(1));
         var deltaBytes = ReadBounded(options.DeltaPath);
-        var assessmentBytes = options.AssessmentPath is null ? null : ReadBounded(options.AssessmentPath);
-        var baselineBytes = options.BaselineReferencePath is null ? null : ReadBounded(options.BaselineReferencePath);
+        // A null array converts to an empty ReadOnlyMemory, not to null, so absent inputs stay typed as null.
+        ReadOnlyMemory<byte>? assessmentBytes = options.AssessmentPath is null ? null : new ReadOnlyMemory<byte>(ReadBounded(options.AssessmentPath));
+        ReadOnlyMemory<byte>? baselineBytes = options.BaselineReferencePath is null ? null : new ReadOnlyMemory<byte>(ReadBounded(options.BaselineReferencePath));
         var format = options.Format switch
         {
             "html" => ReportFormat.Html,

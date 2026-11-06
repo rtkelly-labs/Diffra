@@ -130,16 +130,39 @@ public static class KeyedCollectionComparator
             return;
         }
 
-        // Case 6: Primitive values
-        var bRaw = bElem.GetRawText();
-        var cRaw = cElem.GetRawText();
-        if (!string.Equals(bRaw, cRaw, StringComparison.Ordinal))
+        // Case 6: Primitive values, compared by decoded value so formatting-only differences are unchanged
+        if (!PrimitiveValuesEqual(bElem, cElem))
         {
             changes.Add(new StructuralChange(
                 Path: string.IsNullOrEmpty(path) ? "/" : path,
                 Kind: "modified",
-                Before: JsonNode.Parse(bRaw),
-                After: JsonNode.Parse(cRaw)));
+                Before: JsonNode.Parse(bElem.GetRawText()),
+                After: JsonNode.Parse(cElem.GetRawText())));
+        }
+    }
+
+    /// <summary>Compares two primitive elements of the same kind by decoded value.</summary>
+    private static bool PrimitiveValuesEqual(JsonElement baseline, JsonElement candidate)
+    {
+        switch (baseline.ValueKind)
+        {
+            case JsonValueKind.String:
+                return string.Equals(baseline.GetString(), candidate.GetString(), StringComparison.Ordinal);
+            case JsonValueKind.Number:
+                if (baseline.TryGetInt64(out var baselineInteger) && candidate.TryGetInt64(out var candidateInteger))
+                {
+                    return baselineInteger == candidateInteger;
+                }
+
+                if (baseline.TryGetDecimal(out var baselineDecimal) && candidate.TryGetDecimal(out var candidateDecimal))
+                {
+                    return baselineDecimal == candidateDecimal;
+                }
+
+                return string.Equals(baseline.GetRawText(), candidate.GetRawText(), StringComparison.Ordinal);
+            default:
+                // True, False and Null carry no value beyond their kind, which already matches.
+                return true;
         }
     }
 

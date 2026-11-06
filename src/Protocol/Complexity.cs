@@ -158,13 +158,22 @@ public sealed record ComplexityPayload(
     }
 }
 
+/// <summary>
+/// Method-level complexity changes between a baseline and a candidate. A non-null
+/// <see cref="IncompatibilityReason"/> means the two payloads measure different things (scope,
+/// methodology, or unit) and the delta carries no changes; evaluation reports it as inconclusive.
+/// </summary>
 public sealed record ComplexityDelta(
     double MeanComplexityDelta,
     int TotalMethodsDelta,
     IReadOnlyList<MethodComplexity> AddedMethods,
     IReadOnlyList<MethodComplexity> RemovedMethods,
     IReadOnlyList<MethodComplexityShift> ModifiedMethods,
-    IReadOnlyList<MethodComplexity> NewOutliers);
+    IReadOnlyList<MethodComplexity> NewOutliers,
+    string? IncompatibilityReason = null)
+{
+    public bool IsCompatible => IncompatibilityReason is null;
+}
 
 public sealed record MethodComplexityShift(
     string MethodId,
@@ -181,6 +190,15 @@ public static class ComplexityEvaluator
 {
     public static ComplexityDelta Compare(ComplexityPayload baseline, ComplexityPayload candidate, int outlierThreshold = 15)
     {
+        ArgumentNullException.ThrowIfNull(baseline);
+        ArgumentNullException.ThrowIfNull(candidate);
+
+        var incompatibility = DescribeIncompatibility(baseline, candidate);
+        if (incompatibility is not null)
+        {
+            return new ComplexityDelta(0, 0, [], [], [], [], incompatibility);
+        }
+
         var meanDelta = Math.Round(candidate.Summary.MeanComplexity - baseline.Summary.MeanComplexity, 2);
         var totalMethodsDelta = candidate.Summary.TotalMethods - baseline.Summary.TotalMethods;
 
@@ -227,12 +245,50 @@ public static class ComplexityEvaluator
         return new ComplexityDelta(meanDelta, totalMethodsDelta, added, removed, modified, newOutliers);
     }
 
+    private static string? DescribeIncompatibility(ComplexityPayload baseline, ComplexityPayload candidate)
+    {
+        if (!string.Equals(baseline.Scope, candidate.Scope, StringComparison.Ordinal))
+        {
+            return $"Complexity scope differs: baseline '{baseline.Scope}' vs candidate '{candidate.Scope}'.";
+        }
+
+        if (!string.Equals(baseline.Methodology, candidate.Methodology, StringComparison.Ordinal))
+        {
+            return $"Complexity methodology differs: baseline '{baseline.Methodology}' vs candidate '{candidate.Methodology}'.";
+        }
+
+        if (!string.Equals(baseline.Unit, candidate.Unit, StringComparison.Ordinal))
+        {
+            return $"Complexity unit differs: baseline '{baseline.Unit}' vs candidate '{candidate.Unit}'.";
+        }
+
+        return null;
+    }
+
     public static (string Outcome, IReadOnlyList<AssessmentFinding> Findings) Evaluate(
         ComplexityPayload candidate,
         ComplexityDelta delta,
         ComplexityPolicy policy)
     {
+        ArgumentNullException.ThrowIfNull(candidate);
+        ArgumentNullException.ThrowIfNull(delta);
+        ArgumentNullException.ThrowIfNull(policy);
+
         var findings = new List<AssessmentFinding>();
+
+        // 0. Incompatible measurements cannot be compared, so they can never pass.
+        if (!delta.IsCompatible)
+        {
+            findings.Add(new AssessmentFinding(
+                "complexity/incompatible",
+                "inconclusive",
+                delta.IncompatibilityReason!,
+                [],
+                null,
+                null));
+            return ("inconclusive", findings);
+        }
+
         var outcome = "pass";
 
         // 1. Mean complexity check
@@ -248,14 +304,25 @@ public static class ComplexityEvaluator
                 policy.MaxMeanComplexity));
         }
 
-        // 2. Outlier growth
-        if (delta.NewOutliers.Count > 0)
+        // 2. Outlier growth, judged against the policy threshold rather than the threshold used by Compare.
+        // Unchanged methods cannot cross the threshold, so added and modified methods are sufficient.
+        var threshold = policy.OutlierThreshold;
+        var newOutliers = delta.AddedMethods
+            .Where(m => m.Complexity >= threshold)
+            .Select(m => (m.MethodId, m.Complexity))
+            .Concat(delta.ModifiedMethods
+                .Where(m => m.BeforeComplexity < threshold && m.AfterComplexity >= threshold)
+                .Select(m => (m.MethodId, Complexity: m.AfterComplexity)))
+            .OrderBy(m => m.MethodId, StringComparer.Ordinal)
+            .ToList();
+
+        if (newOutliers.Count > 0)
         {
             var severity = policy.FailOnOutlierGrowth ? "fail" : "warn";
             if (severity == "fail") outcome = "fail";
             else if (outcome == "pass") outcome = "warn";
 
-            foreach (var outlier in delta.NewOutliers)
+            foreach (var outlier in newOutliers)
             {
                 findings.Add(new AssessmentFinding(
                     "complexity/new-outlier",

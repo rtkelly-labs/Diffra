@@ -1,0 +1,8 @@
+schema: https://diffra.dev/schemas/project-v1.schema.json
+scope: example/invalid
+# Invalid: bytes has the fixed unit B; a project cannot redeclare it.
+metrics:
+  allocations:
+    type: bytes
+    unit: kilobytes
+    from: { payload: "alloc.json" }

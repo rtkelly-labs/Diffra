@@ -1,0 +1,93 @@
+{
+  "scope": "parquet-sourcegenerator/benchmarks",
+  "methodology": "diffra/benchmark@1;diffra.converter.benchmarkdotnet@1.0.0;benchmarkdotnet-json-full@0.14",
+  "stratum": {
+    "arch": "x64",
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "os": "linux",
+    "runtime": "net8.0"
+  },
+  "plan": {
+    "benchmarks": {
+      "keys": [
+        "ReadBenchmarks.ReadAsync(10000)",
+        "WriteBenchmarks.WriteAsync(100)",
+        "WriteBenchmarks.WriteAsync(10000)"
+      ]
+    }
+  },
+  "metrics": {
+    "benchmarks": {
+      "allocatedBytes": {
+        "ReadBenchmarks.ReadAsync(10000)": {
+          "value": "812344",
+          "unit": "B"
+        },
+        "WriteBenchmarks.WriteAsync(100)": {
+          "value": "41208",
+          "unit": "B"
+        },
+        "WriteBenchmarks.WriteAsync(10000)": {
+          "value": "2309128",
+          "unit": "B"
+        }
+      },
+      "gen0PerKOps": {
+        "ReadBenchmarks.ReadAsync(10000)": {
+          "value": "48.5",
+          "unit": "count/1000-ops"
+        },
+        "WriteBenchmarks.WriteAsync(100)": {
+          "value": "3.9",
+          "unit": "count/1000-ops"
+        },
+        "WriteBenchmarks.WriteAsync(10000)": {
+          "value": "112",
+          "unit": "count/1000-ops"
+        }
+      },
+      "gen1PerKOps": {
+        "ReadBenchmarks.ReadAsync(10000)": {
+          "value": "2",
+          "unit": "count/1000-ops"
+        },
+        "WriteBenchmarks.WriteAsync(100)": {
+          "value": "0",
+          "unit": "count/1000-ops"
+        },
+        "WriteBenchmarks.WriteAsync(10000)": {
+          "value": "111",
+          "unit": "count/1000-ops"
+        }
+      },
+      "gen2PerKOps": {
+        "ReadBenchmarks.ReadAsync(10000)": {
+          "value": "0",
+          "unit": "count/1000-ops"
+        },
+        "WriteBenchmarks.WriteAsync(100)": {
+          "value": "0",
+          "unit": "count/1000-ops"
+        },
+        "WriteBenchmarks.WriteAsync(10000)": {
+          "value": "110",
+          "unit": "count/1000-ops"
+        }
+      },
+      "meanTime": {
+        "ReadBenchmarks.ReadAsync(10000)": {
+          "value": "1840211.25",
+          "unit": "ns"
+        },
+        "WriteBenchmarks.WriteAsync(100)": {
+          "value": "50122.5",
+          "unit": "ns"
+        },
+        "WriteBenchmarks.WriteAsync(10000)": {
+          "value": "3901882",
+          "unit": "ns"
+        }
+      }
+    }
+  }
+}

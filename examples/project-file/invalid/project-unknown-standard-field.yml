@@ -1,0 +1,11 @@
+schema: https://diffra.dev/schemas/project-v1.schema.json
+scope: example/invalid
+# Invalid: diffra/benchmark@1 has no field named gen3PerKOps.
+metrics:
+  benchmarks:
+    type: diffra/benchmark@1
+    from: { benchmarkdotnet: "results/*.json" }
+    fields:
+      gen3PerKOps:
+        versus:
+          warn: { increase: { above: 10% } }

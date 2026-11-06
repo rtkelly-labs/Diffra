@@ -1,0 +1,150 @@
+{
+  "schema": "https://diffra.dev/schemas/collection-v1.schema.json",
+  "id": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "status": "complete",
+  "subject": {
+    "kind": "git-repository",
+    "id": "repo:rtkelly-labs/Parquet.SourceGenerator",
+    "commit": "06d1f40000000000000000000000000000000000",
+    "repository": "https://github.com/rtkelly-labs/Parquet.SourceGenerator"
+  },
+  "project": {
+    "scope": "parquet-sourcegenerator/benchmarks",
+    "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "loadedFrom": {
+      "role": "merge-base",
+      "commit": "c0ffee0000000000000000000000000000000000",
+      "path": "diffra.project.yml"
+    }
+  },
+  "metrics": [
+    {
+      "metric": "benchmarks",
+      "field": "allocatedBytes",
+      "type": "diffra/benchmark@1",
+      "required": true,
+      "methodology": "diffra/benchmark@1;diffra.converter.benchmarkdotnet@1.0.0;benchmarkdotnet-json-full@0.14",
+      "strata": [
+        {
+          "stratum": {
+            "os": "linux",
+            "arch": "x64",
+            "runtime": "net8.0"
+          },
+          "status": "collected",
+          "evidenceId": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "keys": {
+            "ReadBenchmarks.ReadAsync(10000)": "collected",
+            "WriteBenchmarks.WriteAsync(100)": "collected",
+            "WriteBenchmarks.WriteAsync(10000)": "collected"
+          }
+        }
+      ]
+    },
+    {
+      "metric": "benchmarks",
+      "field": "gen0PerKOps",
+      "type": "diffra/benchmark@1",
+      "required": true,
+      "methodology": "diffra/benchmark@1;diffra.converter.benchmarkdotnet@1.0.0;benchmarkdotnet-json-full@0.14",
+      "strata": [
+        {
+          "stratum": {
+            "os": "linux",
+            "arch": "x64",
+            "runtime": "net8.0",
+            "cpu": "AMD EPYC 7763 64-Core Processor"
+          },
+          "status": "failed",
+          "evidenceId": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "keys": {
+            "ReadBenchmarks.ReadAsync(10000)": "collected",
+            "WriteBenchmarks.WriteAsync(100)": "collected",
+            "WriteBenchmarks.WriteAsync(10000)": "failed"
+          },
+          "reason": "BenchmarkDotNet reported WriteBenchmarks.WriteAsync(10000) as failed: process exited with code 134."
+        }
+      ]
+    },
+    {
+      "metric": "benchmarks",
+      "field": "gen1PerKOps",
+      "type": "diffra/benchmark@1",
+      "required": true,
+      "methodology": "diffra/benchmark@1;diffra.converter.benchmarkdotnet@1.0.0;benchmarkdotnet-json-full@0.14",
+      "strata": [
+        {
+          "stratum": {
+            "os": "linux",
+            "arch": "x64",
+            "runtime": "net8.0",
+            "cpu": "AMD EPYC 7763 64-Core Processor"
+          },
+          "status": "failed",
+          "evidenceId": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "keys": {
+            "ReadBenchmarks.ReadAsync(10000)": "collected",
+            "WriteBenchmarks.WriteAsync(100)": "collected",
+            "WriteBenchmarks.WriteAsync(10000)": "failed"
+          },
+          "reason": "BenchmarkDotNet reported WriteBenchmarks.WriteAsync(10000) as failed: process exited with code 134."
+        }
+      ]
+    },
+    {
+      "metric": "benchmarks",
+      "field": "gen2PerKOps",
+      "type": "diffra/benchmark@1",
+      "required": true,
+      "methodology": "diffra/benchmark@1;diffra.converter.benchmarkdotnet@1.0.0;benchmarkdotnet-json-full@0.14",
+      "strata": [
+        {
+          "stratum": {
+            "os": "linux",
+            "arch": "x64",
+            "runtime": "net8.0",
+            "cpu": "AMD EPYC 7763 64-Core Processor"
+          },
+          "status": "failed",
+          "evidenceId": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "keys": {
+            "ReadBenchmarks.ReadAsync(10000)": "collected",
+            "WriteBenchmarks.WriteAsync(100)": "collected",
+            "WriteBenchmarks.WriteAsync(10000)": "failed"
+          },
+          "reason": "BenchmarkDotNet reported WriteBenchmarks.WriteAsync(10000) as failed: process exited with code 134."
+        }
+      ]
+    },
+    {
+      "metric": "benchmarks",
+      "field": "meanTime",
+      "type": "diffra/benchmark@1",
+      "required": true,
+      "methodology": "diffra/benchmark@1;diffra.converter.benchmarkdotnet@1.0.0;benchmarkdotnet-json-full@0.14",
+      "strata": [
+        {
+          "stratum": {
+            "os": "linux",
+            "arch": "x64",
+            "runtime": "net8.0",
+            "cpu": "AMD EPYC 7763 64-Core Processor"
+          },
+          "status": "failed",
+          "evidenceId": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "keys": {
+            "ReadBenchmarks.ReadAsync(10000)": "collected",
+            "WriteBenchmarks.WriteAsync(100)": "collected",
+            "WriteBenchmarks.WriteAsync(10000)": "failed"
+          },
+          "reason": "BenchmarkDotNet reported WriteBenchmarks.WriteAsync(10000) as failed: process exited with code 134."
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "producerId": "diffra.collect",
+    "producerVersion": "0.1.0",
+    "source": "git:06d1f40000000000000000000000000000000000"
+  }
+}

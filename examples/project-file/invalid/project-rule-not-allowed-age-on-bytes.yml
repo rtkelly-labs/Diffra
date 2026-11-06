@@ -1,0 +1,9 @@
+schema: https://diffra.dev/schemas/project-v1.schema.json
+scope: example/invalid
+# Invalid: `age` is a datetime rule; a bytes metric cannot use it.
+metrics:
+  packageSize:
+    type: bytes
+    from: { payload: "size.json" }
+    check:
+      warn: { age: { above: 60d } }

@@ -12,6 +12,7 @@ public static class BaselineTrustTests
         GitBaselineResolverResolvesAndVerifiesMergeBase().GetAwaiter().GetResult();
         KeyedCollectionComparatorDistinguishesOrderedFromKeyed();
         KeyedCollectionComparatorDistinguishesNullMissingAndTypes();
+        KeyedCollectionComparatorHandlesAwkwardInput();
         ComplexityComputesQuantilesAndDetectsOutliers();
         ComplexityEvaluatorEnforcesPolicy();
         PromotionRequiresIdenticalTwoRunVerification();
@@ -78,6 +79,28 @@ public static class BaselineTrustTests
 
         var nullAdded = changes.Single(c => c.Path == "/newNull");
         Equal("added", nullAdded.Kind);
+    }
+
+    private static void KeyedCollectionComparatorHandlesAwkwardInput()
+    {
+        static IReadOnlyList<StructuralChange> Compare(string baseline, string candidate, ArrayComparisonMode mode = ArrayComparisonMode.KeyedCollection)
+        {
+            using var before = JsonDocument.Parse(baseline);
+            using var after = JsonDocument.Parse(candidate);
+            return KeyedCollectionComparator.Compare(before.RootElement, after.RootElement, new KeyedCollectionOptions(mode));
+        }
+
+        // Escape forms and -0 are the same value, so they are not changes.
+        Equal(0, Compare("{\"s\":\"a/b\",\"n\":0}", "{\"s\":\"a\\/b\",\"n\":-0}").Count);
+
+        // A key containing "/" is escaped as in RFC 6901 and cannot collide with a nested member.
+        var paths = Compare("{\"x/y\":1,\"x\":{\"y\":1}}", "{\"x/y\":2,\"x\":{\"y\":2}}").Select(c => c.Path).Order(StringComparer.Ordinal).ToList();
+        Equal("/x/y|/x~1y", string.Join("|", paths));
+
+        // Non-string and duplicate ids fall back to ordered comparison instead of throwing.
+        Equal(1, Compare("[{\"id\":1,\"v\":1}]", "[{\"id\":1,\"v\":2}]").Count);
+        var duplicates = Compare("[{\"id\":\"a\",\"v\":1},{\"id\":\"a\",\"v\":2}]", "[{\"id\":\"a\",\"v\":2},{\"id\":\"a\",\"v\":1}]");
+        Equal("[0]/v|[1]/v", string.Join("|", duplicates.Select(c => c.Path)));
     }
 
     private static void ComplexityComputesQuantilesAndDetectsOutliers()

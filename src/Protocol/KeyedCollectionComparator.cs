@@ -96,7 +96,7 @@ public static class KeyedCollectionComparator
             var allKeys = bProps.Keys.Union(cProps.Keys, StringComparer.Ordinal).OrderBy(k => k, StringComparer.Ordinal);
             foreach (var key in allKeys)
             {
-                var childPath = $"{path}/{key}";
+                var childPath = $"{path}/{EscapePointerToken(key)}";
                 bool inBase = bProps.TryGetValue(key, out var bVal);
                 bool inCand = cProps.TryGetValue(key, out var cVal);
 
@@ -130,10 +130,10 @@ public static class KeyedCollectionComparator
             return;
         }
 
-        // Case 6: Primitive values
+        // Case 6: Primitive values, compared by value so that escape forms and -0 are not changes.
         var bRaw = bElem.GetRawText();
         var cRaw = cElem.GetRawText();
-        if (!string.Equals(bRaw, cRaw, StringComparison.Ordinal))
+        if (!PrimitiveEquals(bElem, cElem))
         {
             changes.Add(new StructuralChange(
                 Path: string.IsNullOrEmpty(path) ? "/" : path,
@@ -153,25 +153,21 @@ public static class KeyedCollectionComparator
         var bList = baseline.EnumerateArray().ToList();
         var cList = candidate.EnumerateArray().ToList();
 
-        // Check if all elements are objects containing the key property
-        bool bAllKeyed = bList.All(e => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(options.KeyProperty, out _));
-        bool cAllKeyed = cList.All(e => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(options.KeyProperty, out _));
-
-        if (!bAllKeyed || !cAllKeyed)
+        // Keyed matching needs every element to be an object with a unique string key on both sides.
+        // Anything else (missing, non-string or duplicate keys) falls back to ordered comparison.
+        var bDict = TryIndexByKey(bList, options.KeyProperty);
+        var cDict = TryIndexByKey(cList, options.KeyProperty);
+        if (bDict is null || cDict is null)
         {
-            // Fallback to ordered comparison if not cleanly keyed
             CompareOrderedArrays(baseline, candidate, path, options, changes);
             return;
         }
-
-        var bDict = bList.ToDictionary(e => e.GetProperty(options.KeyProperty).GetString()!, e => e, StringComparer.Ordinal);
-        var cDict = cList.ToDictionary(e => e.GetProperty(options.KeyProperty).GetString()!, e => e, StringComparer.Ordinal);
 
         var allKeys = bDict.Keys.Union(cDict.Keys, StringComparer.Ordinal).OrderBy(k => k, StringComparer.Ordinal);
 
         foreach (var key in allKeys)
         {
-            var itemPath = $"{path}[{options.KeyProperty}={key}]";
+            var itemPath = $"{path}[{options.KeyProperty}={EscapeKeySelector(key)}]";
             bool inBase = bDict.TryGetValue(key, out var bItem);
             bool inCand = cDict.TryGetValue(key, out var cItem);
 
@@ -189,6 +185,53 @@ public static class KeyedCollectionComparator
             }
         }
     }
+
+    private static Dictionary<string, JsonElement>? TryIndexByKey(List<JsonElement> items, string keyProperty)
+    {
+        var index = new Dictionary<string, JsonElement>(items.Count, StringComparer.Ordinal);
+        foreach (var item in items)
+        {
+            if (item.ValueKind != JsonValueKind.Object ||
+                !item.TryGetProperty(keyProperty, out var key) ||
+                key.ValueKind != JsonValueKind.String ||
+                !index.TryAdd(key.GetString()!, item))
+            {
+                return null;
+            }
+        }
+
+        return index;
+    }
+
+    private static bool PrimitiveEquals(JsonElement baseline, JsonElement candidate)
+    {
+        switch (baseline.ValueKind)
+        {
+            case JsonValueKind.String:
+                return string.Equals(baseline.GetString(), candidate.GetString(), StringComparison.Ordinal);
+            case JsonValueKind.Number:
+                if (baseline.TryGetInt64(out var bLong) && candidate.TryGetInt64(out var cLong))
+                {
+                    return bLong == cLong;
+                }
+
+                if (baseline.TryGetDecimal(out var bDecimal) && candidate.TryGetDecimal(out var cDecimal))
+                {
+                    return bDecimal == cDecimal;
+                }
+
+                return string.Equals(baseline.GetRawText(), candidate.GetRawText(), StringComparison.Ordinal);
+            default:
+                // true, false and null: equal kinds are equal values.
+                return true;
+        }
+    }
+
+    // RFC 6901: "~" becomes "~0" and "/" becomes "~1", so a key containing "/" cannot collide with a nested path.
+    private static string EscapePointerToken(string key) => key.Replace("~", "~0", StringComparison.Ordinal).Replace("/", "~1", StringComparison.Ordinal);
+
+    // Keys inside a [prop=key] selector also escape "]", so the selector ends unambiguously.
+    private static string EscapeKeySelector(string key) => EscapePointerToken(key).Replace("]", "~2", StringComparison.Ordinal);
 
     private static void CompareOrderedArrays(
         JsonElement baseline,

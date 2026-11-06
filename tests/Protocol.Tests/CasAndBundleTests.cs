@@ -20,6 +20,7 @@ public static class CasAndBundleTests
         BundleRejectsZipSlipAttack();
         BundleRejectsTamperedArtifactBytes();
         BundleImportRejectsMissingDeclaredArtifacts();
+        BundleImportRejectsCorruptStoredArtifact();
         BundleExportRejectsMissingSuppliedOptionalInputs();
         CliBundleExportAndImportEndToEnd();
         Console.WriteLine("PASS content-addressed store and portable evidence bundles");
@@ -262,6 +263,60 @@ public static class CasAndBundleTests
         }
 
         throw new InvalidOperationException("Import of a bundle missing a declared artifact must throw InvalidOperationException.");
+    }
+
+    private static void BundleImportRejectsCorruptStoredArtifact()
+    {
+        using var temp = new ScratchDirectory();
+        var artifactBytes = "stored but corrupted"u8.ToArray();
+        var artifactDigest = ContentAddressedStore.ComputeDigest(artifactBytes);
+        var manifestContent = $$"""
+        {
+          "schema": "https://diffra.dev/schemas/manifest-v1.schema.json",
+          "id": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "subject": { "kind": "git-repository", "id": "test/repo", "commit": "12345678" },
+          "groups": [],
+          "artifacts": [{
+            "id": "art1",
+            "digest": "{{artifactDigest}}",
+            "mediaType": "text/plain",
+            "sizeBytes": {{artifactBytes.Length}},
+            "path": "stored.txt"
+          }],
+          "evidenceIds": [],
+          "provenance": {
+            "producerId": "test", "producerVersion": "1.0",
+            "environment": { "os": "linux" }, "source": "test"
+          }
+        }
+        """;
+
+        // A manifest-only bundle that relies on the artifact already being in the store.
+        var zipPath = temp.FilePath("manifest-only.zip");
+        using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        {
+            var entry = archive.CreateEntry("manifest.json");
+            using var stream = entry.Open();
+            stream.Write(Encoding.UTF8.GetBytes(manifestContent));
+        }
+
+        // The store holds an object at the declared digest, but its bytes no longer match.
+        var cas = new ContentAddressedStore(temp.FilePath("cas"));
+        Equal(artifactDigest, cas.Put(artifactBytes), "Seeding the store should return the artifact digest.");
+        File.WriteAllBytes(cas.GetObjectPath(artifactDigest), Encoding.UTF8.GetBytes(new string('x', artifactBytes.Length)));
+        True(cas.Contains(artifactDigest), "The corrupt object file must still exist for this test.");
+
+        try
+        {
+            EvidenceBundle.Import(zipPath, cas);
+        }
+        catch (InvalidOperationException ex)
+        {
+            True(ex.Message.Contains(artifactDigest, StringComparison.Ordinal), $"Import failure should name the corrupt digest. Message: {ex.Message}");
+            return;
+        }
+
+        throw new InvalidOperationException("Import of a bundle relying on a corrupt stored artifact must throw InvalidOperationException.");
     }
 
     private static void BundleExportRejectsMissingSuppliedOptionalInputs()

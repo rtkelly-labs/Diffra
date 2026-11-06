@@ -241,15 +241,18 @@ public static class EvidenceBundle
             }
         }
 
+        // Declared artifacts the bundle omits must already be in the store and still match their digest;
+        // objects written by this import were verified by Put and are not hashed again.
+        var verifiedDigests = new HashSet<string>(importedDigests, StringComparer.Ordinal);
         var missingDigests = declaredArtifacts.Values
             .Distinct(StringComparer.Ordinal)
-            .Where(digest => !store.Contains(digest))
+            .Where(digest => !verifiedDigests.Contains(digest) && !store.ContainsVerified(digest))
             .OrderBy(digest => digest, StringComparer.Ordinal)
             .ToList();
         if (missingDigests.Count > 0)
         {
             throw new InvalidOperationException(
-                $"Bundle '{bundlePath}' is incomplete: declared artifact digest(s) not present after import: {string.Join(", ", missingDigests)}.");
+                $"Bundle '{bundlePath}' is incomplete: declared artifact digest(s) not present or failing verification after import: {string.Join(", ", missingDigests)}.");
         }
 
         return new ImportResult(manifestId, docCount, artifactCount, importedDigests);

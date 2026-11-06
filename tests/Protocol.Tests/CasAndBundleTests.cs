@@ -14,10 +14,13 @@ public static class CasAndBundleTests
     {
         CasStoresAndVerifiesAtomicObjects();
         CasDetectsCorruptedStoredObject();
+        CasPutRepairsSameLengthCorruptedObject();
         CasRejectsInvalidDigestFormats();
         BundleExportsAndImportsReproducibly();
         BundleRejectsZipSlipAttack();
         BundleRejectsTamperedArtifactBytes();
+        BundleImportRejectsMissingDeclaredArtifacts();
+        BundleExportRejectsMissingSuppliedOptionalInputs();
         CliBundleExportAndImportEndToEnd();
         Console.WriteLine("PASS content-addressed store and portable evidence bundles");
     }
@@ -54,6 +57,26 @@ public static class CasAndBundleTests
         File.WriteAllBytes(filePath, Encoding.UTF8.GetBytes("tampered bytes here"));
 
         Throws<InvalidOperationException>(() => cas.Get(digest), "Corrupted object must throw on Get.");
+    }
+
+    private static void CasPutRepairsSameLengthCorruptedObject()
+    {
+        using var temp = new ScratchDirectory();
+        var cas = new ContentAddressedStore(temp.DirectoryPath);
+
+        var data = Encoding.UTF8.GetBytes("repair me please");
+        var digest = cas.Put(data);
+
+        // Corrupt the stored object with garbage of exactly the same length.
+        var filePath = cas.GetObjectPath(digest);
+        var garbage = Encoding.UTF8.GetBytes(new string('x', data.Length));
+        Equal(data.Length, garbage.Length, "Garbage must match the original length.");
+        File.WriteAllBytes(filePath, garbage);
+        Throws<InvalidOperationException>(() => cas.Get(digest), "Corrupted object must throw before repair.");
+
+        var repairedDigest = cas.Put(data);
+        Equal(digest, repairedDigest, "Repairing put should return the same digest.");
+        Equal(data, cas.Get(digest), "Put must rewrite a same-length corrupted object with the original bytes.");
     }
 
     private static void CasRejectsInvalidDigestFormats()
@@ -191,6 +214,91 @@ public static class CasAndBundleTests
 
         var cas = new ContentAddressedStore(temp.FilePath("cas"));
         Throws<InvalidOperationException>(() => EvidenceBundle.Import(tamperedZip, cas), "Tampered artifact bytes in bundle must be rejected.");
+    }
+
+    private static void BundleImportRejectsMissingDeclaredArtifacts()
+    {
+        using var temp = new ScratchDirectory();
+        var missingDigest = ContentAddressedStore.ComputeDigest(Encoding.UTF8.GetBytes("never packaged"));
+        var manifestContent = $$"""
+        {
+          "schema": "https://diffra.dev/schemas/manifest-v1.schema.json",
+          "id": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+          "subject": { "kind": "git-repository", "id": "test/repo", "commit": "12345678" },
+          "groups": [],
+          "artifacts": [{
+            "id": "art1",
+            "digest": "{{missingDigest}}",
+            "mediaType": "text/plain",
+            "sizeBytes": 14,
+            "path": "missing.txt"
+          }],
+          "evidenceIds": [],
+          "provenance": {
+            "producerId": "test", "producerVersion": "1.0",
+            "environment": { "os": "linux" }, "source": "test"
+          }
+        }
+        """;
+
+        // A manifest-only bundle that declares an artifact it does not carry.
+        var zipPath = temp.FilePath("manifest-only.zip");
+        using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        {
+            var entry = archive.CreateEntry("manifest.json");
+            using var stream = entry.Open();
+            stream.Write(Encoding.UTF8.GetBytes(manifestContent));
+        }
+
+        var cas = new ContentAddressedStore(temp.FilePath("cas"));
+        try
+        {
+            EvidenceBundle.Import(zipPath, cas);
+        }
+        catch (InvalidOperationException ex)
+        {
+            True(ex.Message.Contains(missingDigest, StringComparison.Ordinal), $"Import failure should name the missing digest. Message: {ex.Message}");
+            return;
+        }
+
+        throw new InvalidOperationException("Import of a bundle missing a declared artifact must throw InvalidOperationException.");
+    }
+
+    private static void BundleExportRejectsMissingSuppliedOptionalInputs()
+    {
+        using var temp = new ScratchDirectory();
+        var manifestPath = temp.FilePath("manifest.json");
+        File.WriteAllText(manifestPath, """
+        {
+          "schema": "https://diffra.dev/schemas/manifest-v1.schema.json",
+          "id": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "subject": { "kind": "git-repository", "id": "test/repo", "commit": "12345678" },
+          "groups": [],
+          "artifacts": [],
+          "evidenceIds": [],
+          "provenance": {
+            "producerId": "test", "producerVersion": "1.0",
+            "environment": { "os": "linux" }, "source": "test"
+          }
+        }
+        """);
+
+        var bundleZip = temp.FilePath("bundle.zip");
+        var missing = temp.FilePath("does-not-exist.json");
+        Throws<FileNotFoundException>(
+            () => EvidenceBundle.Export(new EvidenceBundle.ExportOptions(manifestPath, bundleZip, DeltaPath: missing)),
+            "A supplied but missing delta path must be rejected.");
+        Throws<FileNotFoundException>(
+            () => EvidenceBundle.Export(new EvidenceBundle.ExportOptions(manifestPath, bundleZip, AssessmentPath: missing)),
+            "A supplied but missing assessment path must be rejected.");
+        Throws<FileNotFoundException>(
+            () => EvidenceBundle.Export(new EvidenceBundle.ExportOptions(manifestPath, bundleZip, BaselineReferencePath: missing)),
+            "A supplied but missing baseline-reference path must be rejected.");
+        True(!File.Exists(bundleZip), "No bundle should be written when a supplied input is missing.");
+
+        // Omitted optional inputs are still skipped.
+        EvidenceBundle.Export(new EvidenceBundle.ExportOptions(manifestPath, bundleZip));
+        True(File.Exists(bundleZip), "Export without optional inputs should still succeed.");
     }
 
     private static void CliBundleExportAndImportEndToEnd()

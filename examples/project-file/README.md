@@ -43,9 +43,9 @@ Every file in [`invalid/`](invalid/) must fail validation against the schema nam
 
 ## Validating
 
-The repository has no JSON Schema validator in its .NET test suite yet, so CI does not run these checks.
-To run them locally with [check-jsonschema](https://github.com/python-jsonschema/check-jsonschema), from
-the repository root:
+CI runs these checks in the `schema-fixtures` job of `.github/workflows/ci.yml`, with
+[check-jsonschema](https://github.com/python-jsonschema/check-jsonschema). To run them locally, from the
+repository root:
 
 ```sh
 E=examples/project-file

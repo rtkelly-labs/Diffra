@@ -5,7 +5,7 @@
 **GitHub**: `rtkelly-labs/Diffra`  
 **Current Branch**: `feature/graph-host`  
 **Base Branch for PR #20**: `feature/cas-bundles`  
-**Primary Language/Runtime**: .NET 10 (`10.0.401` pinned in `global.json`, C# 13)
+**Primary Language/Runtime**: .NET 10 (`10.0.403` pinned in `global.json`, C# 13)
 
 ---
 

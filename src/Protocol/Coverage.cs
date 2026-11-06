@@ -121,7 +121,11 @@ public sealed record CoveragePayload(
         return string.Join(", ", ranges);
     }
 
+    /// <summary>Largest number of lines a single interval segment may expand to.</summary>
+    public const int MaxLineRangeSpan = 1_000_000;
+
     /// <summary>Expands a canonical interval string (e.g. '14-16, 25') back into a set of line numbers.</summary>
+    /// <exception cref="FormatException">A segment starts below line 1, ends before it starts, or spans more than <see cref="MaxLineRangeSpan"/> lines.</exception>
     public static HashSet<int> ParseLineRanges(string intervals)
     {
         var result = new HashSet<int>();
@@ -132,13 +136,33 @@ public sealed record CoveragePayload(
             var parts = segment.Split('-');
             if (parts.Length == 1 && int.TryParse(parts[0], CultureInfo.InvariantCulture, out var single))
             {
+                if (single < 1)
+                {
+                    throw new FormatException($"Invalid line number '{segment}': line numbers start at 1.");
+                }
+
                 result.Add(single);
             }
             else if (parts.Length == 2 &&
                      int.TryParse(parts[0], CultureInfo.InvariantCulture, out var start) &&
                      int.TryParse(parts[1], CultureInfo.InvariantCulture, out var end))
             {
-                for (int n = start; n <= end; n++) result.Add(n);
+                if (start < 1)
+                {
+                    throw new FormatException($"Invalid line range '{segment}': line numbers start at 1.");
+                }
+
+                if (end < start)
+                {
+                    throw new FormatException($"Invalid line range '{segment}': end is before start.");
+                }
+
+                if ((long)end - start + 1 > MaxLineRangeSpan)
+                {
+                    throw new FormatException($"Invalid line range '{segment}': span exceeds {MaxLineRangeSpan} lines.");
+                }
+
+                for (long n = start; n <= end; n++) result.Add((int)n);
             }
         }
         return result;

@@ -8,6 +8,7 @@ public static class CoverageTests
     public static void RunAll()
     {
         FormatsAndParsesCanonicalLineIntervals();
+        RejectsInvalidOrUnboundedLineIntervals();
         SerializesAndDeserializesCoveragePayload();
         DetectsNewlyUncoveredLinesAndDeltas();
         EvaluatesCoveragePoliciesCorrectly();
@@ -27,6 +28,21 @@ public static class CoverageTests
         {
             throw new InvalidOperationException("Parsed intervals missing expected line numbers.");
         }
+    }
+
+    private static void RejectsInvalidOrUnboundedLineIntervals()
+    {
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("1-2147483647"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("5-3"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("0-2"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("0"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges($"1-{CoveragePayload.MaxLineRangeSpan + 1}"));
+
+        var atLimit = CoveragePayload.ParseLineRanges($"1-{CoveragePayload.MaxLineRangeSpan}");
+        Equal(CoveragePayload.MaxLineRangeSpan, atLimit.Count);
+
+        var nearMax = CoveragePayload.ParseLineRanges("2147483645-2147483647");
+        Equal(3, nearMax.Count);
     }
 
     private static void SerializesAndDeserializesCoveragePayload()
@@ -123,6 +139,20 @@ public static class CoverageTests
         var (outcomeDropped, findingsDropped) = CoverageEvaluator.Evaluate(candidateDropped, deltaDropped, policyStrict);
         Equal("fail", outcomeDropped);
         if (findingsDropped.Count == 0) throw new InvalidOperationException("Expected failure findings for dropped coverage.");
+    }
+
+    private static void Throws<TException>(Action action) where TException : Exception
+    {
+        try
+        {
+            action();
+        }
+        catch (TException)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException($"Expected exception {typeof(TException).Name} was not thrown.");
     }
 
     private static void Equal<T>(T expected, T actual)

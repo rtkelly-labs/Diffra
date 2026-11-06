@@ -20,7 +20,6 @@ public static class GraphValidator
         "merge-base",
         "approved-main",
         "previous-release",
-        "trusted",
     };
 
     public static void Validate(GraphDefinition graph)
@@ -52,20 +51,29 @@ public static class GraphValidator
             }
         }
 
-        // 3. Incompatible types between connected nodes
+        // 3. Incompatible types between connected nodes. V1 requires equal type ID and version (ADR 0002).
         foreach (var (id, node) in graph.Nodes)
         {
             if (!string.IsNullOrEmpty(node.InputType))
             {
                 foreach (var dep in node.Dependencies)
                 {
-                    if (graph.Nodes.TryGetValue(dep, out var upstreamNode))
+                    if (!graph.Nodes.TryGetValue(dep, out var upstreamNode))
                     {
-                        if (!string.IsNullOrEmpty(upstreamNode.OutputType) &&
-                            !string.Equals(upstreamNode.OutputType, node.InputType, StringComparison.Ordinal))
-                        {
-                            violations.Add($"Type mismatch: Node '{id}' expects input type '{node.InputType}', but upstream dependency '{dep}' outputs '{upstreamNode.OutputType}'.");
-                        }
+                        continue;
+                    }
+
+                    if (string.IsNullOrEmpty(upstreamNode.OutputType))
+                    {
+                        violations.Add($"Untyped upstream: Node '{id}' expects input type '{node.InputType}' but upstream '{dep}' declares no output type.");
+                    }
+                    else if (!string.Equals(upstreamNode.OutputType, node.InputType, StringComparison.Ordinal))
+                    {
+                        violations.Add($"Type mismatch: Node '{id}' expects input type '{node.InputType}', but upstream dependency '{dep}' outputs '{upstreamNode.OutputType}'.");
+                    }
+                    else if (!string.Equals(upstreamNode.OutputTypeVersion, node.InputTypeVersion, StringComparison.Ordinal))
+                    {
+                        violations.Add($"Type version mismatch: Node '{id}' expects input '{node.InputType}@{node.InputTypeVersion}', but upstream dependency '{dep}' outputs '{upstreamNode.OutputType}@{upstreamNode.OutputTypeVersion}'.");
                     }
                 }
             }
@@ -80,7 +88,9 @@ public static class GraphValidator
                 var c1 = comparators[i];
                 var c2 = comparators[j];
                 if (string.Equals(c1.InputType, c2.InputType, StringComparison.Ordinal) &&
+                    string.Equals(c1.InputTypeVersion, c2.InputTypeVersion, StringComparison.Ordinal) &&
                     string.Equals(c1.OutputType, c2.OutputType, StringComparison.Ordinal) &&
+                    string.Equals(c1.OutputTypeVersion, c2.OutputTypeVersion, StringComparison.Ordinal) &&
                     c1.Dependencies.SequenceEqual(c2.Dependencies, StringComparer.Ordinal))
                 {
                     violations.Add($"Ambiguous comparators detected: '{c1.Id}' and '{c2.Id}' both process input '{c1.InputType}' to produce '{c1.OutputType}' over the same dependencies.");

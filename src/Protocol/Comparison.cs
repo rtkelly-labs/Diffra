@@ -227,6 +227,47 @@ public static class StructuredNumericComparator
             null);
     }
 
+    /// <summary>
+    /// Validates a structured numeric Evidence payload: non-empty string <c>scope</c> and
+    /// <c>methodology</c>, a <c>metrics</c> object of numeric measurements, and no other members.
+    /// </summary>
+    public static bool TryValidatePayload(JsonElement payload, out string? error)
+    {
+        if (payload.ValueKind != JsonValueKind.Object)
+        {
+            error = "Numeric evidence payload must be a JSON object.";
+            return false;
+        }
+
+        foreach (var property in payload.EnumerateObject())
+        {
+            if (property.Name is not ("scope" or "methodology" or "metrics"))
+            {
+                error = $"Numeric evidence payload has unknown property '{property.Name}'.";
+                return false;
+            }
+        }
+
+        if (!HasNonEmptyString(payload, "scope") || !HasNonEmptyString(payload, "methodology"))
+        {
+            error = "Numeric evidence payload requires non-empty string 'scope' and 'methodology'.";
+            return false;
+        }
+
+        if (!payload.TryGetProperty("metrics", out var metrics) || metrics.ValueKind != JsonValueKind.Object)
+        {
+            error = "Numeric evidence payload requires a 'metrics' object.";
+            return false;
+        }
+
+        return TryReadMetrics(metrics, out _, out error);
+    }
+
+    private static bool HasNonEmptyString(JsonElement parent, string property) =>
+        parent.TryGetProperty(property, out var value) &&
+        value.ValueKind == JsonValueKind.String &&
+        !string.IsNullOrWhiteSpace(value.GetString());
+
     private static bool TryReadMetrics(JsonElement payload, out SortedDictionary<string, NumericMetric> metrics, out string? error)
     {
         metrics = new SortedDictionary<string, NumericMetric>(StringComparer.Ordinal);

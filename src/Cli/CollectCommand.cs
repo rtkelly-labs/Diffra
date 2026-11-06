@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Diffra.Cli;
 using Diffra.Protocol;
 
 /// <summary>Creates a deterministic v1 Evidence document from a JSON payload.</summary>
@@ -39,6 +40,7 @@ internal static class CollectCommand
             EnsureOutputIsDistinct(options.PayloadPath, options.OutputPath);
             var payloadBytes = ReadBoundedPayload(options.PayloadPath);
             var canonicalPayload = CanonicalJson.Canonicalize(payloadBytes);
+            ValidateStructuredNumericPayload(canonicalPayload);
             var payloadDigest = EvidenceIdentity.ComputePayloadDigest(canonicalPayload);
             var sdkVersion = ReadSdkVersion();
             var environment = new CollectionEnvironment(
@@ -161,6 +163,19 @@ internal static class CollectCommand
         return bytes;
     }
 
+    /// <summary>
+    /// Collect writes recognized structured numeric Evidence, so the payload must satisfy that
+    /// contract before any document is produced.
+    /// </summary>
+    private static void ValidateStructuredNumericPayload(byte[] canonicalPayload)
+    {
+        using var payload = JsonDocument.Parse(canonicalPayload);
+        if (!StructuredNumericComparator.TryValidatePayload(payload.RootElement, out var error))
+        {
+            throw new JsonException($"Payload is not a structured numeric payload: {error}");
+        }
+    }
+
     private static byte[] BuildEvidence(
         CollectArguments options,
         byte[] canonicalPayload,
@@ -271,10 +286,7 @@ internal static class CollectCommand
 
     private static void EnsureOutputIsDistinct(string payloadPath, string outputPath)
     {
-        var comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
-        if (string.Equals(Path.GetFullPath(payloadPath), Path.GetFullPath(outputPath), comparison))
+        if (PathGuard.SameFile(payloadPath, outputPath))
         {
             throw new ArgumentException("The output path must not overwrite the payload file.");
         }

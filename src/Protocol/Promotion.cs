@@ -118,18 +118,33 @@ public static class PromotionManager
             Timestamp: DateTimeOffset.UtcNow);
     }
 
-    /// <summary>Validates that an approval record remains valid against current evidence and policy identities.</summary>
+    /// <summary>
+    /// Validates that an approval record remains valid against current evidence and policy identities.
+    /// The current evidence must first pass identity verification; an approval never vouches for a
+    /// document whose payload digest or Evidence ID does not match its contents.
+    /// </summary>
     public static (bool IsValid, string? InvalidationReason) ValidateApproval(
         PromotionApprovalRecord approval,
         ReadOnlySpan<byte> currentEvidenceBytes,
         string currentPolicyId,
+        string currentPolicyVersion,
         string currentRulesDigest)
     {
         ArgumentNullException.ThrowIfNull(approval);
 
+        try
+        {
+            EvidenceIdentity.Verify(currentEvidenceBytes);
+        }
+        catch (JsonException ex)
+        {
+            return (false, $"Current evidence failed identity verification: {ex.Message}");
+        }
+
         using var doc = CanonicalJson.Parse(currentEvidenceBytes);
         var currentId = doc.RootElement.GetProperty("id").GetString()!;
         var currentDigest = doc.RootElement.GetProperty("payloadDigest").GetString()!;
+        var currentCommit = doc.RootElement.GetProperty("subject").GetProperty("commit").GetString()!;
 
         if (!string.Equals(approval.EvidenceId, currentId, StringComparison.Ordinal))
         {
@@ -141,10 +156,16 @@ public static class PromotionManager
             return (false, $"Stale approval: approved Payload Digest '{approval.PayloadDigest}' does not match current '{currentDigest}'.");
         }
 
+        if (!string.Equals(approval.HeadCommit, currentCommit, StringComparison.Ordinal))
+        {
+            return (false, $"Stale approval: approved head commit '{approval.HeadCommit}' does not match current evidence commit '{currentCommit}'.");
+        }
+
         if (!string.Equals(approval.PolicyId, currentPolicyId, StringComparison.Ordinal) ||
+            !string.Equals(approval.PolicyVersion, currentPolicyVersion, StringComparison.Ordinal) ||
             !string.Equals(approval.RulesDigest, currentRulesDigest, StringComparison.Ordinal))
         {
-            return (false, "Stale approval: underlying policy rules have changed since approval was granted.");
+            return (false, "Stale approval: underlying policy identity, version, or rules have changed since approval was granted.");
         }
 
         return (true, null);

@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Diffra.Cli;
 using Diffra.Protocol;
 
 internal static class DiffEvalCommands
@@ -239,6 +240,21 @@ internal static class DiffEvalCommands
     private static NumericEvidence ToNumericEvidence(JsonElement evidence)
     {
         var payload = Required(evidence, "payload");
+        var typeResolution = RequireString(evidence, "typeResolution");
+        if (typeResolution == "opaque")
+        {
+            // Opaque Evidence has no registered decoder, so its payload shape is not interpreted;
+            // the comparator reports it as unsupported rather than rejecting it as invalid input.
+            return new NumericEvidence(
+                RequireString(evidence, "id"),
+                RequireString(evidence, "typeId"),
+                RequireString(evidence, "typeVersion"),
+                string.Empty,
+                string.Empty,
+                payload.Clone(),
+                typeResolution);
+        }
+
         RequireObject(payload, "Numeric evidence payload");
         RequireOnlyProperties(payload, "scope", "methodology", "metrics");
         var scope = RequireString(payload, "scope");
@@ -252,7 +268,7 @@ internal static class DiffEvalCommands
             scope,
             methodology,
             metrics.Clone(),
-            RequireString(evidence, "typeResolution"));
+            typeResolution);
     }
 
     private static NumericPolicy ReadPolicy(byte[] bytes)
@@ -435,9 +451,7 @@ internal static class DiffEvalCommands
 
     private static void EnsureOutputIsDistinct(string outputPath, IEnumerable<string> inputPaths)
     {
-        var fullOutput = Path.GetFullPath(outputPath);
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        if (inputPaths.Any(input => string.Equals(fullOutput, Path.GetFullPath(input), comparison)))
+        if (inputPaths.Any(input => PathGuard.SameFile(outputPath, input)))
         {
             throw new ArgumentException("Output path must not overwrite an input document.");
         }

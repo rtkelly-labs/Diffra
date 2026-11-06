@@ -1,7 +1,9 @@
 # CLI reference
 
 The `diffra` CLI has six commands. Each reads files, validates them, and writes one output
-atomically; no command overwrites one of its own inputs. This page describes the commands and the
+atomically. `collect`, `diff`, `eval` and `report` refuse an output path that names one of their
+inputs. `bundle export` replaces its output file, and `present bundle` replaces its output
+directory, so keep those outputs apart from their inputs. This page describes the commands and the
 two hand-written input files, the metrics payload and the rules file. The document shapes the
 commands write are in the [protocol](protocol.md).
 
@@ -151,8 +153,14 @@ diffra bundle export --manifest <file> -o <bundle.zip> [--store <cas-dir>] [--ar
 diffra bundle import --bundle <bundle.zip> --store <cas-dir>
 ```
 
-Import verifies every digest before writing into the store and rejects entries that would escape
-the target directory. The manifest and directory layout are described in
+`export` writes the archive to a temporary file and then replaces the `-o` file if one exists; it
+does not check whether that path is one of its inputs.
+
+Import checks each artifact's bytes against the digest the manifest declares for it, or against its
+content address, checks that every artifact the manifest declares is present, and rejects entries
+that would escape the target directory. It stores the manifest and the Delta, Assessment and
+Baseline reference documents as given, without verifying their embedded IDs; `diff` and `report`
+verify document identity when they read them. The manifest and directory layout are described in
 [artifact delivery and CI](artifact-delivery-and-ci.md).
 
 ## `present`
@@ -164,6 +172,10 @@ diffra present bundle --delta <delta.json> -o <output-dir> [--assessment <file>]
   [--manifest <file>] [--artifacts-dir <dir>] [--store <cas-path>]
 diffra present serve <bundle-directory> [--port <port>]
 ```
+
+`present bundle` builds the bundle in a temporary directory and then swaps it in at `-o`. The output
+directory must be empty, absent, or a previous presentation output (one containing `inventory.json`
+and `index.html`); a previous output is replaced, so do not keep inputs inside it.
 
 `serve` listens on `127.0.0.1` only (port 5055 by default), rejects requests for any other host,
 and sends a strict Content-Security-Policy.

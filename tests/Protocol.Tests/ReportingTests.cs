@@ -100,7 +100,7 @@ public static class ReportingTests
         var markdown = ReportRenderer.Render(delta, assessment, ReportFormat.Markdown);
         Contains(markdown, "## Changes");
         Contains(markdown, "## Policy assessment");
-        Contains(markdown, "version `2.1.0`");
+        Contains(markdown, "version `2\\.1\\.0`");
         Contains(markdown, "unit\\|&lt;unsafe&gt;&amp;");
     }
 
@@ -136,6 +136,15 @@ public static class ReportingTests
         Contains(markdown, "&lt;script&gt;");
         Contains(markdown, "&lt;b&gt;growth&lt;/b&gt;");
         Contains(markdown, "&amp;");
+
+        var hostilePolicy = ValidAssessmentJson()
+            .Replace("\"id\":\"org.example.policy\"", "\"id\":\"x`<img src=x onerror=alert(1)>\"", StringComparison.Ordinal)
+            .Replace("\"version\":\"2.1.0\"", "\"version\":\"`<b>v</b>\"", StringComparison.Ordinal);
+        hostilePolicy = SetId(hostilePolicy, "assessment");
+        var policyMarkdown = ReportRenderer.Render(Bytes(ValidDeltaJson()), Bytes(hostilePolicy), ReportFormat.Markdown);
+        DoesNotContain(policyMarkdown, "<img");
+        DoesNotContain(policyMarkdown, "<b>v</b>");
+        Contains(policyMarkdown, "&#96;&lt;img src=x onerror=alert\\(1\\)&gt;");
     }
 
     private static void AssessmentProvenanceAndOutcomeAreValidated()
@@ -155,6 +164,16 @@ public static class ReportingTests
             .Replace("\"outcome\":\"warn\"", "\"outcome\":\"pass\"", StringComparison.Ordinal);
         passingAssessment = SetId(passingAssessment, "assessment");
         Throws<JsonException>(() => ReportRenderer.Render(Bytes(nonComparable), Bytes(passingAssessment), ReportFormat.Html));
+
+        var numericChangePath = ValidAssessmentJson().Replace(
+            "\"changePaths\":[\"/metrics/<script>alert(1)</script>\"]",
+            "\"changePaths\":[1]",
+            StringComparison.Ordinal);
+        numericChangePath = SetId(numericChangePath, "assessment");
+        foreach (var format in Enum.GetValues<ReportFormat>())
+        {
+            Throws<JsonException>(() => ReportRenderer.Render(Bytes(ValidDeltaJson()), Bytes(numericChangePath), format));
+        }
     }
 
     private static void BaselineReferenceIsVerifiedAndRendered()
@@ -170,6 +189,19 @@ public static class ReportingTests
         Contains(html, "merge-base");
         Contains(html, "Baseline resolved commit");
         Throws<JsonException>(() => ReportRenderer.Render(Bytes(ValidDeltaJson()), null, Bytes(baseline), ReportFormat.Html));
+
+        var otherEvidence = ReplaceId(
+            BaselineReferenceJson.Replace(
+                "\"evidenceId\":\"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"",
+                "\"evidenceId\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\"",
+                StringComparison.Ordinal),
+            "baseline-reference",
+            "sha256:9999999999999999999999999999999999999999999999999999999999999999");
+        var deltaForOtherEvidence = SetId(ValidDeltaJson().Replace(
+            "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            JsonDocument.Parse(otherEvidence).RootElement.GetProperty("id").GetString(),
+            StringComparison.Ordinal), "delta");
+        Throws<JsonException>(() => ReportRenderer.Render(Bytes(deltaForOtherEvidence), null, Bytes(otherEvidence), ReportFormat.Html));
     }
 
     private static string ValidDeltaJson() => ReplaceId(

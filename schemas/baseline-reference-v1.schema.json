@@ -4,7 +4,7 @@
   "title": "Diffra Baseline Reference v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "id", "role", "status", "evidenceId", "subjectCommit", "manifestDigest", "resolver", "sourceStore"],
+  "required": ["schema", "id", "role", "status", "resolver", "sourceStore"],
   "properties": {
     "schema": { "const": "https://diffra.dev/schemas/baseline-reference-v1.schema.json" },
     "id": { "$ref": "#/$defs/digest" },
@@ -15,7 +15,7 @@
     "manifestDigest": { "$ref": "#/$defs/digest" },
     "resolver": {
       "type": "object", "additionalProperties": false,
-      "required": ["id", "version", "resolvedCommit"],
+      "required": ["id", "version"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "version": { "type": "string", "minLength": 1 },
@@ -38,6 +38,13 @@
     {
       "if": { "properties": { "status": { "const": "trusted" } }, "required": ["status"] },
       "then": { "required": ["trust"] }
+    },
+    {
+      "if": { "properties": { "status": { "const": "missing" } }, "required": ["status"] },
+      "else": {
+        "required": ["evidenceId", "subjectCommit", "manifestDigest"],
+        "properties": { "resolver": { "required": ["resolvedCommit"] } }
+      }
     }
   ],
   "$defs": { "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" } }

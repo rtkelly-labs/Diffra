@@ -131,16 +131,30 @@ public static class EvidenceBundle
 
     /// <summary>
     /// Imports a portable bundle into a destination ContentAddressedStore after verifying every entry's digest and safety.
+    /// Every entry is verified before anything is written, so a rejected bundle leaves the store unchanged.
+    /// Malformed bundles are reported as <see cref="InvalidOperationException"/> or <see cref="JsonException"/>.
     /// </summary>
     public static ImportResult Import(string bundlePath, ContentAddressedStore store)
     {
+        ArgumentNullException.ThrowIfNull(store);
         if (!File.Exists(bundlePath))
         {
             throw new FileNotFoundException($"Bundle file not found: {bundlePath}", bundlePath);
         }
 
-        using var archive = ZipFile.OpenRead(bundlePath);
+        try
+        {
+            using var archive = ZipFile.OpenRead(bundlePath);
+            return ImportArchive(bundlePath, archive, store);
+        }
+        catch (InvalidDataException exception)
+        {
+            throw new InvalidOperationException($"Bundle is not a readable zip archive: {exception.Message}", exception);
+        }
+    }
 
+    private static ImportResult ImportArchive(string bundlePath, ZipArchive archive, ContentAddressedStore store)
+    {
         // Security check: validate all entry names first (Zip Slip prevention)
         foreach (var entry in archive.Entries)
         {
@@ -154,38 +168,43 @@ public static class EvidenceBundle
         var manifestEntry = archive.GetEntry("manifest.json") ?? archive.GetEntry("documents/manifest.json")
             ?? throw new InvalidOperationException("Bundle is missing required manifest.json.");
 
-        byte[] manifestBytes;
-        using (var stream = manifestEntry.Open())
-        using (var ms = new MemoryStream())
-        {
-            stream.CopyTo(ms);
-            manifestBytes = ms.ToArray();
-        }
-
+        var manifestBytes = ReadEntry(manifestEntry);
         using var manifestDoc = JsonDocument.Parse(manifestBytes);
         var root = manifestDoc.RootElement;
-        var manifestId = root.GetProperty("id").GetString()!;
-        var artifactsProp = root.GetProperty("artifacts");
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            throw new InvalidOperationException("Bundle manifest must be a JSON object.");
+        }
+
+        var manifestId = RequiredString(root, "id", "manifest");
+        if (!root.TryGetProperty("artifacts", out var artifactsProp) || artifactsProp.ValueKind != JsonValueKind.Array)
+        {
+            throw new InvalidOperationException("Bundle manifest must declare an 'artifacts' array.");
+        }
 
         // Map declared digests
         var declaredArtifacts = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var art in artifactsProp.EnumerateArray())
         {
-            var relPath = NormalizeEntryPath(art.GetProperty("path").GetString()!);
-            var digest = art.GetProperty("digest").GetString()!;
+            if (art.ValueKind != JsonValueKind.Object)
+            {
+                throw new InvalidOperationException("Bundle manifest artifacts must be JSON objects.");
+            }
+
+            var relPath = NormalizeEntryPath(RequiredString(art, "path", "manifest artifact"));
+            var digest = RequiredString(art, "digest", "manifest artifact");
+            if (!ContentAddressedStore.IsValidDigest(digest))
+            {
+                throw new InvalidOperationException($"Manifest artifact '{relPath}' has an invalid digest '{digest}'.");
+            }
+
             declaredArtifacts[relPath] = digest;
             declaredArtifacts[digest["sha256:".Length..]] = digest;
         }
 
-        var importedDigests = new List<string>();
-        int docCount = 0;
-        int artifactCount = 0;
-
-        // Ingest documents
-        var manifestDigest = store.Put(manifestBytes);
-        importedDigests.Add(manifestDigest);
-        docCount++;
-
+        // Pass 1: decide what to import, read every entry and verify every digest without touching the store.
+        // Reading here as well means a corrupt entry is rejected before anything is written.
+        var plan = new List<(ZipArchiveEntry Entry, string? ExpectedDigest, bool IsDocument)>();
         foreach (var entry in archive.Entries)
         {
             if (entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\'))
@@ -195,64 +214,76 @@ public static class EvidenceBundle
 
             if (entry.FullName.StartsWith("documents/", StringComparison.Ordinal) && !entry.FullName.Equals("documents/manifest.json", StringComparison.Ordinal))
             {
-                byte[] docBytes;
-                using (var s = entry.Open())
-                using (var ms = new MemoryStream())
-                {
-                    s.CopyTo(ms);
-                    docBytes = ms.ToArray();
-                }
-                var d = store.Put(docBytes);
-                importedDigests.Add(d);
-                docCount++;
+                plan.Add((entry, null, true));
             }
             else if (entry.FullName.StartsWith("assets/sha256/", StringComparison.Ordinal))
             {
-                var hex = entry.FullName["assets/sha256/".Length..];
-                var expectedDigest = "sha256:" + hex;
-                byte[] artBytes;
-                using (var s = entry.Open())
-                using (var ms = new MemoryStream())
+                var expectedDigest = "sha256:" + entry.FullName["assets/sha256/".Length..];
+                if (!ContentAddressedStore.IsValidDigest(expectedDigest))
                 {
-                    s.CopyTo(ms);
-                    artBytes = ms.ToArray();
+                    throw new InvalidOperationException($"Bundle asset entry '{entry.FullName}' is not named by a SHA-256 digest.");
                 }
 
-                var d = store.Put(artBytes, expectedDigest);
-                importedDigests.Add(d);
-                artifactCount++;
+                plan.Add((entry, expectedDigest, false));
             }
-            else if (entry.FullName.StartsWith("artifacts/", StringComparison.Ordinal))
+            else if (entry.FullName.StartsWith("artifacts/", StringComparison.Ordinal) &&
+                     declaredArtifacts.TryGetValue(entry.FullName["artifacts/".Length..], out var declaredDigest))
             {
-                var relPath = entry.FullName["artifacts/".Length..];
-                if (declaredArtifacts.TryGetValue(relPath, out var expectedDigest))
-                {
-                    byte[] artBytes;
-                    using (var s = entry.Open())
-                    using (var ms = new MemoryStream())
-                    {
-                        s.CopyTo(ms);
-                        artBytes = ms.ToArray();
-                    }
-                    var d = store.Put(artBytes, expectedDigest);
-                    importedDigests.Add(d);
-                    artifactCount++;
-                }
+                plan.Add((entry, declaredDigest, false));
             }
         }
 
-        // Declared artifacts the bundle omits must already be in the store and still match their digest;
-        // objects written by this import were verified by Put and are not hashed again.
-        var verifiedDigests = new HashSet<string>(importedDigests, StringComparer.Ordinal);
+        var staged = new List<(byte[] Bytes, string? ExpectedDigest, bool IsDocument)>(plan.Count);
+        foreach (var (entry, expectedDigest, isDocument) in plan)
+        {
+            var bytes = ReadEntry(entry);
+            staged.Add((bytes, expectedDigest, isDocument));
+            if (expectedDigest is null)
+            {
+                continue;
+            }
+
+            var actualDigest = ContentAddressedStore.ComputeDigest(bytes);
+            if (!string.Equals(actualDigest, expectedDigest, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException($"Payload digest mismatch for bundle entry '{entry.FullName}'. Expected '{expectedDigest}' but computed '{actualDigest}'.");
+            }
+        }
+
+        // Declared artifacts the bundle omits must already be in the store and still match their digest.
+        // This is checked before writing, so an incomplete bundle imports nothing.
+        var bundledDigests = new HashSet<string>(StringComparer.Ordinal) { ContentAddressedStore.ComputeDigest(manifestBytes) };
+        foreach (var (bytes, expectedDigest, _) in staged)
+        {
+            bundledDigests.Add(expectedDigest ?? ContentAddressedStore.ComputeDigest(bytes));
+        }
+
         var missingDigests = declaredArtifacts.Values
             .Distinct(StringComparer.Ordinal)
-            .Where(digest => !verifiedDigests.Contains(digest) && !store.ContainsVerified(digest))
+            .Where(digest => !bundledDigests.Contains(digest) && !store.ContainsVerified(digest))
             .OrderBy(digest => digest, StringComparer.Ordinal)
             .ToList();
         if (missingDigests.Count > 0)
         {
             throw new InvalidOperationException(
-                $"Bundle '{bundlePath}' is incomplete: declared artifact digest(s) not present or failing verification after import: {string.Join(", ", missingDigests)}.");
+                $"Bundle '{bundlePath}' is incomplete: declared artifact digest(s) neither in the bundle nor verified in the store: {string.Join(", ", missingDigests)}.");
+        }
+
+        // Pass 2: everything verified; write to the store.
+        var importedDigests = new List<string> { store.Put(manifestBytes) };
+        var docCount = 1;
+        var artifactCount = 0;
+        foreach (var (bytes, expectedDigest, isDocument) in staged)
+        {
+            importedDigests.Add(store.Put(bytes, expectedDigest));
+            if (isDocument)
+            {
+                docCount++;
+            }
+            else
+            {
+                artifactCount++;
+            }
         }
 
         return new ImportResult(manifestId, docCount, artifactCount, importedDigests);
@@ -264,6 +295,24 @@ public static class EvidenceBundle
         {
             throw new FileNotFoundException($"Supplied input file not found: {path}", path);
         }
+    }
+
+    private static byte[] ReadEntry(ZipArchiveEntry entry)
+    {
+        using var stream = entry.Open();
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+        return buffer.ToArray();
+    }
+
+    private static string RequiredString(JsonElement element, string name, string context)
+    {
+        if (!element.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.String || string.IsNullOrEmpty(value.GetString()))
+        {
+            throw new InvalidOperationException($"Bundle {context} is missing required string property '{name}'.");
+        }
+
+        return value.GetString()!;
     }
 
     private static void WriteZipEntry(ZipArchive archive, string entryName, byte[] bytes)

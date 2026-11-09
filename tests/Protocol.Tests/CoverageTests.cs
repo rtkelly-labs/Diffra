@@ -33,18 +33,18 @@ public static class CoverageTests
 
     private static void RejectsInvalidOrUnboundedLineIntervals()
     {
-        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("1-2147483647"));
-        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("5-3"));
-        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("0-2"));
-        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("0"));
-        Throws<FormatException>(() => CoveragePayload.ParseLineRanges($"1-{CoveragePayload.MaxLineRangeSpan + 1}"));
-        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("-1"));
-        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("-1-3"));
-        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("1-"));
-        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("1--3"));
-        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("+5"));
-        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("abc"));
-        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("10, -1, 25"));
+        Throws<InvalidOperationException>(() => CoveragePayload.ParseLineRanges("1-2147483647"));
+        Throws<InvalidOperationException>(() => CoveragePayload.ParseLineRanges("5-3"));
+        Throws<InvalidOperationException>(() => CoveragePayload.ParseLineRanges("0-2"));
+        Throws<InvalidOperationException>(() => CoveragePayload.ParseLineRanges("0"));
+        Throws<InvalidOperationException>(() => CoveragePayload.ParseLineRanges($"1-{CoveragePayload.MaxLineRangeSpan + 1}"));
+        Throws<InvalidOperationException>(() => CoveragePayload.ParseLineRanges("-1"));
+        Throws<InvalidOperationException>(() => CoveragePayload.ParseLineRanges("-1-3"));
+        Throws<InvalidOperationException>(() => CoveragePayload.ParseLineRanges("1-"));
+        Throws<InvalidOperationException>(() => CoveragePayload.ParseLineRanges("1--3"));
+        Throws<InvalidOperationException>(() => CoveragePayload.ParseLineRanges("+5"));
+        Throws<InvalidOperationException>(() => CoveragePayload.ParseLineRanges("abc"));
+        Throws<InvalidOperationException>(() => CoveragePayload.ParseLineRanges("10, -1, 25"));
 
         var atLimit = CoveragePayload.ParseLineRanges($"1-{CoveragePayload.MaxLineRangeSpan}");
         Equal(CoveragePayload.MaxLineRangeSpan, atLimit.Count);
@@ -137,8 +137,8 @@ public static class CoverageTests
             [file]);
 
         // Malformed ranges in either the candidate or the baseline surface instead of being dropped.
-        Throws<FormatException>(() => CoverageEvaluator.Compare(Payload(wellFormed), Payload(malformed)));
-        Throws<FormatException>(() => CoverageEvaluator.Compare(Payload(malformed), Payload(wellFormed)));
+        Throws<InvalidOperationException>(() => CoverageEvaluator.Compare(Payload(wellFormed), Payload(malformed)));
+        Throws<InvalidOperationException>(() => CoverageEvaluator.Compare(Payload(malformed), Payload(wellFormed)));
     }
 
     private static void EvaluatesCoveragePoliciesCorrectly()

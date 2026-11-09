@@ -79,6 +79,19 @@ public sealed record TimeSeriesProjection(
 
     public static TimeSeriesProjection FromJsonElement(JsonElement root)
     {
+        // Missing or mistyped properties are malformed input, so surface them as JsonException.
+        try
+        {
+            return FromJsonElementCore(root);
+        }
+        catch (Exception exception) when (exception is KeyNotFoundException or FormatException)
+        {
+            throw new JsonException($"Malformed TimeSeriesProjection: {exception.Message}", exception);
+        }
+    }
+
+    private static TimeSeriesProjection FromJsonElementCore(JsonElement root)
+    {
         var metricId = root.GetProperty("metricId").GetString()!;
         var subjectId = root.GetProperty("subjectId").GetString()!;
         var unit = root.GetProperty("unit").GetString()!;

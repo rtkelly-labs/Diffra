@@ -3,8 +3,18 @@
     <OutputType>Exe</OutputType>
     <AssemblyName>Diffra.Cli</AssemblyName>
     <RootNamespace>Diffra.Cli</RootNamespace>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>diffra</ToolCommandName>
+    <PackageId>Diffra.Cli</PackageId>
+    <Version>0.1.0-preview.1</Version>
+    <Authors>Ryan Kelly</Authors>
+    <Description>Typed evidence, trusted baselines, and reviewable change CLI.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="\" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="../Protocol/Diffra.Protocol.csproj" />
   </ItemGroup>
 </Project>

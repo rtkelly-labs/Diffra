@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diffra.dev/schemas/delivery-index-v1.schema.json",
+  "title": "Diffra Delivery Index v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "repository", "releaseTag", "commit", "assets"],
+  "properties": {
+    "schema": { "const": "https://diffra.dev/schemas/delivery-index-v1.schema.json" },
+    "id": { "$ref": "#/$defs/digest" },
+    "repository": { "type": "string", "minLength": 1 },
+    "releaseTag": { "type": "string", "minLength": 1 },
+    "commit": { "type": "string", "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$" },
+    "assets": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/deliveryAsset" }
+    }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "deliveryAsset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "digest", "mediaType", "sizeBytes"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "digest": { "$ref": "#/$defs/digest" },
+        "mediaType": { "type": "string", "pattern": "^[^/\\s]+/[^\\s]+$" },
+        "sizeBytes": { "type": "integer", "minimum": 0 },
+        "path": { "type": "string", "minLength": 1 },
+        "sourceUrl": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

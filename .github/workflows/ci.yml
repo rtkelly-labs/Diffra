@@ -20,6 +20,29 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      - name: Enforce No Python Scripts Policy
+        run: |
+          echo "Scanning repository for unauthorized Python (.py) files..."
+          forbidden_py=$(git ls-files '*.py' | grep -v '^examples/sample-project/' || true)
+          if [ -n "$forbidden_py" ]; then
+            echo "::error::Unauthorized Python (.py) files found in repository:"
+            echo "$forbidden_py"
+            echo "All tooling, dogfooding, and automation must be authored in C# (.cs) executed via dotnet run."
+            exit 1
+          fi
+          echo "Policy verified: No unauthorized Python files found."
+
+      - name: Enforce Zero Aspire Dependencies Policy
+        run: |
+          echo "Verifying zero runtime or compile-time Aspire framework dependencies..."
+          aspire_refs=$(git grep -i "Aspire" -- "*.csproj" || true)
+          if [ -n "$aspire_refs" ]; then
+            echo "::error::Forbidden Aspire dependencies detected in project files:"
+            echo "$aspire_refs"
+            exit 1
+          fi
+          echo "Policy verified: Zero Aspire dependencies found."
+
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
@@ -28,5 +51,28 @@ jobs:
       - name: Build solution
         run: dotnet build Diffra.slnx --configuration Release
 
-      - name: Run protocol checks
+      - name: Run protocol and integration test suite
         run: dotnet run --project tests/Protocol.Tests/Protocol.Tests.csproj --configuration Release --no-build
+
+      - name: Audit package vulnerabilities
+        run: dotnet list package --vulnerable --include-transitive
+
+      - name: Dogfood Diffra (Self-Evaluation against Baseline Budget)
+        run: dotnet run scripts/RunDogfood.cs
+
+      - name: Upload Dogfood Review Bundle Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: diffra-dogfood-bundle
+          path: dogfood-run/review-bundle
+          if-no-files-found: error
+
+      - name: Pack Pre-Release Diffra CLI Tool
+        run: dotnet pack src/Cli/Diffra.Cli.csproj --configuration Release -o artifacts/package
+
+      - name: Upload Pre-Release Tool Package Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: diffra-cli-tool
+          path: artifacts/package/*.nupkg
+          if-no-files-found: error

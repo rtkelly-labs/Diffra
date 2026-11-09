@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -130,18 +131,108 @@ public static class KeyedCollectionComparator
             return;
         }
 
-        // Case 6: Primitive values
-        var bRaw = bElem.GetRawText();
-        var cRaw = cElem.GetRawText();
-        if (!string.Equals(bRaw, cRaw, StringComparison.Ordinal))
+        // Case 6: Primitive values, compared by decoded value so formatting-only differences are unchanged
+        if (!PrimitiveValuesEqual(bElem, cElem))
         {
             changes.Add(new StructuralChange(
                 Path: string.IsNullOrEmpty(path) ? "/" : path,
                 Kind: "modified",
-                Before: JsonNode.Parse(bRaw),
-                After: JsonNode.Parse(cRaw)));
+                Before: JsonNode.Parse(bElem.GetRawText()),
+                After: JsonNode.Parse(cElem.GetRawText())));
         }
     }
+
+    /// <summary>Compares two primitive elements of the same kind by decoded value.</summary>
+    private static bool PrimitiveValuesEqual(JsonElement baseline, JsonElement candidate)
+    {
+        switch (baseline.ValueKind)
+        {
+            case JsonValueKind.String:
+                return string.Equals(baseline.GetString(), candidate.GetString(), StringComparison.Ordinal);
+            case JsonValueKind.Number:
+                return NumbersEqual(baseline.GetRawText(), candidate.GetRawText());
+            default:
+                // True, False and Null carry no value beyond their kind, which already matches.
+                return true;
+        }
+    }
+
+    /// <summary>
+    /// Compares two JSON number tokens for exact numeric equality, without the rounding of a binary or decimal conversion.
+    /// </summary>
+    private static bool NumbersEqual(string baselineToken, string candidateToken)
+    {
+        if (TryNormalizeNumber(baselineToken, out var baselineNumber) &&
+            TryNormalizeNumber(candidateToken, out var candidateNumber))
+        {
+            return baselineNumber.Equals(candidateNumber);
+        }
+
+        // An exponent too large to normalize: fall back to comparing the literal tokens.
+        return string.Equals(baselineToken, candidateToken, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Normalizes a JSON number token to (sign, significant digits, decimal exponent), so that two tokens are
+    /// numerically equal exactly when their normalized forms are equal. Zero has a single form regardless of sign
+    /// or exponent.
+    /// </summary>
+    private static bool TryNormalizeNumber(string token, out NormalizedNumber number)
+    {
+        number = default;
+        var text = token.AsSpan();
+
+        var negative = text.Length > 0 && text[0] == '-';
+        if (negative)
+        {
+            text = text[1..];
+        }
+
+        long exponent = 0;
+        var exponentIndex = text.IndexOfAny('e', 'E');
+        if (exponentIndex >= 0)
+        {
+            if (!long.TryParse(text[(exponentIndex + 1)..], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out exponent))
+            {
+                return false;
+            }
+
+            // Keep headroom so shifting by the digit count below cannot overflow.
+            if (exponent is > long.MaxValue / 2 or < long.MinValue / 2)
+            {
+                return false;
+            }
+
+            text = text[..exponentIndex];
+        }
+
+        string digits;
+        var pointIndex = text.IndexOf('.');
+        if (pointIndex >= 0)
+        {
+            var fraction = text[(pointIndex + 1)..];
+            digits = string.Concat(text[..pointIndex], fraction);
+            exponent -= fraction.Length;
+        }
+        else
+        {
+            digits = text.ToString();
+        }
+
+        digits = digits.TrimStart('0');
+        if (digits.Length == 0)
+        {
+            number = new NormalizedNumber(Negative: false, Digits: "0", Exponent: 0);
+            return true;
+        }
+
+        var trimmed = digits.TrimEnd('0');
+        exponent += digits.Length - trimmed.Length;
+        number = new NormalizedNumber(negative, trimmed, exponent);
+        return true;
+    }
+
+    private readonly record struct NormalizedNumber(bool Negative, string Digits, long Exponent);
 
     private static void CompareKeyedArrays(
         JsonElement baseline,

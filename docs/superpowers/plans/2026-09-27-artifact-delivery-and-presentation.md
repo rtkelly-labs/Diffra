@@ -37,8 +37,8 @@
 
 - [x] Implement bundle layout generator creating `review-bundle/` (`index.html`, `diffra-delivery-index.json`, `inventory.json`, `documents/`, `assets/sha256/<digest>`).
 - [x] Rewrite HTML report asset references to use safe relative local paths (`assets/sha256/...`).
-- [x] Ensure atomic bundle creation: stage in temporary directory, verify all digests, and atomically move.
-- [x] Add tests verifying malformed assets, digest mismatches, and path traversal are rejected.
+- [ ] Ensure atomic bundle creation: stage in temporary directory, verify all digests, and atomically move. (Partial: staged and verified, but replacing an existing output is not a single atomic step.)
+- [ ] Add tests verifying malformed assets, digest mismatches, and path traversal are rejected. (Follow-up: no such tests for materialization yet.)
 
 ### Task 3: Local Presentation Server (`diffra present serve`)
 
@@ -47,12 +47,12 @@
 - [x] Implement `diffra present serve <path>` using ASP.NET Core loopback web host (`127.0.0.1`).
 - [x] Restrict serving exclusively to the prepared directory using a PhysicalFileProvider.
 - [x] Add middleware enforcing CSP (`default-src 'self'`), disabling directory browsing, and rejecting unexpected Host headers.
-- [x] Add integration test verifying the server returns `index.html` with CSP headers and serves assets by SHA-256 path without external network access.
+- [ ] Add integration test verifying the server returns `index.html` with CSP headers and serves assets by SHA-256 path without external network access. (Partial: the test covers `index.html`, CSP and Host rejection, not asset paths.)
 
 ### Task 4: Content-Addressed Store & Bundle Export/Import
 
 **Files:** `src/Protocol/ContentAddressedStore.cs`, `src/Cli/BundleCommands.cs`, `tests/Protocol.Tests/CasAndBundleTests.cs`.
 
 - [x] Implement local immutable CAS with atomic writes and SHA-256 verification.
-- [x] Implement `diffra bundle export` (producing a self-contained `.diffra.tar.gz` or `.zip`) and `diffra bundle import`.
-- [x] Test round-trip export and import reproducing identical document identities.
+- [ ] Implement `diffra bundle export` (producing a self-contained `.diffra.tar.gz` or `.zip`) and `diffra bundle import`. (Partial: `.zip` only; `.tar.gz` is a follow-up.)
+- [ ] Test round-trip export and import reproducing identical document identities. (Partial: the test compares the manifest ID and artifact bytes, not every document identity.)

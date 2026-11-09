@@ -120,8 +120,12 @@ static void RunProcess(string filename, params string[] args)
     };
     foreach (var arg in args) start.ArgumentList.Add(arg);
     using var proc = Process.Start(start)!;
-    var err = proc.StandardError.ReadToEnd();
+    // Drain both pipes concurrently so a child filling either buffer cannot deadlock.
+    var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+    var stderrTask = proc.StandardError.ReadToEndAsync();
     proc.WaitForExit();
+    _ = stdoutTask.GetAwaiter().GetResult();
+    var err = stderrTask.GetAwaiter().GetResult();
     if (proc.ExitCode != 0)
     {
         throw new InvalidOperationException($"Command failed ({proc.ExitCode}): {err}");

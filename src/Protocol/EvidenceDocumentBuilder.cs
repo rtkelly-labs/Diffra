@@ -8,7 +8,14 @@ public static class EvidenceDocumentBuilder
 {
     public const string EvidenceSchema = "https://diffra.dev/schemas/evidence-v1.schema.json";
     public const string EmptyConfigDigest = "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a";
+    public const string RecognizedTypeResolution = "recognized";
+    public const string OpaqueTypeResolution = "opaque";
 
+    /// <summary>
+    /// Builds a verified Evidence document. Pass <c>recognized</c> type resolution only when the payload
+    /// was validated against the declared type version, otherwise <c>opaque</c>; the config digest
+    /// identifies the exact effective producer configuration.
+    /// </summary>
     public static (string Id, string PayloadDigest, byte[] Bytes) Build(
         string typeId,
         string typeVersion,
@@ -18,7 +25,9 @@ public static class EvidenceDocumentBuilder
         string producerVersion,
         byte[] canonicalPayloadBytes,
         string platform,
-        string runtime)
+        string runtime,
+        string typeResolution = RecognizedTypeResolution,
+        string configDigest = EmptyConfigDigest)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(typeId);
         ArgumentException.ThrowIfNullOrWhiteSpace(typeVersion);
@@ -27,18 +36,23 @@ public static class EvidenceDocumentBuilder
         ArgumentException.ThrowIfNullOrWhiteSpace(producerId);
         ArgumentException.ThrowIfNullOrWhiteSpace(producerVersion);
         ArgumentNullException.ThrowIfNull(canonicalPayloadBytes);
+        ArgumentException.ThrowIfNullOrWhiteSpace(configDigest);
+        if (typeResolution is not (RecognizedTypeResolution or OpaqueTypeResolution))
+        {
+            throw new ArgumentException($"Type resolution must be '{RecognizedTypeResolution}' or '{OpaqueTypeResolution}'.", nameof(typeResolution));
+        }
 
         var payloadDigest = EvidenceIdentity.ComputePayloadDigest(canonicalPayloadBytes);
 
         var unsignedBytes = BuildJson(
             typeId, typeVersion, subjectId, commit, producerId, producerVersion,
-            canonicalPayloadBytes, payloadDigest, platform, runtime, id: null);
+            canonicalPayloadBytes, payloadDigest, platform, runtime, typeResolution, configDigest, id: null);
 
         var id = EvidenceIdentity.ComputeId(unsignedBytes);
 
         var signedBytes = BuildJson(
             typeId, typeVersion, subjectId, commit, producerId, producerVersion,
-            canonicalPayloadBytes, payloadDigest, platform, runtime, id);
+            canonicalPayloadBytes, payloadDigest, platform, runtime, typeResolution, configDigest, id);
 
         EvidenceIdentity.Verify(signedBytes);
 
@@ -56,6 +70,8 @@ public static class EvidenceDocumentBuilder
         string payloadDigest,
         string platform,
         string runtime,
+        string typeResolution,
+        string configDigest,
         string? id)
     {
         var output = new ArrayBufferWriter<byte>();
@@ -71,7 +87,7 @@ public static class EvidenceDocumentBuilder
             writer.WriteString("status", "produced");
             writer.WriteString("typeId", typeId);
             writer.WriteString("typeVersion", typeVersion);
-            writer.WriteString("typeResolution", "recognized");
+            writer.WriteString("typeResolution", typeResolution);
 
             writer.WriteStartObject("subject");
             writer.WriteString("kind", "git-repository");
@@ -82,7 +98,7 @@ public static class EvidenceDocumentBuilder
             writer.WriteStartObject("producer");
             writer.WriteString("id", producerId);
             writer.WriteString("version", producerVersion);
-            writer.WriteString("configDigest", EmptyConfigDigest);
+            writer.WriteString("configDigest", configDigest);
             writer.WriteEndObject();
 
             writer.WriteStartObject("environment");

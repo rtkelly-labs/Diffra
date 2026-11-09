@@ -118,9 +118,12 @@ static int RunProcessAllowExitCode(string filename, params string[] args)
     };
     foreach (var arg in args) start.ArgumentList.Add(arg);
     using var proc = Process.Start(start)!;
-    var err = proc.StandardError.ReadToEnd();
-    var outText = proc.StandardOutput.ReadToEnd();
+    // Drain both pipes concurrently so a child filling either buffer cannot deadlock.
+    var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+    var stderrTask = proc.StandardError.ReadToEndAsync();
     proc.WaitForExit();
+    _ = stdoutTask.GetAwaiter().GetResult();
+    var err = stderrTask.GetAwaiter().GetResult();
     if (!string.IsNullOrWhiteSpace(err) && proc.ExitCode != 0)
     {
         Console.Error.WriteLine(err);
@@ -138,7 +141,15 @@ static string CaptureOutput(string filename, params string[] args)
     };
     foreach (var arg in args) start.ArgumentList.Add(arg);
     using var proc = Process.Start(start)!;
-    var stdout = proc.StandardOutput.ReadToEnd();
+    // Drain both pipes concurrently so a child filling either buffer cannot deadlock.
+    var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+    var stderrTask = proc.StandardError.ReadToEndAsync();
     proc.WaitForExit();
+    var stdout = stdoutTask.GetAwaiter().GetResult();
+    var err = stderrTask.GetAwaiter().GetResult();
+    if (proc.ExitCode != 0)
+    {
+        throw new InvalidOperationException($"Command failed with exit code {proc.ExitCode}: {err}");
+    }
     return stdout;
 }

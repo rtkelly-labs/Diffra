@@ -1,7 +1,8 @@
 # Diffra
 
 Diffra is an independent .NET repository for typed comparison and trusted baselines. Read
-`VISION.md` for its concepts and boundaries, and `PLAN.md` for the active implementation sequence.
+`docs/vision.md` for the current vision and `PLAN.md` for the active implementation sequence.
+The root `VISION.md` preserves the original design handover.
 
 ## Build and validation
 

@@ -2,7 +2,7 @@
 
 Diffra records typed software evidence, compares it with an exact baseline, evaluates the change under separate policy rules, and renders a review report. It is an independent protocol and .NET CLI. Parquet.SourceGenerator is the planned first adopter; it is not a dependency.
 
-The current slice supports structured numeric Evidence with a declared scope and methodology. `collect`, `diff`, `eval`, and `report` are separate file operations. Evidence, Delta, Assessment, and presentation each have their own identity. The [vision](VISION.md), [handover plan](PLAN.md), [protocol](docs/protocol.md), and [trust model](docs/trust-and-identity.md) define the broader design.
+The current slice supports structured numeric Evidence with a declared scope and methodology. `collect`, `diff`, `eval`, and `report` are separate file operations. Evidence, Delta, Assessment, and presentation each have their own identity. Start with the [documentation index](docs/README.md) and [current vision](docs/vision.md). The original [handover vision](VISION.md) and [plan](PLAN.md) preserve the project brief.
 
 ## Build and check
 

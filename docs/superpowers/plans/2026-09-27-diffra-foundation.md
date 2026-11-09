@@ -26,38 +26,38 @@
 
 **Files:** `README.md`, `AGENTS.md`, `global.json`, `Diffra.slnx`, `src/Protocol/Diffra.Protocol.csproj`, `src/Cli/Diffra.Cli.csproj`, `.github/workflows/ci.yml`, `schemas/*.schema.json`, `docs/protocol.md`, `docs/trust-and-identity.md`, `docs/adr/*.md`.
 
-- [ ] Copy the handover into the independent repository and pin the SDK.
-- [ ] Build the solution with `dotnet build Diffra.slnx -c Release`.
-- [ ] Define the required document fields and reject malformed fixtures with a JSON Schema validator.
-- [ ] Record canonical identity, version compatibility, baseline trust, policy vocabulary, and collection identity decisions.
-- [ ] Confirm the CI workflow runs the same build and test commands with SHA-pinned actions.
+- [x] Copy the handover into the independent repository and pin the SDK.
+- [x] Build the solution with `dotnet build Diffra.slnx -c Release`.
+- [x] Define the required document fields and reject malformed fixtures with a JSON Schema validator.
+- [x] Record canonical identity, version compatibility, baseline trust, policy vocabulary, and collection identity decisions.
+- [x] Confirm the CI workflow runs the same build and test commands with SHA-pinned actions.
 
 ### Task 2: Semantic evidence identity
 
 **Files:** `src/Protocol/CanonicalJson.cs`, `src/Protocol/EvidenceIdentity.cs`, `tests/Protocol.Tests/IdentityTests.cs`.
 
-- [ ] Add fixtures whose JSON objects have different property order but the same semantic value.
-- [ ] Make both fixtures produce the same SHA-256 evidence ID; a changed meaningful value must produce a different ID.
-- [ ] Reject duplicate JSON keys, path traversal, oversized input and mismatched raw artifact digests.
-- [ ] Run `dotnet run --project tests/Protocol.Tests/Protocol.Tests.csproj -c Release` and confirm the identity checks execute.
+- [x] Add fixtures whose JSON objects have different property order but the same semantic value.
+- [x] Make both fixtures produce the same SHA-256 evidence ID; a changed meaningful value must produce a different ID.
+- [x] Reject duplicate JSON keys, path traversal, oversized input and mismatched raw artifact digests.
+- [x] Run `dotnet run --project tests/Protocol.Tests/Protocol.Tests.csproj -c Release` and confirm the identity checks execute.
 
 ### Task 3: Independent comparison and assessment
 
 **Files:** `src/Protocol/Comparison.cs`, `src/Protocol/Assessment.cs`, `tests/Protocol.Tests/ComparisonTests.cs`.
 
-- [ ] Compare only matching evidence type and version or an explicitly registered migration.
-- [ ] Report a formatting-only JSON change as unchanged, keyed reorder as unchanged, and ordered reorder as changed.
-- [ ] Keep Delta free of a policy verdict. Evaluate the same Delta with two different rule sets and verify only Assessment identity changes.
-- [ ] Run `dotnet run --project tests/Protocol.Tests/Protocol.Tests.csproj -c Release` and confirm the comparison checks execute.
+- [x] Compare only matching evidence type and version or an explicitly registered migration.
+- [x] Report a formatting-only JSON change as unchanged, keyed reorder as unchanged, and ordered reorder as changed.
+- [x] Keep Delta free of a policy verdict. Evaluate the same Delta with two different rule sets and verify only Assessment identity changes.
+- [x] Run `dotnet run --project tests/Protocol.Tests/Protocol.Tests.csproj -c Release` and confirm the comparison checks execute.
 
 ### Task 4: CLI and review proof
 
 **Files:** `src/Cli/Program.cs`, `src/Protocol/Report.cs`, `tests/Integration.Tests/WorkflowTests.cs`, `examples/sample-project/*`.
 
-- [ ] Implement `collect`, `diff`, `eval`, and `report` as separate file-to-file steps with clear nonzero exits for invalid evidence and failed policy.
-- [ ] Run the sample fixture through all four steps and check that the report cites exact baseline/candidate, comparator and policy identities.
-- [ ] Render identical inputs twice and compare report bytes; ensure evidence text is escaped in HTML.
-- [ ] Run `dotnet run --project tests/Protocol.Tests/Protocol.Tests.csproj -c Release`.
+- [x] Implement `collect`, `diff`, `eval`, and `report` as separate file-to-file steps with clear nonzero exits for invalid evidence and failed policy.
+- [x] Run the sample fixture through all four steps and check that the report cites exact baseline/candidate, comparator and policy identities.
+- [x] Render identical inputs twice and compare report bytes; ensure evidence text is escaped in HTML.
+- [x] Run `dotnet run --project tests/Protocol.Tests/Protocol.Tests.csproj -c Release`.
 
 ## Later milestones
 

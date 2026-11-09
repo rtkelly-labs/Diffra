@@ -1,7 +1,9 @@
-# Qodana Configuration (Governed by shared-utilities)
+# Qodana configuration
 # See https://www.jetbrains.com/help/qodana/qodana-yaml.html
 
 version: "1.0"
-linter: jetbrains/qodana-cdnet:2024.3
+linter: jetbrains/qodana-cdnet:2026.2
+dotnet:
+  solution: Diffra.slnx
 profile:
   name: qodana.recommended

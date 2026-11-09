@@ -1,0 +1,25 @@
+# Code coverage as a converted source (ADR 0006 policies expressed as rules).
+schema: https://diffra.dev/schemas/project-v1.schema.json
+scope: example/library
+
+dimensions:
+  os: { values: [linux] }
+
+metrics:
+  coverage:
+    type: diffra/coverage@1
+    from: { cobertura: "artifacts/coverage/coverage.cobertura.xml" }
+    fields:
+      lineRate:
+        check:
+          fail: { below: 0.8 } # minOverallLineCoverage
+        versus:
+          warn: { decrease: { above: 0.0005 } } # tolerate +/- 0.05 points of noise
+          fail: { decrease: { above: 0.01 } } # maxOverallCoverageDrop
+      branchRate:
+        versus:
+          warn: { decrease: { above: 0.01 } }
+      fileLineRate:
+        versus:
+          needs-review: { decrease: { above: 0.1 } }
+        keys: { added: pass, removed: pass }

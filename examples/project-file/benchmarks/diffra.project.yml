@@ -1,0 +1,48 @@
+# The Parquet.SourceGenerator benchmark gate (PR #752) as one project file.
+# One standard type replaces three payloads and three rules files.
+schema: https://diffra.dev/schemas/project-v1.schema.json
+scope: parquet-sourcegenerator/benchmarks
+
+dimensions:
+  os: { values: [linux] }
+  arch: { values: [x64] }
+  runtime: { values: [net8.0] }
+  cpu: { observed: true } # runner CPU models are assigned at random
+
+metrics:
+  benchmarks:
+    type: diffra/benchmark@1
+    from: { benchmarkdotnet: "BenchmarkDotNet.Artifacts/results/*-report-full.json" }
+    fields:
+      allocatedBytes:
+        # Allocations held within 152 B across AMD and Intel runners, so CPU is not a stratum.
+        stratify: [os, arch, runtime]
+        versus:
+          warn: { increase: { above: 256B } }
+          fail: { increase: { above: 1024B } }
+        keys: { added: pass, removed: fail }
+      gen0PerKOps:
+        # gen0 changed 2-5x across CPU models: the runtime sizes gen0 from the CPU cache.
+        stratify: [os, arch, runtime, cpu]
+        versus:
+          warn: { increase: { above: 35%, and: { above: 20 } } }
+          fail: { increase: { above: 50%, and: { above: 30 } } }
+      gen2PerKOps:
+        stratify: [os, arch, runtime, cpu]
+        versus:
+          # A rise from zero has no relative change; with the absolute floor met it needs review.
+          warn: { increase: { above: 35%, and: { above: 20 } } }
+      meanTime:
+        stratify: [os, arch, runtime, cpu]
+        versus:
+          warn: { increase: { above: 25% } }
+        series:
+          window: { commits: 30, maxAge: 90d }
+          minPoints: 20
+          reference: median
+          detect: change-point
+          warn: { increase: { above: 10% } }
+          suggest: { factor: 4 }
+
+limits:
+  maxKeys: 500

@@ -1,0 +1,45 @@
+{
+  "scope": "example/library",
+  "methodology": "diffra/test-results@1;diffra.converter.trx@1.0.0;trx@2010",
+  "stratum": {
+    "arch": "x64",
+    "os": "linux",
+    "runtime": "net10.0"
+  },
+  "plan": {
+    "tests": {
+      "keys": [
+        "Example.Tests.ParserTests.ParsesEmptyInput",
+        "Example.Tests.ParserTests.RejectsBom",
+        "Example.Tests.WriterTests.WritesLargeFile"
+      ]
+    }
+  },
+  "metrics": {
+    "tests": {
+      "results": {
+        "Example.Tests.ParserTests.ParsesEmptyInput": {
+          "value": {
+            "tag": "success",
+            "duration": "1532000",
+            "message": "ok"
+          }
+        },
+        "Example.Tests.ParserTests.RejectsBom": {
+          "value": {
+            "tag": "error",
+            "duration": "2210000",
+            "kind": "assertion",
+            "message": "Expected: rejected\nActual: accepted"
+          }
+        },
+        "Example.Tests.WriterTests.WritesLargeFile": {
+          "value": {
+            "tag": "skipped",
+            "reason": "requires network"
+          }
+        }
+      }
+    }
+  }
+}

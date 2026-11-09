@@ -45,6 +45,7 @@ built.
 | CloudEvents envelope | Library | `CloudEvents.cs`, `schemas/cloudevent-diffra-v1.schema.json` | [ADR 0009](adr/0009-cloudevents-specification-and-event-driven-integration.md) |
 | Composition graph: validation and execution | Library | `Graph.cs`, `GraphValidator.cs`, `GraphExecutor.cs` | [ADR 0002](adr/0002-explicit-registration-and-migration.md) |
 | External command producers | Library | `ExternalCommandAdapter.cs`, `EvidenceDocumentBuilder.cs` | |
+| Project file, typed metrics and collection root | Planned; schemas and examples only | `schemas/project-v1.schema.json`, `schemas/collection-v1.schema.json`, `examples/project-file/` | [ADR 0010](adr/0010-project-file-typed-metrics-and-collection-root.md) |
 | `baseline verify`, `baseline update`, promotion commands | Planned | | [ADR 0003](adr/0003-baseline-trust-and-promotion.md) |
 | Cross-version migrations | Planned | | [ADR 0002](adr/0002-explicit-registration-and-migration.md) |
 | Parquet.SourceGenerator integration | Planned | | [adopter plan](adopters/parquet-source-generator.md) |

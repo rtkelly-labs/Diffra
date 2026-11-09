@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diffra.dev/examples/project-file/benchmarks/payload.schema.json",
+  "title": "Derived payload schema: parquet-sourcegenerator/benchmarks",
+  "description": "Derived by hand from benchmarks/diffra.project.yml to show what an emitter validates before writing (ADR 0010, section 13). A generator is not built yet.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["scope", "methodology", "stratum", "plan", "metrics"],
+  "properties": {
+    "scope": { "const": "parquet-sourcegenerator/benchmarks" },
+    "methodology": {
+      "const": "diffra/benchmark@1;diffra.converter.benchmarkdotnet@1.0.0;benchmarkdotnet-json-full@0.14"
+    },
+    "stratum": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os", "arch", "runtime", "cpu"],
+      "properties": {
+        "os": { "enum": ["linux"] },
+        "arch": { "enum": ["x64"] },
+        "runtime": { "enum": ["net8.0"] },
+        "cpu": { "type": "string", "pattern": "^[^\\s](.*[^\\s])?$" }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["benchmarks"],
+      "properties": { "benchmarks": { "$ref": "#/$defs/plan" } }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["benchmarks"],
+      "properties": {
+        "benchmarks": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "allocatedBytes": {
+              "type": "object",
+              "minProperties": 1,
+              "propertyNames": { "$ref": "#/$defs/caseKey" },
+              "additionalProperties": { "$ref": "#/$defs/bytes" }
+            },
+            "gen0PerKOps": {
+              "type": "object",
+              "minProperties": 1,
+              "propertyNames": { "$ref": "#/$defs/caseKey" },
+              "additionalProperties": { "$ref": "#/$defs/perKOps" }
+            },
+            "gen1PerKOps": {
+              "type": "object",
+              "minProperties": 1,
+              "propertyNames": { "$ref": "#/$defs/caseKey" },
+              "additionalProperties": { "$ref": "#/$defs/perKOps" }
+            },
+            "gen2PerKOps": {
+              "type": "object",
+              "minProperties": 1,
+              "propertyNames": { "$ref": "#/$defs/caseKey" },
+              "additionalProperties": { "$ref": "#/$defs/perKOps" }
+            },
+            "meanTime": {
+              "type": "object",
+              "minProperties": 1,
+              "propertyNames": { "$ref": "#/$defs/caseKey" },
+              "additionalProperties": { "$ref": "#/$defs/duration" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "caseKey": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_.]*\\(.*\\)$" },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keys"],
+      "properties": {
+        "keys": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/caseKey" } },
+        "failed": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/caseKey" },
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "bytes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "unit"],
+      "properties": { "value": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" }, "unit": { "const": "B" } }
+    },
+    "perKOps": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "unit"],
+      "properties": {
+        "value": { "type": "string", "pattern": "^(0|(0|[1-9][0-9]*)\\.[0-9]*[1-9]|[1-9][0-9]*)$" },
+        "unit": { "const": "count/1000-ops" }
+      }
+    },
+    "duration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "unit"],
+      "properties": {
+        "value": { "type": "string", "pattern": "^(0|(0|[1-9][0-9]*)\\.[0-9]*[1-9]|[1-9][0-9]*)$" },
+        "unit": { "const": "ns" }
+      }
+    }
+  }
+}

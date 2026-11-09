@@ -1,0 +1,11 @@
+schema: https://diffra.dev/schemas/project-v1.schema.json
+scope: example/invalid
+# Invalid: a variant tag is unordered, so increase/decrease rules on it are rejected.
+metrics:
+  tests:
+    type: diffra/test-results@1
+    from: { junit: "tests.xml" }
+    fields:
+      results:
+        versus:
+          fail: { increase: { above: 0 } }

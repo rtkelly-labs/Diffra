@@ -1,0 +1,12 @@
+schema: https://diffra.dev/schemas/project-v1.schema.json
+scope: example/invalid
+# Invalid: series rules may warn or need review in v1, never fail.
+metrics:
+  benchmarks:
+    type: diffra/benchmark@1
+    from: { benchmarkdotnet: "results/*.json" }
+    fields:
+      meanTime:
+        series:
+          window: { commits: 30, maxAge: 90d }
+          fail: { increase: { above: 10% } }

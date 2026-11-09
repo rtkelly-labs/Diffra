@@ -420,7 +420,7 @@ internal static class ComparisonTests
 
         var accepted = Validate("{\"scope\":\"s\",\"methodology\":\"m\",\"metrics\":{\"count\":{\"value\":1,\"unit\":\"B\"}}}");
         True(accepted.Valid);
-        Equal<string?>(null, accepted.Error);
+        True(accepted.Error is null);
 
         foreach (var (json, expected) in new[]
         {

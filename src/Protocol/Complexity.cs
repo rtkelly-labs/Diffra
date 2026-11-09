@@ -81,6 +81,19 @@ public sealed record ComplexityPayload(
 
     public static ComplexityPayload FromJsonElement(JsonElement root)
     {
+        // Missing or mistyped properties are malformed input, so surface them as JsonException.
+        try
+        {
+            return FromJsonElementCore(root);
+        }
+        catch (Exception exception) when (exception is KeyNotFoundException or FormatException)
+        {
+            throw new JsonException($"Malformed ComplexityPayload: {exception.Message}", exception);
+        }
+    }
+
+    private static ComplexityPayload FromJsonElementCore(JsonElement root)
+    {
         var scope = root.GetProperty("scope").GetString()!;
         var methodology = root.GetProperty("methodology").GetString()!;
         var unit = root.GetProperty("unit").GetString()!;

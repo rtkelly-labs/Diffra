@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Property-based and metamorphic checks for canonical JSON, keyed comparison and diff then eval.
+    Runs in CI only (see the properties job). Not part of Diffra.slnx while it is an experiment.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Diffra.Protocol.Properties</AssemblyName>
+    <RootNamespace>Diffra.Protocol.Properties</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <!-- CA5394: metamorphic transforms use a seeded, reproducible System.Random. -->
+    <NoWarn>$(NoWarn);CA5394</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CsCheck" Version="4.9.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Protocol/Diffra.Protocol.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    SharpFuzz + libFuzzer harness for document parsers and bundle import.
+    Runs in CI only (see .github/workflows/fuzz.yml). Not part of Diffra.slnx while it is an experiment.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Diffra.Protocol.Fuzz</AssemblyName>
+    <RootNamespace>Diffra.Protocol.Fuzz</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <!-- CA1032/CA1064: the harness-only invariant exception needs no public or serialization constructors. -->
+    <NoWarn>$(NoWarn);CA1032;CA1064</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="SharpFuzz" Version="2.3.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Protocol/Diffra.Protocol.csproj" />
+  </ItemGroup>
+</Project>

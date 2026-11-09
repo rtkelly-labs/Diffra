@@ -72,6 +72,19 @@ public sealed record CoveragePayload(
 
     public static CoveragePayload FromJsonElement(JsonElement root)
     {
+        // Missing or mistyped properties are malformed input, so surface them as JsonException.
+        try
+        {
+            return FromJsonElementCore(root);
+        }
+        catch (Exception exception) when (exception is KeyNotFoundException or FormatException)
+        {
+            throw new JsonException($"Malformed CoveragePayload: {exception.Message}", exception);
+        }
+    }
+
+    private static CoveragePayload FromJsonElementCore(JsonElement root)
+    {
         var scope = root.GetProperty("scope").GetString()!;
         var methodology = root.GetProperty("methodology").GetString()!;
 
@@ -124,11 +137,15 @@ public sealed record CoveragePayload(
     /// <summary>Largest number of lines a single interval segment may expand to.</summary>
     public const int MaxLineRangeSpan = 1_000_000;
 
+    /// <summary>Upper bound on the number of line numbers one interval string may expand to.</summary>
+    private const int MaximumExpandedLines = 1_000_000;
+
     /// <summary>Expands a canonical interval string (e.g. '14-16, 25') back into a set of line numbers.</summary>
-    /// <exception cref="FormatException">A segment is not 'N' or 'N-M' with unsigned integers, starts below line 1, ends before it starts, or spans more than <see cref="MaxLineRangeSpan"/> lines.</exception>
+    /// <exception cref="InvalidOperationException">A segment is not 'N' or 'N-M' with unsigned integers, starts below line 1, ends before it starts, or spans more than <see cref="MaxLineRangeSpan"/> lines; or the intervals together expand to more than 1,000,000 lines.</exception>
     public static HashSet<int> ParseLineRanges(string intervals)
     {
         var result = new HashSet<int>();
+        long expanded = 0;
         if (string.IsNullOrWhiteSpace(intervals)) return result;
 
         foreach (var segment in intervals.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
@@ -139,7 +156,7 @@ public sealed record CoveragePayload(
             {
                 if (single < 1)
                 {
-                    throw new FormatException($"Invalid line number '{segment}': line numbers start at 1.");
+                    throw new InvalidOperationException($"Invalid line number '{segment}': line numbers start at 1.");
                 }
 
                 result.Add(single);
@@ -150,24 +167,31 @@ public sealed record CoveragePayload(
             {
                 if (start < 1)
                 {
-                    throw new FormatException($"Invalid line range '{segment}': line numbers start at 1.");
+                    throw new InvalidOperationException($"Invalid line range '{segment}': line numbers start at 1.");
                 }
 
                 if (end < start)
                 {
-                    throw new FormatException($"Invalid line range '{segment}': end is before start.");
+                    throw new InvalidOperationException($"Invalid line range '{segment}': end is before start.");
                 }
 
                 if ((long)end - start + 1 > MaxLineRangeSpan)
                 {
-                    throw new FormatException($"Invalid line range '{segment}': span exceeds {MaxLineRangeSpan} lines.");
+                    throw new InvalidOperationException($"Invalid line range '{segment}': span exceeds {MaxLineRangeSpan} lines.");
                 }
 
+                expanded += (long)end - start + 1;
+                if (expanded > MaximumExpandedLines)
+                {
+                    throw new InvalidOperationException($"Line ranges expand to more than {MaximumExpandedLines} lines.");
+                }
+
+                // long counter: an int counter overflows and never terminates when end is int.MaxValue.
                 for (long n = start; n <= end; n++) result.Add((int)n);
             }
             else
             {
-                throw new FormatException($"Invalid line range segment '{segment}': expected 'N' or 'N-M' with non-negative integer line numbers.");
+                throw new InvalidOperationException($"Invalid line range segment '{segment}': expected 'N' or 'N-M' with non-negative integer line numbers.");
             }
         }
         return result;

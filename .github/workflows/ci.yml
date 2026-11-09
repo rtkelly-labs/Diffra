@@ -72,7 +72,8 @@ jobs:
 
       - name: Smoke test installed Diffra CLI tool
         run: |
-          dotnet tool install Diffra.Cli --add-source artifacts/package --tool-path runner-bin --version 0.0.1
+          project_version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props | tr -d ' \r\n')
+          dotnet tool install Diffra.Cli --add-source artifacts/package --tool-path runner-bin --version "$project_version"
           mkdir -p temp/smoke
           ./runner-bin/diffra collect \
             --payload examples/sample-project/workflow/candidate-payload.json \

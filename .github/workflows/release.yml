@@ -134,7 +134,7 @@ jobs:
       - name: Upload release assets artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: diffra-release-0.0.1
+          name: diffra-release-0.0.1-preview
           path: artifacts/*
           if-no-files-found: error
 
@@ -163,7 +163,7 @@ jobs:
       - name: Download release assets artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
-          name: diffra-release-0.0.1
+          name: diffra-release-0.0.1-preview
           path: release-assets
 
       - name: Extract CHANGELOG notes
@@ -185,4 +185,5 @@ jobs:
           gh release create "$tag_name" \
             release-assets/* \
             --title "$tag_name" \
-            --notes-file release-notes.md
+            --notes-file release-notes.md \
+            --prerelease

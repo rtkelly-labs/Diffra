@@ -16,7 +16,7 @@ Adopters can pin `Diffra.Cli` using a local repository tool manifest (`.config/d
 
 ```sh
 dotnet new tool-manifest # if not already present
-dotnet tool install Diffra.Cli --version 0.0.1
+dotnet tool install Diffra.Cli --version 0.0.1-preview
 ```
 
 Invoke the tool with:
@@ -35,15 +35,15 @@ Download the archive and `SHA256SUMS` from the release:
 
 ```sh
 # Example for linux-x64
-curl -sSLO https://github.com/rtkelly-labs/Diffra/releases/download/v0.0.1/diffra-0.0.1-linux-x64.tar.gz
-curl -sSLO https://github.com/rtkelly-labs/Diffra/releases/download/v0.0.1/SHA256SUMS
+curl -sSLO https://github.com/rtkelly-labs/Diffra/releases/download/v0.0.1-preview/diffra-0.0.1-preview-linux-x64.tar.gz
+curl -sSLO https://github.com/rtkelly-labs/Diffra/releases/download/v0.0.1-preview/SHA256SUMS
 
 # Verify checksum
 sha256sum --check --ignore-missing SHA256SUMS
 # On macOS: shasum -a 256 -c --ignore-missing SHA256SUMS
 
 # Extract and run
-tar -xzf diffra-0.0.1-linux-x64.tar.gz
+tar -xzf diffra-0.0.1-preview-linux-x64.tar.gz
 ./diffra --help
 ```
 

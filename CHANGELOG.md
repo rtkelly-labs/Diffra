@@ -5,9 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 0.0.1 - 2026-11-09
+## 0.0.1-preview - 2026-11-09
 
-Diffra 0.0.1 is an initial unstable preview release. The protocol contracts, schemas, document shapes, and CLI flags may change in any 0.0.x release.
+Diffra 0.0.1-preview is an initial preview release. The protocol contracts, schemas, document shapes, and CLI flags may change in any 0.0.x release.
 
 In this release, only the `Diffra.Cli` .NET tool package and standalone single-file executables are published. The protocol library (`Diffra.Protocol`) is bundled inside the tool package.
 

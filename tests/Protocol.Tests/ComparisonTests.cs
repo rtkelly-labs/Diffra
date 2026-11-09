@@ -22,6 +22,8 @@ internal static class ComparisonTests
         TypesScopeAndMethodologyMustMatch();
         NumericChangesIncludeAbsoluteAndRelativeValues();
         ZeroBaselineHasExplicitUndefinedRelativeValue();
+        AbsoluteFailOutranksZeroBaselineReview();
+        ModifiedChangeWithoutAfterIsInconclusive();
         UnitChangesAreIncompatible();
         UnsupportedJsonValuesAreInconclusive();
         OpaqueEvidenceCannotPass();
@@ -74,6 +76,35 @@ internal static class ComparisonTests
         Equal("4", change.Value.Absolute);
         Equal(null, change.Value.Relative);
         Equal("undefined-zero-baseline", change.Value.RelativeStatus);
+    }
+
+    private static void AbsoluteFailOutranksZeroBaselineReview()
+    {
+        var policy = new NumericPolicy("org.example.numeric-policy", "1.0", RulesDigest,
+            FailAboveAbsoluteIncrease: 10,
+            FailAboveRelativeIncrease: 0.1m);
+
+        var large = AssessmentEvaluator.Evaluate(Compare(Evidence("{\"count\":0}"), Evidence("{\"count\":100}", CandidateEvidenceId)), policy);
+        Equal("fail", large.Findings.Single().Status);
+        Equal("fail", large.Outcome);
+
+        var small = AssessmentEvaluator.Evaluate(Compare(Evidence("{\"count\":0}"), Evidence("{\"count\":5}", CandidateEvidenceId)), policy);
+        Equal("needs-review", small.Findings.Single().Status);
+        Equal("needs-review", small.Outcome);
+    }
+
+    private static void ModifiedChangeWithoutAfterIsInconclusive()
+    {
+        var delta = Compare(Evidence("{\"count\":1}"), Evidence("{\"count\":2}", CandidateEvidenceId));
+        var change = delta.Changes.Single();
+        var withoutAfter = delta with { Changes = [change with { Value = change.Value with { After = null } }] };
+        var assessment = AssessmentEvaluator.Evaluate(withoutAfter, Policy());
+
+        Equal("inconclusive", assessment.Findings.Single().Status);
+        Equal("inconclusive", assessment.Outcome);
+
+        var unparseableAfter = delta with { Changes = [change with { Value = change.Value with { After = "two" } }] };
+        Equal("inconclusive", AssessmentEvaluator.Evaluate(unparseableAfter, Policy()).Outcome);
     }
 
     private static void UnitChangesAreIncompatible()

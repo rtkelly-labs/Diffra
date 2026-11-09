@@ -276,7 +276,7 @@ public static class ReportRenderer
         {
             var policy = assessmentValue.GetProperty("policy");
             builder.AppendLine().AppendLine("## Policy assessment").AppendLine()
-                .Append("- Policy: `").Append(policy.GetProperty("id").GetString()).Append("` version `").Append(policy.GetProperty("version").GetString()).AppendLine("`")
+                .Append("- Policy: `").Append(MarkdownCell(policy.GetProperty("id").GetString()!)).Append("` version `").Append(MarkdownCell(policy.GetProperty("version").GetString()!)).AppendLine("`")
                 .Append("- Outcome: `").Append(assessmentValue.GetProperty("outcome").GetString()).AppendLine("`")
                 .AppendLine().AppendLine("### Findings").AppendLine();
             foreach (var finding in Ordered(assessmentValue.GetProperty("findings"), "id"))
@@ -410,9 +410,17 @@ public static class ReportRenderer
             if (RequireString(finding, "status") is not ("pass" or "warn" or "fail" or "needs-review" or "inconclusive"))
                 throw new JsonException("Assessment finding status is invalid.");
             RequireString(finding, "message");
-            if (finding.GetProperty("changePaths").ValueKind != JsonValueKind.Array)
+            if (!finding.TryGetProperty("changePaths", out var changePaths) || changePaths.ValueKind != JsonValueKind.Array)
             {
                 throw new JsonException("Finding changePaths must be an array.");
+            }
+
+            foreach (var changePath in changePaths.EnumerateArray())
+            {
+                if (changePath.ValueKind != JsonValueKind.String)
+                {
+                    throw new JsonException("Finding changePaths entries must be strings.");
+                }
             }
         }
     }
@@ -426,7 +434,8 @@ public static class ReportRenderer
         var role = RequireString(baseline, "role");
         if (role is not ("merge-base" or "approved-main" or "previous-release")) throw new JsonException("Baseline reference role is unsupported.");
         if (RequireString(baseline, "status") != "trusted") throw new JsonException("Report baseline reference must have trusted status.");
-        RequireString(baseline, "evidenceId");
+        if (!string.Equals(RequireString(baseline, "evidenceId"), RequireString(RequiredObject(delta, "provenance"), "baselineEvidenceId"), StringComparison.Ordinal))
+            throw new JsonException("Baseline reference evidenceId does not match the Delta baseline evidence.");
         RequireString(baseline, "manifestDigest");
         RequireString(baseline, "sourceStore");
         var commit = RequireString(baseline, "subjectCommit");

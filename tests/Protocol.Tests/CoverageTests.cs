@@ -8,8 +8,10 @@ public static class CoverageTests
     public static void RunAll()
     {
         FormatsAndParsesCanonicalLineIntervals();
+        RejectsInvalidOrUnboundedLineIntervals();
         SerializesAndDeserializesCoveragePayload();
         DetectsNewlyUncoveredLinesAndDeltas();
+        ComparisonRejectsMalformedLineRanges();
         EvaluatesCoveragePoliciesCorrectly();
         Console.WriteLine("PASS coverage payload, intervals, delta comparator, and policy evaluator");
     }
@@ -27,6 +29,28 @@ public static class CoverageTests
         {
             throw new InvalidOperationException("Parsed intervals missing expected line numbers.");
         }
+    }
+
+    private static void RejectsInvalidOrUnboundedLineIntervals()
+    {
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("1-2147483647"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("5-3"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("0-2"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("0"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges($"1-{CoveragePayload.MaxLineRangeSpan + 1}"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("-1"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("-1-3"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("1-"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("1--3"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("+5"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("abc"));
+        Throws<FormatException>(() => CoveragePayload.ParseLineRanges("10, -1, 25"));
+
+        var atLimit = CoveragePayload.ParseLineRanges($"1-{CoveragePayload.MaxLineRangeSpan}");
+        Equal(CoveragePayload.MaxLineRangeSpan, atLimit.Count);
+
+        var nearMax = CoveragePayload.ParseLineRanges("2147483645-2147483647");
+        Equal(3, nearMax.Count);
     }
 
     private static void SerializesAndDeserializesCoveragePayload()
@@ -95,6 +119,28 @@ public static class CoverageTests
         Equal("50-51", delta.NewlyUncoveredLines[0].FormattedRange);
     }
 
+    private static void ComparisonRejectsMalformedLineRanges()
+    {
+        var wellFormed = new FileCoverage(
+            "src/Protocol/CanonicalJson.cs",
+            CoverageCounter.Create(100, 90),
+            CoverageCounter.Create(20, 16),
+            "10-15");
+        var malformed = wellFormed with { UncoveredLineRanges = "-1" };
+
+        static CoveragePayload Payload(FileCoverage file) => new(
+            "diffra/protocol",
+            "coverlet",
+            CoverageCounter.Create(100, 90),
+            CoverageCounter.Create(20, 16),
+            CoverageCounter.Create(10, 9),
+            [file]);
+
+        // Malformed ranges in either the candidate or the baseline surface instead of being dropped.
+        Throws<FormatException>(() => CoverageEvaluator.Compare(Payload(wellFormed), Payload(malformed)));
+        Throws<FormatException>(() => CoverageEvaluator.Compare(Payload(malformed), Payload(wellFormed)));
+    }
+
     private static void EvaluatesCoveragePoliciesCorrectly()
     {
         var baseline = new CoveragePayload(
@@ -123,6 +169,20 @@ public static class CoverageTests
         var (outcomeDropped, findingsDropped) = CoverageEvaluator.Evaluate(candidateDropped, deltaDropped, policyStrict);
         Equal("fail", outcomeDropped);
         if (findingsDropped.Count == 0) throw new InvalidOperationException("Expected failure findings for dropped coverage.");
+    }
+
+    private static void Throws<TException>(Action action) where TException : Exception
+    {
+        try
+        {
+            action();
+        }
+        catch (TException)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException($"Expected exception {typeof(TException).Name} was not thrown.");
     }
 
     private static void Equal<T>(T expected, T actual)

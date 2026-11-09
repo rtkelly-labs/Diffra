@@ -45,6 +45,10 @@ public static class EvidenceBundle
             throw new InvalidOperationException("Invalid manifest document: missing 'id' or 'artifacts'.");
         }
 
+        RequireExistingIfSupplied(options.DeltaPath);
+        RequireExistingIfSupplied(options.AssessmentPath);
+        RequireExistingIfSupplied(options.BaselineReferencePath);
+
         var fullOutput = Path.GetFullPath(options.OutputPath);
         var outputDir = Path.GetDirectoryName(fullOutput)!;
         Directory.CreateDirectory(outputDir);
@@ -63,15 +67,15 @@ public static class EvidenceBundle
 
                 // 2. Documents
                 WriteZipEntry(archive, "documents/manifest.json", manifestBytes);
-                if (options.DeltaPath is not null && File.Exists(options.DeltaPath))
+                if (options.DeltaPath is not null)
                 {
                     WriteZipEntry(archive, "documents/delta.json", File.ReadAllBytes(options.DeltaPath));
                 }
-                if (options.AssessmentPath is not null && File.Exists(options.AssessmentPath))
+                if (options.AssessmentPath is not null)
                 {
                     WriteZipEntry(archive, "documents/assessment.json", File.ReadAllBytes(options.AssessmentPath));
                 }
-                if (options.BaselineReferencePath is not null && File.Exists(options.BaselineReferencePath))
+                if (options.BaselineReferencePath is not null)
                 {
                     WriteZipEntry(archive, "documents/baseline-reference.json", File.ReadAllBytes(options.BaselineReferencePath));
                 }
@@ -237,7 +241,29 @@ public static class EvidenceBundle
             }
         }
 
+        // Declared artifacts the bundle omits must already be in the store and still match their digest;
+        // objects written by this import were verified by Put and are not hashed again.
+        var verifiedDigests = new HashSet<string>(importedDigests, StringComparer.Ordinal);
+        var missingDigests = declaredArtifacts.Values
+            .Distinct(StringComparer.Ordinal)
+            .Where(digest => !verifiedDigests.Contains(digest) && !store.ContainsVerified(digest))
+            .OrderBy(digest => digest, StringComparer.Ordinal)
+            .ToList();
+        if (missingDigests.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"Bundle '{bundlePath}' is incomplete: declared artifact digest(s) not present or failing verification after import: {string.Join(", ", missingDigests)}.");
+        }
+
         return new ImportResult(manifestId, docCount, artifactCount, importedDigests);
+    }
+
+    private static void RequireExistingIfSupplied(string? path)
+    {
+        if (path is not null && !File.Exists(path))
+        {
+            throw new FileNotFoundException($"Supplied input file not found: {path}", path);
+        }
     }
 
     private static void WriteZipEntry(ZipArchive archive, string entryName, byte[] bytes)

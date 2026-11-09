@@ -1,5 +1,4 @@
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Diffra.Protocol;
@@ -39,6 +38,7 @@ internal static class ComparisonTests
         ZeroBaselineWithRelativePolicyNeedsReview();
         AssessmentRejectsUnassessableDeltas();
         InvalidArgumentsAreRejected();
+        PayloadShapeIsValidated();
     }
 
     private static void TypesScopeAndMethodologyMustMatch()
@@ -408,6 +408,38 @@ internal static class ComparisonTests
         new("org.example.numeric-policy", "1.0", RulesDigest,
             WarnAboveRelativeIncrease: warnRelative,
             FailAboveRelativeIncrease: failRelative);
+
+    private static void PayloadShapeIsValidated()
+    {
+        static (bool Valid, string? Error) Validate(string json)
+        {
+            using var document = JsonDocument.Parse(json);
+            var valid = StructuredNumericComparator.TryValidatePayload(document.RootElement, out var error);
+            return (valid, error);
+        }
+
+        var accepted = Validate("{\"scope\":\"s\",\"methodology\":\"m\",\"metrics\":{\"count\":{\"value\":1,\"unit\":\"B\"}}}");
+        True(accepted.Valid);
+        Equal<string?>(null, accepted.Error);
+
+        foreach (var (json, expected) in new[]
+        {
+            ("[1]", "must be a JSON object"),
+            ("{\"scope\":\"s\",\"methodology\":\"m\",\"metrics\":{},\"extra\":1}", "unknown property 'extra'"),
+            ("{\"methodology\":\"m\",\"metrics\":{}}", "'scope' and 'methodology'"),
+            ("{\"scope\":\"s\",\"metrics\":{}}", "'scope' and 'methodology'"),
+            ("{\"scope\":\" \",\"methodology\":\"m\",\"metrics\":{}}", "'scope' and 'methodology'"),
+            ("{\"scope\":1,\"methodology\":\"m\",\"metrics\":{}}", "'scope' and 'methodology'"),
+            ("{\"scope\":\"s\",\"methodology\":\"m\"}", "requires a 'metrics' object"),
+            ("{\"scope\":\"s\",\"methodology\":\"m\",\"metrics\":[]}", "requires a 'metrics' object"),
+            ("{\"scope\":\"s\",\"methodology\":\"m\",\"metrics\":{\"count\":\"1\"}}", "'/count'"),
+        })
+        {
+            var (valid, error) = Validate(json);
+            True(!valid);
+            True(error!.Contains(expected, StringComparison.Ordinal));
+        }
+    }
 
     private static void Throws<TException>(Action action)
         where TException : Exception

@@ -9,11 +9,13 @@ namespace Diffra.Protocol.Tests;
 public static class CollectTests
 {
     private const string Commit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    private const string CanonicalPayload = "{\"methodology\":\"m\",\"metrics\":{\"a\":1,\"b\":2},\"scope\":\"s\"}";
 
     public static void RunAll()
     {
         CollectsDeterministicEvidence();
         RejectsInvalidPayload();
+        RejectsPayloadOutsideStructuredNumericContract();
         RejectsMissingArguments();
         RefusesToOverwritePayload();
     }
@@ -26,8 +28,8 @@ public static class CollectTests
             var payloadTwo = Path.Combine(directory, "payload-two.json");
             var outputOne = Path.Combine(directory, "evidence-one.json");
             var outputTwo = Path.Combine(directory, "evidence-two.json");
-            File.WriteAllText(payloadOne, "{ \"b\": 2, \"a\": 1 }", new UTF8Encoding(false));
-            File.WriteAllText(payloadTwo, "{\"a\":1,\"b\":2}", new UTF8Encoding(false));
+            File.WriteAllText(payloadOne, "{ \"scope\": \"s\", \"metrics\": { \"b\": 2, \"a\": 1 }, \"methodology\": \"m\" }", new UTF8Encoding(false));
+            File.WriteAllText(payloadTwo, CanonicalPayload, new UTF8Encoding(false));
 
             var first = RunCollect(payloadOne, outputOne);
             Assert(first.ExitCode == 0, $"Expected collection to succeed. {first.Error}");
@@ -45,7 +47,7 @@ public static class CollectTests
             Assert(root.GetProperty("status").GetString() == "produced", "Expected produced status.");
             Assert(root.GetProperty("typeResolution").GetString() == "recognized", "Expected recognized type resolution.");
             Assert(root.GetProperty("id").GetString()!.StartsWith("sha256:", StringComparison.Ordinal), "Expected SHA-256 Evidence ID.");
-            Assert(root.GetProperty("payload").GetRawText() == "{\"a\":1,\"b\":2}", "Expected canonical payload in output.");
+            Assert(root.GetProperty("payload").GetRawText() == CanonicalPayload, "Expected canonical payload in output.");
             Assert(root.GetProperty("producer").GetProperty("configDigest").GetString()
                 == "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a", "Expected fixed empty-config digest.");
             Assert(root.GetProperty("artifactRefs").GetArrayLength() == 0, "Expected no artifact references in the initial collector.");
@@ -65,6 +67,32 @@ public static class CollectTests
         });
     }
 
+    private static void RejectsPayloadOutsideStructuredNumericContract()
+    {
+        string[] payloads =
+        [
+            "{\"foo\":1}",
+            "{\"scope\":\"s\",\"metrics\":{\"a\":1}}",
+            "{\"scope\":\"s\",\"methodology\":\"m\",\"metrics\":{\"a\":1},\"extra\":1}",
+            "{\"scope\":\"s\",\"methodology\":\"m\",\"metrics\":{\"a\":\"text\"}}",
+            "{\"scope\":\"s\",\"methodology\":\"m\",\"metrics\":[1]}",
+            "[1]",
+        ];
+        foreach (var contents in payloads)
+        {
+            WithTemporaryDirectory(directory =>
+            {
+                var payload = Path.Combine(directory, "payload.json");
+                var output = Path.Combine(directory, "evidence.json");
+                File.WriteAllText(payload, contents, new UTF8Encoding(false));
+                var result = RunCollect(payload, output);
+                Assert(result.ExitCode == 2, $"Malformed structured numeric payload must exit 2: {contents} {result.Error}");
+                Assert(result.Error.Contains("structured numeric", StringComparison.Ordinal), $"Expected a payload contract message: {result.Error}");
+                Assert(!File.Exists(output), "Malformed payload must not create Evidence output.");
+            });
+        }
+    }
+
     private static void RejectsMissingArguments()
     {
         var result = RunCli("collect", "--payload", "missing.json");
@@ -81,6 +109,13 @@ public static class CollectTests
             var result = RunCollect(payload, payload);
             Assert(result.ExitCode != 0, "The output path must not overwrite the payload.");
             Assert(original.SequenceEqual(File.ReadAllBytes(payload)), "Refusing overwrite must preserve the payload bytes.");
+
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS())
+            {
+                var caseChanged = RunCollect(payload, Path.Combine(directory, "PAYLOAD.json"));
+                Assert(caseChanged.ExitCode == 2, "A case-only output path must not overwrite the payload on a case-insensitive file system.");
+                Assert(original.SequenceEqual(File.ReadAllBytes(payload)), "Refusing a case-only overwrite must preserve the payload bytes.");
+            }
         });
     }
 

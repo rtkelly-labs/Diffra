@@ -1,0 +1,44 @@
+# The escape hatch: custom leaf metrics and a custom variant, read from a payload
+# written by the project's own emitter. Modelled on Diffra's self-evaluation.
+schema: https://diffra.dev/schemas/project-v1.schema.json
+scope: diffra/core
+
+types:
+  fixtureCheck:
+    description: Whether a schema fixture was accepted or rejected by its schema.
+    variant:
+      accepted: {}
+      rejected: { message: text }
+
+metrics:
+  schemaFixtures:
+    type: fixtureCheck
+    collection: { kind: map, keys: { normalization: repository-path, removed: fail } }
+    from: { payload: "artifacts/diffra/fixtures.json" }
+    versus:
+      fail: { transition: [{ from: accepted, to: rejected }, { from: rejected, to: accepted }] }
+  compilerWarnings:
+    type: count
+    unit: warnings
+    from: { payload: "artifacts/diffra/metrics.json" }
+    check:
+      fail: { above: 0 }
+  schemasCount:
+    type: count
+    unit: schemas
+    from: { payload: "artifacts/diffra/metrics.json" }
+    versus:
+      warn: { increase: { above: 10 } }
+      fail: { increase: { above: 50 } }
+  gcMode:
+    type: enum
+    values: [workstation, server]
+    required: false
+    from: { payload: "artifacts/diffra/metrics.json" }
+    versus:
+      fail: { changed: true }
+  publicApi:
+    type: digest
+    from: { payload: "artifacts/diffra/metrics.json" }
+    versus:
+      needs-review: { changed: true }

@@ -49,8 +49,9 @@ static int Run(string[] arguments)
     {
         var options = ParseReportArguments(arguments.AsSpan(1));
         var deltaBytes = ReadBounded(options.DeltaPath);
-        var assessmentBytes = options.AssessmentPath is null ? null : ReadBounded(options.AssessmentPath);
-        var baselineBytes = options.BaselineReferencePath is null ? null : ReadBounded(options.BaselineReferencePath);
+        // A null array (or a bare null) converts to an empty ReadOnlyMemory, so absent inputs need a typed null.
+        ReadOnlyMemory<byte>? assessmentBytes = options.AssessmentPath is null ? (ReadOnlyMemory<byte>?)null : ReadBounded(options.AssessmentPath);
+        ReadOnlyMemory<byte>? baselineBytes = options.BaselineReferencePath is null ? (ReadOnlyMemory<byte>?)null : ReadBounded(options.BaselineReferencePath);
         var format = options.Format switch
         {
             "html" => ReportFormat.Html,
@@ -163,17 +164,13 @@ static byte[] ReadBounded(string path)
 
 static void EnsureOutputIsDistinct(string outputPath, string deltaPath, string? assessmentPath, string? baselineReferencePath)
 {
-    var fullOutput = Path.GetFullPath(outputPath);
-    if (PathEquals(fullOutput, Path.GetFullPath(deltaPath)) ||
-        assessmentPath is not null && PathEquals(fullOutput, Path.GetFullPath(assessmentPath)) ||
-        baselineReferencePath is not null && PathEquals(fullOutput, Path.GetFullPath(baselineReferencePath)))
+    if (PathGuard.SameFile(outputPath, deltaPath) ||
+        assessmentPath is not null && PathGuard.SameFile(outputPath, assessmentPath) ||
+        baselineReferencePath is not null && PathGuard.SameFile(outputPath, baselineReferencePath))
     {
         throw new ArgumentException("The output path must not overwrite a Delta or Assessment input.");
     }
 }
-
-static bool PathEquals(string left, string right) =>
-    string.Equals(left, right, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
 static void WriteAtomically(string outputPath, string contents)
 {

@@ -99,6 +99,7 @@ public static class AssessmentEvaluator
 
                 if (change.Kind != "modified" ||
                     !TryParseDecimal(change.Value.Before, out var before) ||
+                    !TryParseDecimal(change.Value.After, out _) ||
                     !TryParseDecimal(change.Value.Absolute, out var absolute) ||
                     (change.Value.Relative is null && (before != 0 || change.Value.RelativeStatus != "undefined-zero-baseline")) ||
                     (change.Value.Relative is not null && !TryParseDecimal(change.Value.Relative, out _)))
@@ -161,8 +162,10 @@ public static class AssessmentEvaluator
     {
         // Budgets describe increases. A decrease is not a regression for these rules.
         if (absolute <= 0) return 0;
-        if (relative is null && (policy.WarnAboveRelativeIncrease is not null || policy.FailAboveRelativeIncrease is not null)) return 3;
+        // An absolute failure is decidable without a relative value, so it outranks the
+        // zero-baseline review that an undefined relative increase would otherwise require.
         if (policy.FailAboveAbsoluteIncrease is { } absoluteFail && absolute > absoluteFail) return 2;
+        if (relative is null && (policy.WarnAboveRelativeIncrease is not null || policy.FailAboveRelativeIncrease is not null)) return 3;
         if (relative is { } relativeFailValue && policy.FailAboveRelativeIncrease is { } relativeFail && relativeFailValue > relativeFail) return 2;
         if (policy.WarnAboveAbsoluteIncrease is { } absoluteWarn && absolute > absoluteWarn) return 1;
         if (relative is { } relativeWarnValue && policy.WarnAboveRelativeIncrease is { } relativeWarn && relativeWarnValue > relativeWarn) return 1;

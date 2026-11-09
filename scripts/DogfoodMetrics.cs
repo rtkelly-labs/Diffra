@@ -14,8 +14,8 @@ foreach (var csproj in Directory.GetFiles(repoRoot, "*.csproj", SearchOption.All
     }
 }
 
-var protocolFiles = Directory.GetFiles(Path.Combine(repoRoot, "src", "Protocol"), "*.cs", SearchOption.AllDirectories);
-var cliFiles = Directory.GetFiles(Path.Combine(repoRoot, "src", "Cli"), "*.cs", SearchOption.AllDirectories);
+var protocolFiles = GetSourceFiles(Path.Combine(repoRoot, "src", "Protocol"));
+var cliFiles = GetSourceFiles(Path.Combine(repoRoot, "src", "Cli"));
 var schemaFiles = Directory.GetFiles(Path.Combine(repoRoot, "schemas"), "*.json", SearchOption.TopDirectoryOnly);
 
 var payload = new JsonObject
@@ -47,3 +47,15 @@ static string FindRepositoryRoot()
     }
     return Directory.GetCurrentDirectory();
 }
+
+// Count only authored sources: build output under bin/ and obj/ (e.g. generated
+// AssemblyInfo and GlobalUsings files) is excluded so the metric is stable across builds.
+static string[] GetSourceFiles(string projectDir) =>
+    Directory.GetFiles(projectDir, "*.cs", SearchOption.AllDirectories)
+        .Where(path =>
+        {
+            var relative = Path.GetRelativePath(projectDir, path).Replace('\\', '/');
+            return !relative.StartsWith("bin/", StringComparison.OrdinalIgnoreCase)
+                && !relative.StartsWith("obj/", StringComparison.OrdinalIgnoreCase);
+        })
+        .ToArray();

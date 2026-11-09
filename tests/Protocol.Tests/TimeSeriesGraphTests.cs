@@ -11,6 +11,7 @@ public static class TimeSeriesGraphTests
         RendersAsciiSparklinesCorrectly();
         RendersSvgSparklinesCorrectly();
         RendersSvgEvolutionChartCorrectly();
+        RendersSvgEvolutionChartInTimestampOrder();
         Console.WriteLine("PASS time-series projections, ascii sparklines, and design-system SVG charts");
     }
 
@@ -98,6 +99,23 @@ public static class TimeSeriesGraphTests
         {
             throw new InvalidOperationException("Candidate PR badge missing from SVG evolution chart.");
         }
+    }
+
+    private static void RendersSvgEvolutionChartInTimestampOrder()
+    {
+        var origin = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var p1 = new TimeSeriesPoint("1111111111111111111111111111111111111111", origin, 70.0, "v0.1.0");
+        var p2 = new TimeSeriesPoint("2222222222222222222222222222222222222222", origin.AddDays(1), 90.0);
+        var p3 = new TimeSeriesPoint("3333333333333333333333333333333333333333", origin.AddDays(2), 80.0);
+        var cand = new CandidatePoint("4444444444444444444444444444444444444444", 82.0, 2.0);
+
+        var sorted = new TimeSeriesProjection("m", "s", "percent", [p1, p2, p3], cand);
+        var reversed = new TimeSeriesProjection("m", "s", "percent", [p3, p2, p1], cand);
+        var shuffled = new TimeSeriesProjection("m", "s", "percent", [p2, p3, p1], cand);
+
+        var expected = TimeSeriesGraph.RenderSvgEvolutionChart(sorted);
+        Equal(expected, TimeSeriesGraph.RenderSvgEvolutionChart(reversed));
+        Equal(expected, TimeSeriesGraph.RenderSvgEvolutionChart(shuffled));
     }
 
     private static void Equal<T>(T expected, T actual)

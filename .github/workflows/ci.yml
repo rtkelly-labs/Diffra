@@ -77,6 +77,47 @@ jobs:
           path: artifacts/package/*.nupkg
           if-no-files-found: error
 
+  schema-fixtures:
+    name: schema-fixtures
+    runs-on: ubuntu-latest
+    env:
+      CHECK_JSONSCHEMA: pipx run check-jsonschema==0.29.4
+      E: examples/project-file
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Check the schemas against the JSON Schema metaschema
+        run: |
+          $CHECK_JSONSCHEMA --check-metaschema schemas/project-v1.schema.json schemas/collection-v1.schema.json \
+            $E/benchmarks/payload.schema.json $E/test-results/payload.schema.json
+
+      - name: Validate the valid fixtures
+        run: |
+          $CHECK_JSONSCHEMA --schemafile schemas/project-v1.schema.json $E/*/diffra.project.yml
+          $CHECK_JSONSCHEMA --schemafile schemas/collection-v1.schema.json $E/benchmarks/collection*.json
+          $CHECK_JSONSCHEMA --schemafile $E/benchmarks/payload.schema.json $E/benchmarks/payload.json
+          $CHECK_JSONSCHEMA --schemafile $E/test-results/payload.schema.json $E/test-results/payload.json
+
+      - name: Require every invalid fixture to fail validation
+        run: |
+          status=0
+          expect_invalid() {
+            if $CHECK_JSONSCHEMA --schemafile "$1" "$2" > /dev/null 2>&1; then
+              echo "::error file=$2::$2 passed validation against $1 but must fail"
+              status=1
+            else
+              echo "rejected as expected: $2"
+            fi
+          }
+          for f in $E/invalid/project-*.yml; do expect_invalid schemas/project-v1.schema.json "$f"; done
+          for f in $E/invalid/collection-*.json; do expect_invalid schemas/collection-v1.schema.json "$f"; done
+          for f in $E/invalid/benchmarks-payload-*.json; do expect_invalid $E/benchmarks/payload.schema.json "$f"; done
+          for f in $E/invalid/test-results-payload-*.json; do expect_invalid $E/test-results/payload.schema.json "$f"; done
+          count=$(ls $E/invalid | wc -l)
+          echo "checked $count invalid fixtures"
+          exit $status
+
   properties:
     name: properties
     runs-on: ubuntu-latest

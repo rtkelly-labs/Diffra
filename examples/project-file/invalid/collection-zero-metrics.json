@@ -1,0 +1,26 @@
+{
+  "schema": "https://diffra.dev/schemas/collection-v1.schema.json",
+  "id": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "status": "incomplete",
+  "subject": {
+    "kind": "git-repository",
+    "id": "repo:rtkelly-labs/Parquet.SourceGenerator",
+    "commit": "06d1f40000000000000000000000000000000000",
+    "repository": "https://github.com/rtkelly-labs/Parquet.SourceGenerator"
+  },
+  "project": {
+    "scope": "parquet-sourcegenerator/benchmarks",
+    "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "loadedFrom": {
+      "role": "merge-base",
+      "commit": "c0ffee0000000000000000000000000000000000",
+      "path": "diffra.project.yml"
+    }
+  },
+  "metrics": [],
+  "provenance": {
+    "producerId": "diffra.collect",
+    "producerVersion": "0.1.0",
+    "source": "git:06d1f40000000000000000000000000000000000"
+  }
+}

@@ -37,7 +37,9 @@ The current .NET CLI accepts a bounded structured numeric payload. `collect`
 creates Evidence, `diff` records a policy-free Delta, `eval` creates an Assessment,
 and `report` renders the result. The [sample workflow](../examples/sample-project/workflow/)
 contains inputs and checked-in outputs. The [protocol](protocol.md) describes the
-document shapes and result states.
+document shapes and result states, and the [CLI reference](cli.md) the commands
+and input files. [Diffra in testing terms](testing-concepts.md) relates the
+workflow to snapshot, approval and differential testing.
 
 The local `diff` command checks the supplied Baseline reference's structure and
 identity. It does not authenticate the issuer. A pull request supplied reference
@@ -45,15 +47,21 @@ must not become a CI gate until a trusted resolver and store establish its origi
 
 ## What comes next
 
-The next implementation steps are a Git-aware baseline resolver, immutable local
-storage, candidate verification and promotion, and an integration with
-Parquet.SourceGenerator. That integration should record generated source, API,
-and metric evidence while keeping its current golden-file, compilation, and API
-checks required. A second producer outside .NET will test the portable document
-boundary.
+A Git merge-base resolver, two-run promotion records, keyed collection
+comparison, complexity and coverage evidence, and a composition graph now exist
+in `Diffra.Protocol`, and immutable local storage is reachable through
+`diffra bundle`. The next step is to wire the resolver and promotion into CLI
+commands, so a CI gate can use a baseline whose origin is established rather
+than supplied. The [feature status](README.md#feature-status) table tracks what
+is a command, what is a library API, and what is planned.
 
-Later comparators may handle keyed collections, structural documents, images,
-archives, and distributions. Each one needs explicit semantics for scope, order,
+After that comes the integration with Parquet.SourceGenerator. It should record
+generated source, API, and metric evidence while keeping its current golden-file,
+compilation, and API checks required. A second producer outside .NET will test
+the portable document boundary.
+
+Later comparators may handle structural documents, images, archives, and
+distributions. Each one needs explicit semantics for scope, order,
 units, and methodology. File extension alone does not choose a comparator.
 
 The [handover vision](../VISION.md) describes the full proposed design. This page

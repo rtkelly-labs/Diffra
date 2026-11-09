@@ -12,11 +12,16 @@ public static class BaselineTrustTests
         GitBaselineResolverResolvesAndVerifiesMergeBase().GetAwaiter().GetResult();
         KeyedCollectionComparatorDistinguishesOrderedFromKeyed();
         KeyedCollectionComparatorDistinguishesNullMissingAndTypes();
+        KeyedCollectionComparatorComparesDecodedPrimitives();
+        KeyedCollectionComparatorComparesNumbersExactly();
         KeyedCollectionComparatorHandlesAwkwardInput();
         ComplexityComputesQuantilesAndDetectsOutliers();
         ComplexityEvaluatorEnforcesPolicy();
+        ComplexityEvaluatorTreatsIncompatibleMeasurementsAsInconclusive();
+        ComplexityEvaluatorUsesPolicyOutlierThreshold();
         PromotionRequiresIdenticalTwoRunVerification();
         PromotionInvalidatesOnStaleIdentities();
+        PromotionRejectsTamperedEvidence();
         Console.WriteLine("PASS Phase 3 baselines, Git merge-base resolver, keyed comparison, complexity, and promotion");
     }
 
@@ -79,6 +84,55 @@ public static class BaselineTrustTests
 
         var nullAdded = changes.Single(c => c.Path == "/newNull");
         Equal("added", nullAdded.Kind);
+    }
+
+    private static void KeyedCollectionComparatorComparesDecodedPrimitives()
+    {
+        // Parse the raw literals directly: a JsonNode round trip would already unescape them.
+        using var plain = JsonDocument.Parse("{\"value\":\"a\",\"count\":1}");
+        using var escaped = JsonDocument.Parse("{\"value\":\"\\u0061\",\"count\":1.0}");
+        Equal(0, KeyedCollectionComparator.Compare(plain.RootElement, escaped.RootElement).Count);
+
+        using var changed = JsonDocument.Parse("{\"value\":\"b\",\"count\":2}");
+        var changes = KeyedCollectionComparator.Compare(plain.RootElement, changed.RootElement);
+        Equal(2, changes.Count);
+        if (!changes.All(c => c.Kind == "modified"))
+        {
+            throw new InvalidOperationException("Value changes should be reported as modified.");
+        }
+    }
+
+    private static void KeyedCollectionComparatorComparesNumbersExactly()
+    {
+        // Parse the raw literals directly so each token keeps its original spelling.
+        AssertNumbersEqual("1", "1.0");
+        AssertNumbersEqual("1e2", "100");
+        AssertNumbersEqual("-0", "0");
+        AssertNumbersEqual("0.0e5", "0");
+        AssertNumbersEqual("12.50", "1.25E1");
+
+        // A decimal conversion would round 1e-29 to zero; exact comparison must not.
+        using var zero = JsonDocument.Parse("{\"n\":0}");
+        using var tiny = JsonDocument.Parse("{\"n\":1e-29}");
+        var changes = KeyedCollectionComparator.Compare(zero.RootElement, tiny.RootElement);
+        Equal(1, changes.Count);
+        Equal("/n", changes[0].Path);
+        Equal("modified", changes[0].Kind);
+
+        using var positive = JsonDocument.Parse("{\"n\":1}");
+        using var negative = JsonDocument.Parse("{\"n\":-1}");
+        Equal(1, KeyedCollectionComparator.Compare(positive.RootElement, negative.RootElement).Count);
+    }
+
+    private static void AssertNumbersEqual(string baselineNumber, string candidateNumber)
+    {
+        using var baseline = JsonDocument.Parse($"{{\"n\":{baselineNumber}}}");
+        using var candidate = JsonDocument.Parse($"{{\"n\":{candidateNumber}}}");
+        var changes = KeyedCollectionComparator.Compare(baseline.RootElement, candidate.RootElement);
+        if (changes.Count != 0)
+        {
+            throw new InvalidOperationException($"'{baselineNumber}' and '{candidateNumber}' should compare equal, but {changes.Count} change(s) were reported.");
+        }
     }
 
     private static void KeyedCollectionComparatorHandlesAwkwardInput()
@@ -162,6 +216,45 @@ public static class BaselineTrustTests
         }
     }
 
+    private static void ComplexityEvaluatorTreatsIncompatibleMeasurementsAsInconclusive()
+    {
+        var methods = new List<MethodComplexity> { new("MethodA", 2, 10) };
+        var baseline = ComplexityPayload.Compute("diffra/core", "roslyn", methods);
+        var candidate = ComplexityPayload.Compute("diffra/core", "lizard", methods);
+
+        var delta = ComplexityEvaluator.Compare(baseline, candidate);
+        Equal(false, delta.IsCompatible);
+
+        var policy = new ComplexityPolicy(MaxMeanComplexity: 15.0, OutlierThreshold: 15, FailOnOutlierGrowth: true);
+        var (outcome, findings) = ComplexityEvaluator.Evaluate(candidate, delta, policy);
+        Equal("inconclusive", outcome);
+        if (!findings.Any(f => f.Id == "complexity/incompatible" && f.Status == "inconclusive"))
+        {
+            throw new InvalidOperationException("Incompatible methodology must produce an inconclusive finding.");
+        }
+
+        var otherScope = ComplexityPayload.Compute("diffra/cli", "roslyn", methods);
+        Equal(false, ComplexityEvaluator.Compare(baseline, otherScope).IsCompatible);
+    }
+
+    private static void ComplexityEvaluatorUsesPolicyOutlierThreshold()
+    {
+        var baseline = ComplexityPayload.Compute("diffra/core", "roslyn", [new MethodComplexity("MethodA", 9, 10)]);
+        var candidate = ComplexityPayload.Compute("diffra/core", "roslyn", [new MethodComplexity("MethodA", 12, 10)]);
+
+        // Compare runs with its default threshold of 15, so it records no new outlier itself.
+        var delta = ComplexityEvaluator.Compare(baseline, candidate);
+        Equal(0, delta.NewOutliers.Count);
+
+        var policy = new ComplexityPolicy(MaxMeanComplexity: 100.0, OutlierThreshold: 10, FailOnOutlierGrowth: true);
+        var (outcome, findings) = ComplexityEvaluator.Evaluate(candidate, delta, policy);
+        Equal("fail", outcome);
+        if (!findings.Any(f => f.Id == "complexity/new-outlier" && f.ChangePaths.Contains("MethodA")))
+        {
+            throw new InvalidOperationException("Policy threshold of 10 should flag MethodA crossing from 9 to 12.");
+        }
+    }
+
     private static void PromotionRequiresIdenticalTwoRunVerification()
     {
         var commit = "5555555555555555555555555555555555555555";
@@ -199,13 +292,42 @@ public static class BaselineTrustTests
         var approval = PromotionManager.VerifyAndApprove(run1, run1, commit, "policy.v1", "1.0", "sha256:rules123");
 
         // Validate against matching evidence -> Valid
-        var (isValid, _) = PromotionManager.ValidateApproval(approval, run1, "policy.v1", "sha256:rules123");
+        var (isValid, _) = PromotionManager.ValidateApproval(approval, run1, "policy.v1", "1.0", "sha256:rules123");
         Equal(true, isValid);
 
         // Validate against altered policy -> Invalid
-        var (isPolicyStale, reason) = PromotionManager.ValidateApproval(approval, run1, "policy.v1", "sha256:newRules");
+        var (isPolicyStale, reason) = PromotionManager.ValidateApproval(approval, run1, "policy.v1", "1.0", "sha256:newRules");
         Equal(false, isPolicyStale);
         if (string.IsNullOrEmpty(reason)) throw new InvalidOperationException("Expected invalidation reason for altered policy.");
+
+        // Validate against a new policy version with the same rules digest -> Invalid
+        var (isVersionStale, versionReason) = PromotionManager.ValidateApproval(approval, run1, "policy.v1", "2.0", "sha256:rules123");
+        Equal(false, isVersionStale);
+        if (string.IsNullOrEmpty(versionReason)) throw new InvalidOperationException("Expected invalidation reason for altered policy version.");
+    }
+
+    private static void PromotionRejectsTamperedEvidence()
+    {
+        var commit = "8888888888888888888888888888888888888888";
+        var payloadBytes = CanonicalJson.Canonicalize(Encoding.UTF8.GetBytes("{\"ok\": true}"));
+        var (_, _, run1) = EvidenceDocumentBuilder.Build("diffra.metric", "1.0", "core", commit, "prod", "1.0", payloadBytes, "macOS", "10.0");
+        var approval = PromotionManager.VerifyAndApprove(run1, run1, commit, "policy.v1", "1.0", "sha256:rules123");
+
+        // Change the payload but keep the approved id and payloadDigest strings.
+        var original = Encoding.UTF8.GetString(run1);
+        var tamperedText = original.Replace("{\"ok\":true}", "{\"ok\":false}", StringComparison.Ordinal);
+        if (string.Equals(original, tamperedText, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Test setup failed to tamper with the evidence payload.");
+        }
+
+        var (isValid, reason) = PromotionManager.ValidateApproval(
+            approval, Encoding.UTF8.GetBytes(tamperedText), "policy.v1", "1.0", "sha256:rules123");
+        Equal(false, isValid);
+        if (reason is null || !reason.Contains("identity verification", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Expected identity verification failure, got: {reason}");
+        }
     }
 
     private static string CaptureGitOutput(string repoRoot, params string[] args)

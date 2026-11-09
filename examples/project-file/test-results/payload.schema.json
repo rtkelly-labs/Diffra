@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diffra.dev/examples/project-file/test-results/payload.schema.json",
+  "title": "Derived payload schema: diffra/test-results@1",
+  "description": "Derived by hand from test-results/diffra.project.yml (ADR 0010, sections 5 and 13). Each tag admits only its own fields.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["scope", "methodology", "stratum", "plan", "metrics"],
+  "properties": {
+    "scope": { "const": "example/library" },
+    "methodology": { "const": "diffra/test-results@1;diffra.converter.trx@1.0.0;trx@2010" },
+    "stratum": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os", "arch", "runtime"],
+      "properties": {
+        "os": { "enum": ["linux", "windows"] },
+        "arch": { "type": "string", "minLength": 1 },
+        "runtime": { "type": "string", "minLength": 1 },
+        "cpu": { "type": "string", "minLength": 1 }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tests"],
+      "properties": {
+        "tests": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["keys"],
+          "properties": {
+            "keys": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "failed": { "type": "object", "additionalProperties": { "type": "string", "minLength": 1 } }
+          }
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tests"],
+      "properties": {
+        "tests": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["results"],
+          "properties": {
+            "results": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["value"],
+                "properties": { "value": { "$ref": "#/$defs/testResult" } }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "testResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tag", "duration"],
+          "properties": {
+            "tag": { "const": "success" },
+            "duration": { "type": "string", "pattern": "^(0|(0|[1-9][0-9]*)\\.[0-9]*[1-9]|[1-9][0-9]*)$" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tag", "duration", "kind", "message"],
+          "properties": {
+            "tag": { "const": "error" },
+            "duration": { "type": "string", "pattern": "^(0|(0|[1-9][0-9]*)\\.[0-9]*[1-9]|[1-9][0-9]*)$" },
+            "kind": { "enum": ["assertion", "exception", "timeout"] },
+            "message": { "type": "string", "maxLength": 4096 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tag", "reason"],
+          "properties": { "tag": { "const": "skipped" }, "reason": { "type": "string", "maxLength": 4096 } }
+        }
+      ]
+    }
+  }
+}

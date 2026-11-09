@@ -30,11 +30,12 @@ We establish a standardized canonical coverage evidence model (`diffra.coverage.
 
 3. **High-Signal Delta Evaluation**:
    - Compares candidate coverage directly against the trusted `merge-base` baseline.
-   - Detects **Newly Uncovered Lines**: Evaluates Git diff hunk boundaries against candidate uncovered line intervals to identify newly added or modified lines that lack test coverage.
-   - Supports targeted policies:
-     - `minOverallLineCoverage`: Absolute floor (e.g. 80.0%).
-     - `maxOverallCoverageDrop`: Permissible drop budget across PR (e.g. 0.0% for strict no-drop).
-     - `failOnNewlyUncoveredLines`: Strict gating rejecting any new lines without tests.
+   - Detects **Newly Uncovered Lines**: For each file, takes the set difference of the candidate's uncovered line numbers minus the baseline's uncovered line numbers. A file absent from the baseline reports all of its uncovered lines.
+   - Known limitation: inserting or deleting lines above an uncovered region shifts its line numbers, so those lines can be reported as newly uncovered. Scoping detection to diff hunks is future work.
+   - Supports targeted policies, with rates on a 0-1 scale:
+     - `MinOverallLineRate`: Absolute floor (e.g. `0.80`).
+     - `MaxAllowedOverallDrop`: Permissible drop budget across the PR (e.g. `0` for strict no-drop).
+     - `FailOnNewlyUncoveredLines`: Strict gating rejecting any newly uncovered lines.
 
 4. **Self-Verification Principle**:
    - Diffra will ingest and gate its own test coverage (`Protocol.Tests`) using this model as part of its build and CI lifecycle.

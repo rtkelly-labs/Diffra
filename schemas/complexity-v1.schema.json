@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diffra.dev/schemas/complexity-v1.schema.json",
+  "title": "Diffra Cyclomatic Complexity Payload v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "scope", "methodology", "unit", "summary", "methods"],
+  "properties": {
+    "schema": { "const": "https://diffra.dev/schemas/complexity-v1.schema.json" },
+    "scope": { "type": "string", "minLength": 1 },
+    "methodology": { "type": "string", "minLength": 1 },
+    "unit": { "const": "cyclomatic-complexity" },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["totalMethods", "totalComplexity", "meanComplexity", "quantiles", "outliers"],
+      "properties": {
+        "totalMethods": { "type": "integer", "minimum": 0 },
+        "totalComplexity": { "type": "integer", "minimum": 0 },
+        "meanComplexity": { "type": "number", "minimum": 0.0 },
+        "quantiles": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["p50", "p75", "p90", "p99"],
+          "properties": {
+            "p50": { "type": "number", "minimum": 0.0 },
+            "p75": { "type": "number", "minimum": 0.0 },
+            "p90": { "type": "number", "minimum": 0.0 },
+            "p99": { "type": "number", "minimum": 0.0 }
+          }
+        },
+        "outliers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/method" }
+        }
+      }
+    },
+    "methods": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/method" }
+    }
+  },
+  "$defs": {
+    "method": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["methodId", "complexity", "linesOfCode"],
+      "properties": {
+        "methodId": { "type": "string", "minLength": 1 },
+        "complexity": { "type": "integer", "minimum": 1 },
+        "linesOfCode": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

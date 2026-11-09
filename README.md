@@ -6,6 +6,47 @@ In testing terms, Diffra is differential testing against a trusted baseline: sna
 
 The CLI handles structured numeric Evidence with a declared scope and methodology. `collect`, `diff`, `eval`, and `report` are separate file operations; `bundle` moves evidence through a content-addressed store and `present` builds and serves a review bundle. Evidence, Delta, Assessment, and presentation each have their own identity. The [CLI reference](docs/cli.md) covers every command, and the [feature status](docs/README.md#feature-status) table shows which capabilities are CLI commands, which are library APIs only, and which are planned. The original [handover vision](VISION.md) and [plan](PLAN.md) preserve the project brief.
 
+## Install
+
+Diffra is distributed as a .NET tool package and as standalone self-contained executables for supported platforms.
+
+### .NET Tool (`Diffra.Cli`)
+
+Adopters can pin `Diffra.Cli` using a local repository tool manifest (`.config/dotnet-tools.json`):
+
+```sh
+dotnet new tool-manifest # if not already present
+dotnet tool install Diffra.Cli --version 0.0.1
+```
+
+Invoke the tool with:
+
+```sh
+dotnet diffra --help
+```
+
+> **Runtime requirement**: The `Diffra.Cli` tool requires the .NET 10 SDK and the `Microsoft.AspNetCore.App` shared runtime for serving local review bundles (`diffra present serve`). The ASP.NET Core shared runtime is included with standard .NET SDK and ASP.NET Core runtime installations, but is not present in runtime-only (.NET Runtime) installations.
+
+### Release archives (standalone binary)
+
+Standalone, self-contained single-file archives are published for `linux-x64`, `linux-arm64`, `osx-x64`, `osx-arm64`, and `win-x64`. These binaries include the runtime dependencies and do not require an installed .NET runtime.
+
+Download the archive and `SHA256SUMS` from the release:
+
+```sh
+# Example for linux-x64
+curl -sSLO https://github.com/rtkelly-labs/Diffra/releases/download/v0.0.1/diffra-0.0.1-linux-x64.tar.gz
+curl -sSLO https://github.com/rtkelly-labs/Diffra/releases/download/v0.0.1/SHA256SUMS
+
+# Verify checksum
+sha256sum --check --ignore-missing SHA256SUMS
+# On macOS: shasum -a 256 -c --ignore-missing SHA256SUMS
+
+# Extract and run
+tar -xzf diffra-0.0.1-linux-x64.tar.gz
+./diffra --help
+```
+
 ## Build and check
 
 Install the .NET SDK pinned in `global.json`, then run:

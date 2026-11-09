@@ -2,5 +2,6 @@
   <PropertyGroup>
     <AssemblyName>Diffra.Protocol</AssemblyName>
     <RootNamespace>Diffra.Protocol</RootNamespace>
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 </Project>

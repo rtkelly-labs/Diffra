@@ -70,6 +70,40 @@ jobs:
       - name: Pack Pre-Release Diffra CLI Tool
         run: dotnet pack src/Cli/Diffra.Cli.csproj --configuration Release -o artifacts/package
 
+      - name: Smoke test installed Diffra CLI tool
+        run: |
+          dotnet tool install Diffra.Cli --add-source artifacts/package --tool-path runner-bin --version 0.0.1
+          mkdir -p temp/smoke
+          ./runner-bin/diffra collect \
+            --payload examples/sample-project/workflow/candidate-payload.json \
+            --subject-id example/project --commit 2222222222222222222222222222222222222222 \
+            --type-id org.example.metrics --type-version 1.0 \
+            --producer-id org.example.fixture --producer-version 1.0 \
+            -o temp/smoke/evidence.json
+          test $? -eq 0
+
+          ./runner-bin/diffra diff \
+            --baseline-ref examples/sample-project/workflow/baseline-reference.json \
+            --baseline-evidence examples/sample-project/workflow/baseline-evidence.json \
+            --evidence temp/smoke/evidence.json -o temp/smoke/delta.json
+          test $? -eq 0
+
+          ./runner-bin/diffra eval \
+            --rules examples/sample-project/workflow/rules.json \
+            --delta temp/smoke/delta.json -o temp/smoke/assessment.json
+          test $? -eq 0
+
+          ./runner-bin/diffra report \
+            temp/smoke/delta.json --assessment temp/smoke/assessment.json \
+            --baseline-ref examples/sample-project/workflow/baseline-reference.json \
+            --format html -o temp/smoke/report.html
+          test $? -eq 0
+
+          test -s temp/smoke/evidence.json
+          test -s temp/smoke/delta.json
+          test -s temp/smoke/assessment.json
+          test -s temp/smoke/report.html
+
       - name: Upload Pre-Release Tool Package Artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:

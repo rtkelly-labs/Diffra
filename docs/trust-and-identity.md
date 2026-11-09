@@ -64,7 +64,7 @@ A trusted reference is bound to its trust policy through `trust.decisionDigest`:
 
 Candidate production and baseline promotion are separate operations. An update command writes candidate Evidence and a proposal. It cannot mark either trusted. Promotion requires:
 
-1. A reviewer or trusted automation approves the exact candidate Evidence ID, subject commit, role, and applicable policy identity.
+1. A reviewer or trusted automation approves the exact candidate Evidence ID, subject commit, and applicable policy identity.
 2. A clean second production run at the same subject commit reproduces the same Evidence ID and artifact digests.
 3. The promotion approval record captures the decision. It contains, and its digest therefore covers, exactly `schema`, `decisionId`, `issuer`, `headCommit`, approved `evidenceId` and `payloadDigest`, `policyId`, `policyVersion`, `rulesDigest`, the `verificationRunEvidenceId` of the second run, and `timestamp`. It does not contain the Baseline reference or its ID.
 

@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Protocol/Diffra.Protocol.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Protocol.Tests/Protocol.Tests.csproj" />
+  </Folder>
+</Solution>

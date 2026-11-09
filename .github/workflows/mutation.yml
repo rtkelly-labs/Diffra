@@ -1,0 +1,99 @@
+name: Mutation
+
+# Stryker.NET over the comparison and assessment core.
+# workflow_dispatch is the intended trigger; the path-filtered pull_request trigger
+# lets the experiment run before this file reaches the default branch.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/mutation.yml
+      - tests/Protocol.Tests.Stryker/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stryker:
+    name: stryker (Comparison, Assessment)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Build solution (CLI is spawned by several suites)
+        run: dotnet build Diffra.slnx --configuration Release
+
+      - name: Baseline - run adapter suite unmutated
+        run: |
+          start=$(date +%s)
+          dotnet test tests/Protocol.Tests.Stryker/Protocol.Tests.Stryker.csproj --configuration Release --logger "console;verbosity=normal"
+          echo "BASELINE_SECONDS=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
+
+      - name: Install Stryker.NET
+        run: dotnet tool install dotnet-stryker --version 5.0.0 --tool-path "$RUNNER_TEMP/stryker"
+
+      # Score floor: 81.2% after the gap tests in run 42128535455. Fail if mutation coverage regresses.
+      - name: Run Stryker
+        working-directory: tests/Protocol.Tests.Stryker
+        run: |
+          start=$(date +%s)
+          "$RUNNER_TEMP/stryker/dotnet-stryker" \
+            --project Diffra.Protocol.csproj \
+            --test-project Protocol.Tests.Stryker.csproj \
+            --configuration Release \
+            --mutate "**/Comparison.cs" \
+            --mutate "**/Assessment.cs" \
+            --reporter html --reporter json --reporter progress --reporter cleartext \
+            --output "$GITHUB_WORKSPACE/stryker-output" \
+            --break-at 80
+          echo "STRYKER_SECONDS=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
+
+      - name: Summarise
+        if: always()
+        run: |
+          report=$(find "$GITHUB_WORKSPACE/stryker-output" -name 'mutation-report.json' | head -1)
+          {
+            echo "## Stryker.NET: Comparison.cs, Assessment.cs"
+            echo
+            echo "Unmutated suite: ${BASELINE_SECONDS:-n/a} s. Stryker: ${STRYKER_SECONDS:-n/a} s."
+            echo
+            if [ -n "$report" ]; then
+              echo "| File | Killed | Survived | Timeout | NoCoverage | Other | Score (covered) | Score (all) |"
+              echo "| --- | --- | --- | --- | --- | --- | --- | --- |"
+              jq -r '.files | to_entries[] | .key as $f | [.value.mutants[].status] as $s
+                | ($s|map(select(.=="Killed"))|length) as $k
+                | ($s|map(select(.=="Survived"))|length) as $sv
+                | ($s|map(select(.=="Timeout"))|length) as $t
+                | ($s|map(select(.=="NoCoverage"))|length) as $n
+                | (($s|length) - $k - $sv - $t - $n) as $o
+                | "| \($f|split("/")|last) | \($k) | \($sv) | \($t) | \($n) | \($o) | \(if ($k+$t+$sv)>0 then (100*($k+$t)/($k+$t+$sv)|floor) else "n/a" end)% | \(if ($k+$t+$sv+$n)>0 then (100*($k+$t)/($k+$t+$sv+$n)|floor) else "n/a" end)% |"' "$report"
+              echo
+              echo "### Surviving and uncovered mutants"
+              echo
+              jq -r '.files | to_entries[] | .key as $f | .value.mutants[]
+                | select(.status=="Survived" or .status=="NoCoverage")
+                | "- \(.status) \($f|split("/")|last):\(.location.start.line) \(.mutatorName): `\(.replacement // "" | gsub("\n";" ") | .[0:80])`"' "$report"
+            else
+              echo "No mutation-report.json produced."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: stryker-report
+          path: stryker-output
+          retention-days: 14
+          if-no-files-found: warn

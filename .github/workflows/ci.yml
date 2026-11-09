@@ -48,6 +48,13 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Resolve project version
+        id: version
+        run: |
+          version=$(dotnet msbuild src/Cli/Diffra.Cli.csproj -getProperty:Version)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "DIFFRA_VERSION=$version" >> "$GITHUB_ENV"
+
       - name: Build solution
         run: dotnet build Diffra.slnx --configuration Release
 
@@ -72,8 +79,7 @@ jobs:
 
       - name: Smoke test installed Diffra CLI tool
         run: |
-          project_version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props | tr -d ' \r\n')
-          dotnet tool install Diffra.Cli --add-source artifacts/package --tool-path runner-bin --version "$project_version"
+          dotnet tool install Diffra.Cli --add-source artifacts/package --tool-path runner-bin --version "$DIFFRA_VERSION"
           mkdir -p temp/smoke
           ./runner-bin/diffra collect \
             --payload examples/sample-project/workflow/candidate-payload.json \

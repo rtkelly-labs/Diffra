@@ -8,15 +8,28 @@ The CLI handles structured numeric Evidence with a declared scope and methodolog
 
 ## Install
 
-Diffra is distributed as a .NET tool package and as standalone self-contained executables for supported platforms.
+Diffra is distributed as a .NET tool package attached to GitHub Releases and as standalone self-contained executables for supported platforms.
 
 ### .NET Tool (`Diffra.Cli`)
 
-Adopters can pin `Diffra.Cli` using a local repository tool manifest (`.config/dotnet-tools.json`):
+Diffra is not yet published to NuGet.org; publication to NuGet.org will come in a later release. The `Diffra.Cli.0.0.1.nupkg` package is attached directly to the GitHub Release.
+
+Download the package and `SHA256SUMS` from the release:
+
+```sh
+curl -sSLO https://github.com/rtkelly-labs/Diffra/releases/download/v0.0.1/Diffra.Cli.0.0.1.nupkg
+curl -sSLO https://github.com/rtkelly-labs/Diffra/releases/download/v0.0.1/SHA256SUMS
+
+# Verify checksum
+sha256sum --check --ignore-missing SHA256SUMS
+# On macOS: shasum -a 256 -c --ignore-missing SHA256SUMS
+```
+
+Install the downloaded tool package into a local tool manifest (`.config/dotnet-tools.json`) using `--add-source <dir>`:
 
 ```sh
 dotnet new tool-manifest # if not already present
-dotnet tool install Diffra.Cli --version 0.0.1-preview
+dotnet tool install Diffra.Cli --version 0.0.1 --add-source .
 ```
 
 Invoke the tool with:
@@ -25,27 +38,29 @@ Invoke the tool with:
 dotnet diffra --help
 ```
 
-> **Runtime requirement**: The `Diffra.Cli` tool requires the .NET 10 SDK and the `Microsoft.AspNetCore.App` shared runtime for serving local review bundles (`diffra present serve`). The ASP.NET Core shared runtime is included with standard .NET SDK and ASP.NET Core runtime installations, but is not present in runtime-only (.NET Runtime) installations.
+> **Runtime requirement**: Installing `Diffra.Cli` requires the .NET 10 SDK, and running the tool requires the ASP.NET Core 10 runtime (included with the SDK). Because `Diffra.Cli` references `Microsoft.AspNetCore.App`, the ASP.NET Core 10 shared runtime is required for the tool to start at all. Self-contained archives need neither.
 
 ### Release archives (standalone binary)
 
-Standalone, self-contained single-file archives are published for `linux-x64`, `linux-arm64`, `osx-x64`, `osx-arm64`, and `win-x64`. These binaries include the runtime dependencies and do not require an installed .NET runtime.
+Standalone, self-contained single-file archives are published for `linux-x64`, `linux-arm64`, `osx-x64`, `osx-arm64`, and `win-x64`. These binaries bundle the runtime and dependencies, requiring neither the .NET SDK nor the ASP.NET Core runtime.
 
 Download the archive and `SHA256SUMS` from the release:
 
 ```sh
 # Example for linux-x64
-curl -sSLO https://github.com/rtkelly-labs/Diffra/releases/download/v0.0.1-preview/diffra-0.0.1-preview-linux-x64.tar.gz
-curl -sSLO https://github.com/rtkelly-labs/Diffra/releases/download/v0.0.1-preview/SHA256SUMS
+curl -sSLO https://github.com/rtkelly-labs/Diffra/releases/download/v0.0.1/diffra-0.0.1-linux-x64.tar.gz
+curl -sSLO https://github.com/rtkelly-labs/Diffra/releases/download/v0.0.1/SHA256SUMS
 
 # Verify checksum
 sha256sum --check --ignore-missing SHA256SUMS
 # On macOS: shasum -a 256 -c --ignore-missing SHA256SUMS
 
 # Extract and run
-tar -xzf diffra-0.0.1-preview-linux-x64.tar.gz
+tar -xzf diffra-0.0.1-linux-x64.tar.gz
 ./diffra --help
 ```
+
+The macOS archives are unsigned. Users may need to run `xattr -d com.apple.quarantine diffra` before executing.
 
 ## Build and check
 

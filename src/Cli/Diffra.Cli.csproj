@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Diffra.Cli</AssemblyName>
+    <RootNamespace>Diffra.Cli</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Protocol/Diffra.Protocol.csproj" />
+  </ItemGroup>
+</Project>

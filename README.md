@@ -2,7 +2,9 @@
 
 Diffra records typed software evidence, compares it with an exact baseline, evaluates the change under separate policy rules, and renders a review report. It is an independent protocol and .NET CLI. Parquet.SourceGenerator is the planned first adopter; it is not a dependency.
 
-The current slice supports structured numeric Evidence with a declared scope and methodology. `collect`, `diff`, `eval`, and `report` are separate file operations. Evidence, Delta, Assessment, and presentation each have their own identity. Start with the [documentation index](docs/README.md) and [current vision](docs/vision.md). The original [handover vision](VISION.md) and [plan](PLAN.md) preserve the project brief.
+In testing terms, Diffra is differential testing against a trusted baseline: snapshot and approval testing with typed comparison, a verdict kept separate from the measured change, and a baseline that the change under review cannot approve for itself. [Diffra in testing terms](docs/testing-concepts.md) explains the idea.
+
+The CLI handles structured numeric Evidence with a declared scope and methodology. `collect`, `diff`, `eval`, and `report` are separate file operations; `bundle` moves evidence through a content-addressed store and `present` builds and serves a review bundle. Evidence, Delta, Assessment, and presentation each have their own identity. The [CLI reference](docs/cli.md) covers every command, and the [feature status](docs/README.md#feature-status) table shows which capabilities are CLI commands, which are library APIs only, and which are planned. The original [handover vision](VISION.md) and [plan](PLAN.md) preserve the project brief.
 
 ## Build and check
 
@@ -40,6 +42,6 @@ dotnet run --project src/Cli/Diffra.Cli.csproj -c Release --no-build -- report \
   --format html -o temp/demo/report.html
 ```
 
-The sample reference simulates a trusted resolver. Its issuer is `fixture-only`. The current local `diff` command checks the reference's shape and digest, but does not authenticate the issuer; do not accept a PR-supplied reference as a CI trust decision. Git merge-base resolution, trusted stores, candidate verification/promotion, graph execution, bundles, and the Parquet integration remain in the handover plan. Native Parquet golden, compilation, and API gates must remain required when that integration is added.
+The sample reference simulates a trusted resolver. Its issuer is `fixture-only`. The current local `diff` command checks the reference's shape and digest, but does not authenticate the issuer; do not accept a PR-supplied reference as a CI trust decision. The Git merge-base resolver, two-run promotion records, and graph execution exist as library APIs but are not yet wired into the CLI; the Parquet integration is planned. Native Parquet golden, compilation, and API gates must remain required when that integration is added.
 
 `eval` writes an Assessment before returning exit code 3 for `fail`, `needs-review`, or `inconclusive`. Invalid input returns 2; file or execution errors return 1. A report without an Assessment states that it has no policy verdict.

@@ -15,6 +15,9 @@ public static class PresentationTests
         DeliveryIndexVerifiesCanonicalIdentity();
         InventoryMapsAssetsToDigestPaths();
         PresentationBundleMaterializesCompleteLayout();
+        PresentationBundleRejectsSuppliedButMissingInputs();
+        PresentationBundleRefusesToOverwriteUnrelatedDirectory();
+        PresentationBundleReplacesPreviousOutputAndEmptyDirectory();
         CliPresentBundleAndServeWithCsp();
         Console.WriteLine("PASS artifact presentation, design-system report, and local review server");
     }
@@ -86,6 +89,74 @@ public static class PresentationTests
         Contains(html, "stat-grid");
         Contains(html, "Diffra comparison report");
         Contains(html, "--ds-surface-base");
+    }
+
+    private static void PresentationBundleRejectsSuppliedButMissingInputs()
+    {
+        using var scratch = new ScratchDirectory();
+        var sampleDir = Path.Combine(FindRepositoryRoot(), "examples", "sample-project", "workflow");
+        var deltaPath = Path.Combine(sampleDir, "delta.json");
+        var missing = scratch.FilePath("does-not-exist.json");
+        var outDir = scratch.FilePath("missing-inputs");
+
+        Throws<FileNotFoundException>(
+            () => PresentationBundle.Materialize(new PresentationBundle.MaterializeOptions(outDir, deltaPath, AssessmentPath: missing)),
+            "A supplied but missing assessment path must be rejected.");
+        Throws<FileNotFoundException>(
+            () => PresentationBundle.Materialize(new PresentationBundle.MaterializeOptions(outDir, deltaPath, BaselineReferencePath: missing)),
+            "A supplied but missing baseline-reference path must be rejected.");
+        Throws<FileNotFoundException>(
+            () => PresentationBundle.Materialize(new PresentationBundle.MaterializeOptions(outDir, deltaPath, ManifestPath: missing)),
+            "A supplied but missing manifest path must be rejected.");
+        Throws<FileNotFoundException>(
+            () => PresentationBundle.Materialize(new PresentationBundle.MaterializeOptions(outDir, deltaPath, DeliveryIndexPath: missing)),
+            "A supplied but missing delivery index path must be rejected.");
+        True(!Directory.Exists(outDir), "No output should be materialized when a supplied input is missing.");
+    }
+
+    private static void PresentationBundleRefusesToOverwriteUnrelatedDirectory()
+    {
+        using var scratch = new ScratchDirectory();
+        var sampleDir = Path.Combine(FindRepositoryRoot(), "examples", "sample-project", "workflow");
+        var deltaPath = Path.Combine(sampleDir, "delta.json");
+        var outDir = scratch.FilePath("user-data");
+        Directory.CreateDirectory(outDir);
+        var precious = Path.Combine(outDir, "precious.txt");
+        File.WriteAllText(precious, "do not delete");
+
+        Throws<InvalidOperationException>(
+            () => PresentationBundle.Materialize(new PresentationBundle.MaterializeOptions(outDir, deltaPath)),
+            "Materializing over an unrelated non-empty directory must be refused.");
+        True(File.Exists(precious), "The unrelated file must survive a refused materialization.");
+        Equal("do not delete", File.ReadAllText(precious), "The unrelated file must be unchanged.");
+        True(!File.Exists(Path.Combine(outDir, "index.html")), "No presentation output should be written into the refused directory.");
+    }
+
+    private static void PresentationBundleReplacesPreviousOutputAndEmptyDirectory()
+    {
+        using var scratch = new ScratchDirectory();
+        var sampleDir = Path.Combine(FindRepositoryRoot(), "examples", "sample-project", "workflow");
+        var deltaPath = Path.Combine(sampleDir, "delta.json");
+
+        // An existing empty directory may be replaced.
+        var outDir = scratch.FilePath("rebuilt");
+        Directory.CreateDirectory(outDir);
+        PresentationBundle.Materialize(new PresentationBundle.MaterializeOptions(outDir, deltaPath));
+        True(File.Exists(Path.Combine(outDir, "index.html")), "index.html must exist after the first materialization.");
+
+        // A previous presentation output may be replaced, and stale files from it do not survive.
+        var stale = Path.Combine(outDir, "stale.txt");
+        File.WriteAllText(stale, "from the previous run");
+        var second = PresentationBundle.Materialize(new PresentationBundle.MaterializeOptions(outDir, deltaPath));
+        True(File.Exists(second.IndexHtmlPath), "index.html must exist after re-materializing into the same output.");
+        True(File.Exists(Path.Combine(outDir, "inventory.json")), "inventory.json must exist after re-materializing.");
+        True(!File.Exists(stale), "Re-materializing must replace the previous output rather than merge into it.");
+
+        var leftovers = Directory.EnumerateFileSystemEntries(scratch.DirectoryPath)
+            .Select(Path.GetFileName)
+            .Where(name => name is not null && name.StartsWith(".bundle-", StringComparison.Ordinal))
+            .ToList();
+        Equal(0, leftovers.Count, "No temporary or backup bundle directories should remain beside the output.");
     }
 
     private static void CliPresentBundleAndServeWithCsp()

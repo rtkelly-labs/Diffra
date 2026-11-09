@@ -62,7 +62,7 @@ A Baseline reference records the exact resolution of a selector:
 }
 ```
 
-`role` is `merge-base`, `approved-main`, or `previous-release`. `subjectCommit`, `manifestDigest`, and `evidenceId` identify the resolved baseline. `resolver` records the resolver ID/version and resolved commit; `sourceRef` is lookup context only. A mutable value such as `main` never establishes identity. Baseline `status` is `trusted`, `candidate`, `untrusted`, `missing`, `corrupt`, or `incompatible`. Gate comparisons require `trusted`. A trusted reference also carries a `trust` record with issuer and decision ID; the decision digest is optional when the trust system does not issue a separate approval document.
+`role` is `merge-base`, `approved-main`, or `previous-release`. `subjectCommit`, `manifestDigest`, and `evidenceId` identify the resolved baseline; a `missing` reference may omit them. `resolver` records the resolver ID/version and, unless the reference is `missing`, the resolved commit; `sourceRef` is lookup context only. A mutable value such as `main` never establishes identity. Baseline `status` is `trusted`, `candidate`, `untrusted`, `missing`, `corrupt`, or `incompatible`. Gate comparisons require `trusted`. A trusted reference also carries a `trust` record with issuer and decision ID; the decision digest is optional when the trust system does not issue a separate approval document. The decision digest is what binds the reference to a trust policy, because it hashes the promotion record that names that policy; see [trust and identity](trust-and-identity.md).
 
 ## Delta
 
@@ -138,7 +138,7 @@ diffra report delta.diffra.json --assessment assessment.diffra.json --baseline-r
 
 The current `collect` validates a bounded structured numeric JSON payload and writes Evidence without artifact attachments. `diff` verifies supplied Evidence documents and a Baseline reference, checks numeric compatibility, and writes a policy-free Delta. It checks the reference's declared trust record structurally; authentication by a Git resolver or trusted store is a later phase, so this command must not treat a PR-supplied reference as trusted. `eval` assesses the unchanged Delta under JSON numeric rules. `report` renders the Delta and optional Assessment, and shows role and commit when given the Baseline reference. Each command writes its output atomically after validation and does not overwrite an input file.
 
-Planned commands include `baseline verify`, `baseline update --mode missing|changed|all`, explicit approval/promotion, and `bundle export|import`. For the current CLI, exit 0 means a completed command or passing/warning Assessment, exit 3 means a failing, review-needed, or inconclusive Assessment, exit 2 means invalid input, and exit 1 means a file or execution error. `diff` records changed and unchanged in the Delta rather than using different exit codes.
+The CLI also has `bundle export|import` and `present bundle|serve`; the [CLI reference](cli.md) covers every command. Planned commands include `baseline verify`, `baseline update --mode missing|changed|all`, and explicit approval/promotion, which today exist only as library APIs. For the current CLI, exit 0 means a completed command or passing/warning Assessment, exit 3 means a failing, review-needed, or inconclusive Assessment, exit 2 means invalid input, and exit 1 means a file or execution error. `diff` records changed and unchanged in the Delta rather than using different exit codes.
 
 ## Threat boundaries
 

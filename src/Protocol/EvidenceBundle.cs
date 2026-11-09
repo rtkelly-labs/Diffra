@@ -45,6 +45,10 @@ public static class EvidenceBundle
             throw new InvalidOperationException("Invalid manifest document: missing 'id' or 'artifacts'.");
         }
 
+        RequireExistingIfSupplied(options.DeltaPath);
+        RequireExistingIfSupplied(options.AssessmentPath);
+        RequireExistingIfSupplied(options.BaselineReferencePath);
+
         var fullOutput = Path.GetFullPath(options.OutputPath);
         var outputDir = Path.GetDirectoryName(fullOutput)!;
         Directory.CreateDirectory(outputDir);
@@ -63,15 +67,15 @@ public static class EvidenceBundle
 
                 // 2. Documents
                 WriteZipEntry(archive, "documents/manifest.json", manifestBytes);
-                if (options.DeltaPath is not null && File.Exists(options.DeltaPath))
+                if (options.DeltaPath is not null)
                 {
                     WriteZipEntry(archive, "documents/delta.json", File.ReadAllBytes(options.DeltaPath));
                 }
-                if (options.AssessmentPath is not null && File.Exists(options.AssessmentPath))
+                if (options.AssessmentPath is not null)
                 {
                     WriteZipEntry(archive, "documents/assessment.json", File.ReadAllBytes(options.AssessmentPath));
                 }
-                if (options.BaselineReferencePath is not null && File.Exists(options.BaselineReferencePath))
+                if (options.BaselineReferencePath is not null)
                 {
                     WriteZipEntry(archive, "documents/baseline-reference.json", File.ReadAllBytes(options.BaselineReferencePath));
                 }
@@ -141,7 +145,7 @@ public static class EvidenceBundle
         try
         {
             using var archive = ZipFile.OpenRead(bundlePath);
-            return ImportArchive(archive, store);
+            return ImportArchive(bundlePath, archive, store);
         }
         catch (InvalidDataException exception)
         {
@@ -149,7 +153,7 @@ public static class EvidenceBundle
         }
     }
 
-    private static ImportResult ImportArchive(ZipArchive archive, ContentAddressedStore store)
+    private static ImportResult ImportArchive(string bundlePath, ZipArchive archive, ContentAddressedStore store)
     {
         // Security check: validate all entry names first (Zip Slip prevention)
         foreach (var entry in archive.Entries)
@@ -246,6 +250,25 @@ public static class EvidenceBundle
             }
         }
 
+        // Declared artifacts the bundle omits must already be in the store and still match their digest.
+        // This is checked before writing, so an incomplete bundle imports nothing.
+        var bundledDigests = new HashSet<string>(StringComparer.Ordinal) { ContentAddressedStore.ComputeDigest(manifestBytes) };
+        foreach (var (bytes, expectedDigest, _) in staged)
+        {
+            bundledDigests.Add(expectedDigest ?? ContentAddressedStore.ComputeDigest(bytes));
+        }
+
+        var missingDigests = declaredArtifacts.Values
+            .Distinct(StringComparer.Ordinal)
+            .Where(digest => !bundledDigests.Contains(digest) && !store.ContainsVerified(digest))
+            .OrderBy(digest => digest, StringComparer.Ordinal)
+            .ToList();
+        if (missingDigests.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"Bundle '{bundlePath}' is incomplete: declared artifact digest(s) neither in the bundle nor verified in the store: {string.Join(", ", missingDigests)}.");
+        }
+
         // Pass 2: everything verified; write to the store.
         var importedDigests = new List<string> { store.Put(manifestBytes) };
         var docCount = 1;
@@ -264,6 +287,14 @@ public static class EvidenceBundle
         }
 
         return new ImportResult(manifestId, docCount, artifactCount, importedDigests);
+    }
+
+    private static void RequireExistingIfSupplied(string? path)
+    {
+        if (path is not null && !File.Exists(path))
+        {
+            throw new FileNotFoundException($"Supplied input file not found: {path}", path);
+        }
     }
 
     private static byte[] ReadEntry(ZipArchiveEntry entry)

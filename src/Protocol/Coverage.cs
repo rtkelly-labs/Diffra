@@ -134,11 +134,14 @@ public sealed record CoveragePayload(
         return string.Join(", ", ranges);
     }
 
+    /// <summary>Largest number of lines a single interval segment may expand to.</summary>
+    public const int MaxLineRangeSpan = 1_000_000;
+
     /// <summary>Upper bound on the number of line numbers one interval string may expand to.</summary>
     private const int MaximumExpandedLines = 1_000_000;
 
     /// <summary>Expands a canonical interval string (e.g. '14-16, 25') back into a set of line numbers.</summary>
-    /// <exception cref="InvalidOperationException">The intervals expand to more than <see cref="MaximumExpandedLines"/> lines.</exception>
+    /// <exception cref="InvalidOperationException">A segment is not 'N' or 'N-M' with unsigned integers, starts below line 1, ends before it starts, or spans more than <see cref="MaxLineRangeSpan"/> lines; or the intervals together expand to more than 1,000,000 lines.</exception>
     public static HashSet<int> ParseLineRanges(string intervals)
     {
         var result = new HashSet<int>();
@@ -147,16 +150,36 @@ public sealed record CoveragePayload(
 
         foreach (var segment in intervals.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
         {
-            var parts = segment.Split('-');
-            if (parts.Length == 1 && int.TryParse(parts[0], CultureInfo.InvariantCulture, out var single))
+            // Line numbers are unsigned digit runs, so a sign or an empty bound ('-1', '1-', '-1-3') is malformed.
+            var parts = segment.Split('-', StringSplitOptions.TrimEntries);
+            if (parts.Length == 1 && TryParseLineNumber(parts[0], out var single))
             {
+                if (single < 1)
+                {
+                    throw new InvalidOperationException($"Invalid line number '{segment}': line numbers start at 1.");
+                }
+
                 result.Add(single);
             }
             else if (parts.Length == 2 &&
-                     int.TryParse(parts[0], CultureInfo.InvariantCulture, out var start) &&
-                     int.TryParse(parts[1], CultureInfo.InvariantCulture, out var end))
+                     TryParseLineNumber(parts[0], out var start) &&
+                     TryParseLineNumber(parts[1], out var end))
             {
-                if (end < start) continue;
+                if (start < 1)
+                {
+                    throw new InvalidOperationException($"Invalid line range '{segment}': line numbers start at 1.");
+                }
+
+                if (end < start)
+                {
+                    throw new InvalidOperationException($"Invalid line range '{segment}': end is before start.");
+                }
+
+                if ((long)end - start + 1 > MaxLineRangeSpan)
+                {
+                    throw new InvalidOperationException($"Invalid line range '{segment}': span exceeds {MaxLineRangeSpan} lines.");
+                }
+
                 expanded += (long)end - start + 1;
                 if (expanded > MaximumExpandedLines)
                 {
@@ -166,9 +189,16 @@ public sealed record CoveragePayload(
                 // long counter: an int counter overflows and never terminates when end is int.MaxValue.
                 for (long n = start; n <= end; n++) result.Add((int)n);
             }
+            else
+            {
+                throw new InvalidOperationException($"Invalid line range segment '{segment}': expected 'N' or 'N-M' with non-negative integer line numbers.");
+            }
         }
         return result;
     }
+
+    private static bool TryParseLineNumber(string text, out int value) =>
+        int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out value);
 
     private static JsonObject ToCounterNode(CoverageCounter counter) => new()
     {

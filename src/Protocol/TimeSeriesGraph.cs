@@ -194,6 +194,9 @@ public static class TimeSeriesGraph
     /// <summary>Renders a full historical evolution SVG chart with thresholds and candidate overlay.</summary>
     public static string RenderSvgEvolutionChart(TimeSeriesProjection projection, int width = 640, int height = 220)
     {
+        // Plot in chronological order regardless of the order the points were supplied in.
+        var orderedPoints = projection.Points.OrderBy(p => p.Timestamp).ToList();
+
         double padLeft = 55.0;
         double padRight = 35.0;
         double padTop = 30.0;
@@ -202,7 +205,7 @@ public static class TimeSeriesGraph
         double plotW = width - padLeft - padRight;
         double plotH = height - padTop - padBottom;
 
-        var allValues = projection.Points.Select(p => p.Value).ToList();
+        var allValues = orderedPoints.Select(p => p.Value).ToList();
         if (projection.Candidate != null) allValues.Add(projection.Candidate.Value);
         if (projection.Thresholds?.Min.HasValue == true) allValues.Add(projection.Thresholds.Min.Value);
         if (projection.Thresholds?.Max.HasValue == true) allValues.Add(projection.Thresholds.Max.Value);
@@ -252,12 +255,12 @@ public static class TimeSeriesGraph
         }
 
         // Plot historical points
-        int count = projection.Points.Count + (projection.Candidate != null ? 1 : 0);
+        int count = orderedPoints.Count + (projection.Candidate != null ? 1 : 0);
         var polylinePoints = new StringBuilder();
 
-        for (int i = 0; i < projection.Points.Count; i++)
+        for (int i = 0; i < orderedPoints.Count; i++)
         {
-            var p = projection.Points[i];
+            var p = orderedPoints[i];
             double x = padLeft + (count == 1 ? plotW / 2 : (double)i / (count - 1) * plotW);
             double y = padTop + plotH - ((p.Value - valMin) / valRange * plotH);
 
@@ -283,10 +286,10 @@ public static class TimeSeriesGraph
             double candY = padTop + plotH - ((projection.Candidate.Value - valMin) / valRange * plotH);
 
             // Connect last historical point to candidate with a dashed transition line
-            if (projection.Points.Count > 0)
+            if (orderedPoints.Count > 0)
             {
-                var lastHist = projection.Points[^1];
-                double lastX = padLeft + (count == 1 ? plotW / 2 : (double)(projection.Points.Count - 1) / (count - 1) * plotW);
+                var lastHist = orderedPoints[^1];
+                double lastX = padLeft + (count == 1 ? plotW / 2 : (double)(orderedPoints.Count - 1) / (count - 1) * plotW);
                 double lastY = padTop + plotH - ((lastHist.Value - valMin) / valRange * plotH);
                 sb.Append(CultureInfo.InvariantCulture, $"<line x1=\"{lastX:F1}\" y1=\"{lastY:F1}\" x2=\"{candX:F1}\" y2=\"{candY:F1}\" stroke=\"var(--ds-text-muted, #6b7280)\" stroke-dasharray=\"3 3\" stroke-width=\"1.5\" />");
             }

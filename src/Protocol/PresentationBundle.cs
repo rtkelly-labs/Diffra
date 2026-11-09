@@ -38,7 +38,13 @@ public static class PresentationBundle
             throw new FileNotFoundException($"Delta document not found: {options.DeltaPath}", options.DeltaPath);
         }
 
-        var fullOutput = Path.GetFullPath(options.OutputDirectory);
+        RequireExistingIfSupplied(options.AssessmentPath);
+        RequireExistingIfSupplied(options.BaselineReferencePath);
+        RequireExistingIfSupplied(options.ManifestPath);
+        RequireExistingIfSupplied(options.DeliveryIndexPath);
+
+        var fullOutput = Path.TrimEndingDirectorySeparator(Path.GetFullPath(options.OutputDirectory));
+        EnsureReplaceableOutput(fullOutput);
         var parentDir = Path.GetDirectoryName(fullOutput) ?? Directory.GetCurrentDirectory();
         Directory.CreateDirectory(parentDir);
 
@@ -61,7 +67,7 @@ public static class PresentationBundle
             var docsCount = 1;
 
             byte[]? assessmentBytes = null;
-            if (options.AssessmentPath is not null && File.Exists(options.AssessmentPath))
+            if (options.AssessmentPath is not null)
             {
                 assessmentBytes = File.ReadAllBytes(options.AssessmentPath);
                 DocumentIdentity.Verify("assessment", assessmentBytes);
@@ -70,7 +76,7 @@ public static class PresentationBundle
             }
 
             byte[]? baselineRefBytes = null;
-            if (options.BaselineReferencePath is not null && File.Exists(options.BaselineReferencePath))
+            if (options.BaselineReferencePath is not null)
             {
                 baselineRefBytes = File.ReadAllBytes(options.BaselineReferencePath);
                 DocumentIdentity.Verify("baseline-reference", baselineRefBytes);
@@ -79,7 +85,7 @@ public static class PresentationBundle
             }
 
             byte[]? manifestBytes = null;
-            if (options.ManifestPath is not null && File.Exists(options.ManifestPath))
+            if (options.ManifestPath is not null)
             {
                 manifestBytes = File.ReadAllBytes(options.ManifestPath);
                 File.WriteAllBytes(Path.Combine(docsDir, "manifest.json"), manifestBytes);
@@ -87,7 +93,11 @@ public static class PresentationBundle
             }
 
             // Render HTML report
-            var html = ReportRenderer.Render(deltaBytes, assessmentBytes, baselineRefBytes, ReportFormat.Html);
+            var html = ReportRenderer.Render(
+                deltaBytes,
+                assessmentBytes is null ? (ReadOnlyMemory<byte>?)null : assessmentBytes,
+                baselineRefBytes is null ? (ReadOnlyMemory<byte>?)null : baselineRefBytes,
+                ReportFormat.Html);
             var indexHtmlPath = Path.Combine(tempDir, "index.html");
             File.WriteAllText(indexHtmlPath, html, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
@@ -153,7 +163,7 @@ public static class PresentationBundle
             File.WriteAllText(Path.Combine(tempDir, "inventory.json"), inventoryJson, new UTF8Encoding(false));
 
             // Write delivery index if present or generate from inventory
-            if (options.DeliveryIndexPath is not null && File.Exists(options.DeliveryIndexPath))
+            if (options.DeliveryIndexPath is not null)
             {
                 var delivBytes = File.ReadAllBytes(options.DeliveryIndexPath);
                 DeliveryIndex.Verify(delivBytes);
@@ -166,12 +176,8 @@ public static class PresentationBundle
                 File.WriteAllText(Path.Combine(tempDir, "diffra-delivery-index.json"), generatedIndex, new UTF8Encoding(false));
             }
 
-            // Atomic move to outputDirectory
-            if (Directory.Exists(fullOutput))
-            {
-                Directory.Delete(fullOutput, recursive: true);
-            }
-            Directory.Move(tempDir, fullOutput);
+            // Swap the fully built directory into place, keeping the previous output until the swap succeeds.
+            SwapIntoPlace(tempDir, fullOutput, parentDir);
 
             return new Result(fullOutput, Path.Combine(fullOutput, "index.html"), docsCount, assetsCount);
         }
@@ -182,5 +188,76 @@ public static class PresentationBundle
                 try { Directory.Delete(tempDir, recursive: true); } catch { /* ignore */ }
             }
         }
+    }
+
+    private static void RequireExistingIfSupplied(string? path)
+    {
+        if (path is not null && !File.Exists(path))
+        {
+            throw new FileNotFoundException($"Supplied input file not found: {path}", path);
+        }
+    }
+
+    /// <summary>
+    /// Refuses to replace anything other than a missing path, an empty directory, or a previous presentation output
+    /// (a directory containing both inventory.json and index.html).
+    /// </summary>
+    private static void EnsureReplaceableOutput(string fullOutput)
+    {
+        if (File.Exists(fullOutput))
+        {
+            throw new InvalidOperationException(
+                $"Refusing to overwrite '{fullOutput}': the output path is an existing file, not a presentation directory.");
+        }
+
+        if (!Directory.Exists(fullOutput) || IsReplaceablePresentationDirectory(fullOutput))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"Refusing to overwrite '{fullOutput}': the directory is not empty and is not a previous presentation output (inventory.json and index.html). Choose an empty or new output directory.");
+    }
+
+    private static bool IsReplaceablePresentationDirectory(string directory) =>
+        !Directory.EnumerateFileSystemEntries(directory).Any() ||
+        (File.Exists(Path.Combine(directory, "inventory.json")) && File.Exists(Path.Combine(directory, "index.html")));
+
+    private static void SwapIntoPlace(string tempDir, string fullOutput, string parentDir)
+    {
+        if (!Directory.Exists(fullOutput))
+        {
+            Directory.Move(tempDir, fullOutput);
+            return;
+        }
+
+        // Re-check immediately before the swap in case the directory changed while the bundle was built.
+        EnsureReplaceableOutput(fullOutput);
+
+        var backupDir = Path.Combine(parentDir, $".bundle-old-{Guid.NewGuid():N}");
+        Directory.Move(fullOutput, backupDir);
+        try
+        {
+            Directory.Move(tempDir, fullOutput);
+        }
+        catch (Exception installException)
+        {
+            try
+            {
+                Directory.Move(backupDir, fullOutput);
+            }
+            catch (Exception restoreException)
+            {
+                // Surface both failures; the previous output is left intact in the backup directory.
+                throw new AggregateException(
+                    $"Failed to install the presentation at '{fullOutput}' and failed to restore the previous output. The previous output remains at '{backupDir}'.",
+                    installException,
+                    restoreException);
+            }
+
+            throw;
+        }
+
+        try { Directory.Delete(backupDir, recursive: true); } catch { /* best-effort cleanup of the previous output */ }
     }
 }

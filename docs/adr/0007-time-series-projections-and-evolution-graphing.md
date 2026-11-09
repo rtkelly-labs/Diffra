@@ -3,6 +3,7 @@
 - **Status**: Accepted
 - **Date**: 2026-09-27
 - **Deciders**: Ryan Kelly, Antigravity
+- **Amended by**: [ADR 0010](0010-project-file-typed-metrics-and-collection-root.md), which sources series from the series index of collection roots and leaves `diffra.timeseries.v1` as a rendering projection
 
 ## Context
 

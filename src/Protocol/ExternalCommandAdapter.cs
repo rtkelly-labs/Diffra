@@ -1,10 +1,16 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Diffra.Protocol;
 
 /// <summary>Configuration options for executing an external command evidence producer.</summary>
+/// <remarks>
+/// <see cref="PayloadValidator"/> checks the payload against the declared type version's schema and
+/// returns an error message, or <see langword="null"/> when the payload is valid. Without a validator
+/// the adapter cannot recognize the payload, so it emits <c>opaque</c> Evidence.
+/// </remarks>
 public sealed record ExternalCommandOptions(
     string Executable,
     IReadOnlyList<string> Arguments,
@@ -16,7 +22,8 @@ public sealed record ExternalCommandOptions(
     IReadOnlyDictionary<string, string>? EnvironmentVariables = null,
     TimeSpan? Timeout = null,
     int MaxOutputBytes = 10 * 1024 * 1024,
-    string? OutputFilePath = null);
+    string? OutputFilePath = null,
+    Func<JsonElement, string?>? PayloadValidator = null);
 
 /// <summary>Result of executing an external command adapter.</summary>
 public sealed record ExternalCommandResult(
@@ -92,16 +99,33 @@ public static class ExternalCommandAdapter
 
         var stdoutTask = ReadBoundedStreamAsync(process.StandardOutput, stdoutBuilder, options.MaxOutputBytes, cts.Token);
         var stderrTask = ReadBoundedStreamAsync(process.StandardError, stderrBuilder, options.MaxOutputBytes, cts.Token);
+        var exitTask = process.WaitForExitAsync(cts.Token);
 
         try
         {
-            await process.WaitForExitAsync(cts.Token).ConfigureAwait(false);
-            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+            // Observe exit and each reader as it finishes, so an output overflow on either stream
+            // surfaces while the child is still running instead of after it exits or times out.
+            var pending = new List<Task> { exitTask, stdoutTask, stderrTask };
+            while (pending.Count > 0)
+            {
+                var finished = await Task.WhenAny(pending).ConfigureAwait(false);
+                await finished.ConfigureAwait(false);
+                pending.Remove(finished);
+            }
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (Exception ex)
         {
-            try { process.Kill(entireProcessTree: true); } catch { /* ignore */ }
-            throw new TimeoutException($"External process '{options.Executable}' exceeded timeout of {timeout.TotalSeconds:F0}s.");
+            // Every failure path (timeout, caller cancellation, output overflow) stops the remaining
+            // readers and terminates the child, then observes the other tasks so none fault unobserved.
+            await cts.CancelAsync().ConfigureAwait(false);
+            await TerminateAsync(process).ConfigureAwait(false);
+            await ObserveRemainingAsync(exitTask, stdoutTask, stderrTask).ConfigureAwait(false);
+            if (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException($"External process '{options.Executable}' exceeded timeout of {timeout.TotalSeconds:F0}s.", ex);
+            }
+
+            throw;
         }
 
         sw.Stop();
@@ -122,7 +146,7 @@ public static class ExternalCommandAdapter
             {
                 throw new FileNotFoundException($"External process did not produce declared output file at '{options.OutputFilePath}'.");
             }
-            payloadBytes = await File.ReadAllBytesAsync(options.OutputFilePath, cancellationToken).ConfigureAwait(false);
+            payloadBytes = await ReadBoundedFileAsync(options.OutputFilePath, options.MaxOutputBytes, cancellationToken).ConfigureAwait(false);
         }
         else
         {
@@ -136,6 +160,24 @@ public static class ExternalCommandAdapter
 
         // Validate that the payload is valid canonical JSON
         using var jsonDoc = CanonicalJson.Parse(payloadBytes);
+        if (jsonDoc.RootElement.ValueKind != JsonValueKind.Object)
+        {
+            throw new InvalidDataException($"External command payload must be a JSON object, but its root is {jsonDoc.RootElement.ValueKind}.");
+        }
+
+        var typeResolution = EvidenceDocumentBuilder.OpaqueTypeResolution;
+        if (options.PayloadValidator is not null)
+        {
+            var validationError = options.PayloadValidator(jsonDoc.RootElement);
+            if (validationError is not null)
+            {
+                throw new InvalidDataException(
+                    $"External command payload is not valid for type '{options.ExpectedTypeId}' version '{options.ExpectedTypeVersion}': {validationError}");
+            }
+
+            typeResolution = EvidenceDocumentBuilder.RecognizedTypeResolution;
+        }
+
         var canonicalBytes = CanonicalJson.Canonicalize(payloadBytes);
 
         var producerId = $"diffra.external-adapter.{Path.GetFileName(options.Executable)}";
@@ -148,7 +190,9 @@ public static class ExternalCommandAdapter
             producerVersion: "1.0",
             canonicalPayloadBytes: canonicalBytes,
             platform: Environment.OSVersion.Platform.ToString(),
-            runtime: Environment.Version.ToString());
+            runtime: Environment.Version.ToString(),
+            typeResolution: typeResolution,
+            configDigest: ComputeConfigDigest(options));
 
         return new ExternalCommandResult(
             ExitCode: process.ExitCode,
@@ -160,6 +204,113 @@ public static class ExternalCommandAdapter
             EvidenceBytes: evidenceBytes);
     }
 
+    /// <summary>
+    /// Computes the producer configuration digest for an invocation: the SHA-256 of the canonical JSON
+    /// object <c>{executable, arguments, environment}</c>, with environment entries sorted by name.
+    /// The working directory, output file location, and timeout are machine-specific and excluded.
+    /// </summary>
+    public static string ComputeConfigDigest(ExternalCommandOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var arguments = new JsonArray();
+        foreach (var arg in options.Arguments)
+        {
+            arguments.Add(JsonValue.Create(arg));
+        }
+
+        var environment = new JsonObject();
+        if (options.EnvironmentVariables != null)
+        {
+            foreach (var (name, value) in options.EnvironmentVariables.OrderBy(e => e.Key, StringComparer.Ordinal))
+            {
+                environment[name] = value;
+            }
+        }
+
+        var config = new JsonObject
+        {
+            ["executable"] = options.Executable,
+            ["arguments"] = arguments,
+            ["environment"] = environment,
+        };
+
+        return EvidenceIdentity.ComputePayloadDigest(Encoding.UTF8.GetBytes(config.ToJsonString()));
+    }
+
+    private static async Task TerminateAsync(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // The process already exited.
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // The process could not be terminated; the bounded wait below still applies.
+        }
+
+        await Task.WhenAny(
+            process.WaitForExitAsync(CancellationToken.None),
+            Task.Delay(TimeSpan.FromSeconds(5), CancellationToken.None)).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Waits a bounded time for the given tasks to settle and observes their exceptions, so a task that
+    /// faults after the original failure never surfaces as an unobserved task exception.
+    /// </summary>
+    private static async Task ObserveRemainingAsync(params Task[] tasks)
+    {
+        // Each continuation observes its task's fault whenever it happens, including after the bounded
+        // wait below gives up, and never faults itself, so the aggregate cannot fault unobserved either.
+        var observed = new Task[tasks.Length];
+        for (var i = 0; i < tasks.Length; i++)
+        {
+            observed[i] = tasks[i].ContinueWith(
+                static t => { _ = t.Exception; },
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+
+        await Task.WhenAny(
+            Task.WhenAll(observed),
+            Task.Delay(TimeSpan.FromSeconds(5), CancellationToken.None)).ConfigureAwait(false);
+    }
+
+    private static async Task<byte[]> ReadBoundedFileAsync(string path, int maxBytes, CancellationToken ct)
+    {
+        if (new FileInfo(path).Length > maxBytes)
+        {
+            throw new InvalidOperationException($"External command output file exceeded maximum bounded buffer limit of {maxBytes} bytes.");
+        }
+
+        // The file can grow between the length check and the read, so bound the read itself as well.
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 4096, useAsync: true);
+        using var destination = new MemoryStream();
+        var buffer = new byte[4096];
+        long total = 0;
+        int read;
+        while ((read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), ct).ConfigureAwait(false)) > 0)
+        {
+            total += read;
+            if (total > maxBytes)
+            {
+                throw new InvalidOperationException($"External command output file exceeded maximum bounded buffer limit of {maxBytes} bytes.");
+            }
+
+            await destination.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
+        }
+
+        return destination.ToArray();
+    }
+
     private static async Task ReadBoundedStreamAsync(
         StreamReader reader,
         StringBuilder destination,
@@ -167,13 +318,13 @@ public static class ExternalCommandAdapter
         CancellationToken ct)
     {
         char[] buffer = new char[4096];
-        int totalChars = 0;
+        long totalBytes = 0;
         int read;
 
         while ((read = await reader.ReadAsync(buffer.AsMemory(0, buffer.Length), ct).ConfigureAwait(false)) > 0)
         {
-            totalChars += read;
-            if (totalChars > maxBytes)
+            totalBytes += Encoding.UTF8.GetByteCount(buffer.AsSpan(0, read));
+            if (totalBytes > maxBytes)
             {
                 throw new InvalidOperationException($"External command output exceeded maximum bounded buffer limit of {maxBytes} bytes.");
             }

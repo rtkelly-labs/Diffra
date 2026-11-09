@@ -117,3 +117,98 @@ jobs:
           count=$(ls $E/invalid | wc -l)
           echo "checked $count invalid fixtures"
           exit $status
+
+  jcs-differential:
+    name: jcs-differential
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      JCS_DIR: ${{ github.workspace }}/.jcs-run
+      JCS_SEED: "20261105"
+      JCS_COUNT: "3000"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Checkout RFC 8785 test vectors (cyberphone/json-canonicalization)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: cyberphone/json-canonicalization
+          ref: 32a48195b9b20fe67b1795e39e4509f14d860b45
+          path: .jcs-reference
+          sparse-checkout: testdata
+          persist-credentials: false
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+
+      - name: Generate corpus and canonicalize with Diffra
+        run: >-
+          dotnet run --project tests/CanonicalJson.Differential/CanonicalJson.Differential.csproj --configuration Release --
+          prepare --out "$JCS_DIR" --seed "$JCS_SEED" --count "$JCS_COUNT" --vectors .jcs-reference/testdata
+
+      - name: Canonicalize with canonicalize 5.1.0 (npm, JavaScript)
+        env:
+          NODE_PREFIX: ${{ runner.temp }}/jcs-node
+        run: |
+          npm install --no-save --no-audit --no-fund --prefix "$NODE_PREFIX" canonicalize@5.1.0
+          node --input-type=module -e '
+            import fs from "node:fs";
+            import path from "node:path";
+            import { pathToFileURL } from "node:url";
+            const lib = path.join(process.env.NODE_PREFIX, "node_modules/canonicalize/lib/canonicalize.js");
+            const { default: canonicalize } = await import(pathToFileURL(lib).href);
+            const root = process.env.JCS_DIR;
+            const out = path.join(root, "node");
+            fs.mkdirSync(out, { recursive: true });
+            const decoder = new TextDecoder("utf-8", { fatal: true });
+            for (const file of fs.readdirSync(path.join(root, "cases"))) {
+              const id = path.basename(file, ".json");
+              try {
+                const value = JSON.parse(decoder.decode(fs.readFileSync(path.join(root, "cases", file))));
+                fs.writeFileSync(path.join(out, id + ".json"), canonicalize(value), "utf8");
+              } catch (error) {
+                fs.writeFileSync(path.join(out, id + ".err"), String(error && error.message));
+              }
+            }
+          '
+
+      - name: Canonicalize with rfc8785 0.1.4 (PyPI, Python)
+        run: |
+          uv run --no-project --isolated --with rfc8785==0.1.4 python -c '
+          import json, os, pathlib, rfc8785
+          root = pathlib.Path(os.environ["JCS_DIR"])
+          out = root / "python"
+          out.mkdir(exist_ok=True)
+          for case in sorted((root / "cases").glob("*.json")):
+              try:
+                  value = json.loads(case.read_bytes().decode("utf-8"))
+                  (out / (case.stem + ".json")).write_bytes(rfc8785.dumps(value))
+              except Exception as error:
+                  (out / (case.stem + ".err")).write_text(repr(error))
+          '
+
+      - name: Compare Diffra with RFC 8785 vectors and reference implementations
+        run: >-
+          dotnet run --project tests/CanonicalJson.Differential/CanonicalJson.Differential.csproj --configuration Release --no-build --
+          compare --out "$JCS_DIR" --references node,python
+
+      - name: Upload differential corpus
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: jcs-differential-corpus
+          path: .jcs-run
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7

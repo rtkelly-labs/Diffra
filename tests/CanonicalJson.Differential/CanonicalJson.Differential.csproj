@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Differential conformance harness for Diffra canonical JSON against RFC 8785 (JCS).
+    Runs in CI only (see the jcs-differential job). Not part of Diffra.slnx so the main
+    build job's cost is unchanged.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Diffra.CanonicalJson.Differential</AssemblyName>
+    <RootNamespace>Diffra.CanonicalJson.Differential</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <!-- CA5394: the generator deliberately uses a seeded, reproducible System.Random. -->
+    <NoWarn>$(NoWarn);CA5394</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Protocol/Diffra.Protocol.csproj" />
+  </ItemGroup>
+</Project>

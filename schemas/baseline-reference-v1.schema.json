@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diffra.dev/schemas/baseline-reference-v1.schema.json",
+  "title": "Diffra Baseline Reference v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "role", "status", "evidenceId", "subjectCommit", "manifestDigest", "resolver", "sourceStore"],
+  "properties": {
+    "schema": { "const": "https://diffra.dev/schemas/baseline-reference-v1.schema.json" },
+    "id": { "$ref": "#/$defs/digest" },
+    "role": { "enum": ["merge-base", "approved-main", "previous-release"] },
+    "status": { "enum": ["trusted", "candidate", "untrusted", "missing", "corrupt", "incompatible"] },
+    "evidenceId": { "$ref": "#/$defs/digest" },
+    "subjectCommit": { "type": "string", "minLength": 1 },
+    "manifestDigest": { "$ref": "#/$defs/digest" },
+    "resolver": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "version", "resolvedCommit"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "resolvedCommit": { "type": "string", "minLength": 1 },
+        "sourceRef": { "type": "string", "minLength": 1 }
+      }
+    },
+    "sourceStore": { "type": "string", "minLength": 1 },
+    "trust": {
+      "type": "object", "additionalProperties": false,
+      "required": ["issuer", "decisionId"],
+      "properties": {
+        "issuer": { "type": "string", "minLength": 1 },
+        "decisionId": { "type": "string", "minLength": 1 },
+        "decisionDigest": { "$ref": "#/$defs/digest" }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "trusted" } }, "required": ["status"] },
+      "then": { "required": ["trust"] }
+    }
+  ],
+  "$defs": { "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" } }
+}

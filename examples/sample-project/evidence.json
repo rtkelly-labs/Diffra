@@ -1,0 +1,28 @@
+{
+  "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
+  "id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "status": "produced",
+  "typeId": "org.example.build.metrics",
+  "typeVersion": "1.0",
+  "typeResolution": "recognized",
+  "subject": { "kind": "git-repository", "id": "example/project", "commit": "0123456789abcdef" },
+  "producer": { "id": "org.example.metrics", "version": "1.2.0", "configDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+  "environment": {
+    "platform": "linux-x64",
+    "runtime": ".NET 10.0",
+    "tools": [{ "id": "example.metrics", "version": "1.2.0" }]
+  },
+  "provenance": {
+    "source": "git:0123456789abcdef",
+    "artifactDigests": ["sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"]
+  },
+  "payloadDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "payload": { "methodCount": 2, "complexityTotal": 5, "unit": "cyclomatic-complexity" },
+  "artifactRefs": [{
+    "id": "metrics-json",
+    "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "mediaType": "application/json",
+    "sizeBytes": 84,
+    "path": "artifacts/metrics.json"
+  }]
+}

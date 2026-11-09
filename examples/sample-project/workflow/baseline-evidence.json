@@ -1,0 +1,35 @@
+{
+  "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
+  "id": "sha256:e0582f1ced6d0a9c9a88f6e82a03ffa50499c8cc3a0ed6969cc5931806e964f5",
+  "status": "produced",
+  "typeId": "org.example.metrics",
+  "typeVersion": "1.0",
+  "typeResolution": "recognized",
+  "subject": {
+    "kind": "git-repository",
+    "id": "example/project",
+    "commit": "1111111111111111111111111111111111111111"
+  },
+  "producer": {
+    "id": "org.example.fixture",
+    "version": "1.0",
+    "configDigest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "environment": {
+    "platform": "macOS 15.7.7",
+    "runtime": ".NET 10.0.12",
+    "tools": [
+      {
+        "id": "dotnet-sdk",
+        "version": "10.0.401"
+      }
+    ]
+  },
+  "provenance": {
+    "source": "git:1111111111111111111111111111111111111111",
+    "artifactDigests": []
+  },
+  "payloadDigest": "sha256:019ffa304706223947afccade56d8c7e50e01ae743f4393a41dd968b8394f0ec",
+  "payload": {"methodology":"sample-metrics-v1","metrics":{"complexity":{"unit":"cyclomatic-complexity","value":"4"},"methodCount":{"unit":"methods","value":"2"}},"scope":"example/project"},
+  "artifactRefs": []
+}

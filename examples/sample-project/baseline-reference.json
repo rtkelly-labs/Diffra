@@ -1,0 +1,12 @@
+{
+  "schema": "https://diffra.dev/schemas/baseline-reference-v1.schema.json",
+  "id": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "role": "merge-base",
+  "status": "trusted",
+  "evidenceId": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "subjectCommit": "fedcba9876543210",
+  "manifestDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "resolver": { "id": "diffra.git-merge-base", "version": "1.0.0", "resolvedCommit": "fedcba9876543210", "sourceRef": "refs/pull/7/merge" },
+  "sourceStore": "file:///diffra/store",
+  "trust": { "issuer": "ci:trusted-main", "decisionId": "verification-42", "decisionDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222" }
+}

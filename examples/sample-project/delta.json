@@ -1,0 +1,21 @@
+{
+  "schema": "https://diffra.dev/schemas/delta-v1.schema.json",
+  "id": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "status": "changed",
+  "typeResolution": "recognized",
+  "baselineId": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "candidateEvidenceId": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "comparator": {
+    "id": "org.diffra.numeric-keyed",
+    "version": "1.0.0",
+    "configDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "inputTypeId": "org.example.build.metrics",
+    "inputTypeVersion": "1.0"
+  },
+  "changes": [{ "path": "/complexityTotal", "kind": "modified", "value": { "before": "4", "after": "5", "absolute": "1", "relative": "0.25", "relativeStatus": "defined" }, "unit": "cyclomatic-complexity" }],
+  "provenance": {
+    "baselineEvidenceId": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "candidateEvidenceId": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "environment": { "runtime": ".NET 10.0", "platform": "linux-x64" }
+  }
+}

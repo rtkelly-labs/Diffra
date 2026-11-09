@@ -1,0 +1,10 @@
+{
+  "schema": "https://diffra.dev/schemas/assessment-v1.schema.json",
+  "id": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+  "deltaId": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "deltaStatus": "changed",
+  "policy": { "id": "org.example.complexity-budget", "version": "1.0.0", "rulesDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666" },
+  "outcome": "warn",
+  "findings": [{ "id": "complexity-growth", "status": "warn", "message": "Total complexity increased by 1.", "changePaths": ["/complexityTotal"], "observed": 1, "expected": 0 }],
+  "provenance": { "evaluator": "diffra.policy-engine", "version": "1.0.0", "inputDeltaId": "sha256:3333333333333333333333333333333333333333333333333333333333333333" }
+}

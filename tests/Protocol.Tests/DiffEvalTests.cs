@@ -13,6 +13,8 @@ public static class DiffEvalTests
     public static void RunAll()
     {
         DiffAndEvalWriteVerifiedDocuments();
+        OpaqueEvidenceDiffIsUnsupported();
+        CaseOnlyOutputPathIsRejected();
         UntrustedBaselineIsRejected();
         TamperedDeltaIsRejected();
         Console.WriteLine("PASS diff/eval CLI flow and validation");
@@ -59,6 +61,62 @@ public static class DiffEvalTests
         True(warnAssessment.Id != failAssessment.Id, "Changing rules must produce a new Assessment identity.");
     }
 
+    private static void OpaqueEvidenceDiffIsUnsupported()
+    {
+        using var scratch = new ScratchDirectory();
+        var baseline = WriteEvidence(scratch.FilePath("baseline.json"), "baseline-commit", new JsonObject { ["blob"] = "x" }, "opaque");
+        var candidate = WriteEvidence(scratch.FilePath("candidate.json"), "candidate-commit", new JsonObject { ["blob"] = "y" }, "opaque");
+        var baselineReference = scratch.FilePath("baseline-reference.json");
+        WriteBaselineReference(baselineReference, baseline, "trusted");
+        var deltaPath = scratch.FilePath("delta.json");
+
+        var result = RunCli("diff",
+            "--baseline-ref", baselineReference,
+            "--baseline-evidence", baseline,
+            "--evidence", candidate,
+            "-o", deltaPath);
+        Equal(0, result.ExitCode, $"Opaque Evidence should produce an unsupported Delta: {result.StandardError}");
+        var deltaBytes = File.ReadAllBytes(deltaPath);
+        DocumentIdentity.Verify("delta", deltaBytes);
+        using var delta = JsonDocument.Parse(deltaBytes);
+        Equal("unsupported", delta.RootElement.GetProperty("status").GetString(), "Opaque Delta status is wrong.");
+        Equal("opaque", delta.RootElement.GetProperty("typeResolution").GetString(), "Opaque Delta typeResolution is wrong.");
+    }
+
+    private static void CaseOnlyOutputPathIsRejected()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        using var scratch = new ScratchDirectory();
+        var baseline = WriteEvidence(scratch.FilePath("baseline.json"), "baseline-commit", 2);
+        var candidate = WriteEvidence(scratch.FilePath("candidate.json"), "candidate-commit", 6);
+        var baselineReference = scratch.FilePath("baseline-reference.json");
+        WriteBaselineReference(baselineReference, baseline, "trusted");
+        var original = File.ReadAllBytes(baseline);
+
+        var diff = RunCli("diff",
+            "--baseline-ref", baselineReference,
+            "--baseline-evidence", baseline,
+            "--evidence", candidate,
+            "-o", scratch.FilePath("BASELINE.json"));
+        Equal(2, diff.ExitCode, "diff must not overwrite an input through a case-only path.");
+        True(original.SequenceEqual(File.ReadAllBytes(baseline)), "Refused diff must preserve the baseline Evidence bytes.");
+
+        var deltaPath = scratch.FilePath("delta.json");
+        Equal(0, RunCli("diff",
+            "--baseline-ref", baselineReference,
+            "--baseline-evidence", baseline,
+            "--evidence", candidate,
+            "-o", deltaPath).ExitCode, "diff should write the Delta.");
+        var deltaBytes = File.ReadAllBytes(deltaPath);
+        var report = RunCli("report", deltaPath, "--format", "json", "-o", scratch.FilePath("DELTA.json"));
+        Equal(2, report.ExitCode, "report must not overwrite its Delta through a case-only path.");
+        True(deltaBytes.SequenceEqual(File.ReadAllBytes(deltaPath)), "Refused report must preserve the Delta bytes.");
+    }
+
     private static void UntrustedBaselineIsRejected()
     {
         using var scratch = new ScratchDirectory();
@@ -102,14 +160,19 @@ public static class DiffEvalTests
         True(!File.Exists(output), "Invalid Delta must not produce an Assessment.");
     }
 
-    private static string WriteEvidence(string path, string commit, int complexity)
-    {
-        var payload = new JsonObject
+    private static string WriteEvidence(string path, string commit, int complexity) => WriteEvidence(
+        path,
+        commit,
+        new JsonObject
         {
             ["scope"] = "public-api",
             ["methodology"] = "fixture-analyzer/1",
             ["metrics"] = new JsonObject { ["complexity"] = complexity }
-        };
+        },
+        "recognized");
+
+    private static string WriteEvidence(string path, string commit, JsonObject payload, string typeResolution)
+    {
         var payloadBytes = JsonSerializer.SerializeToUtf8Bytes(payload);
         var document = new JsonObject
         {
@@ -118,7 +181,7 @@ public static class DiffEvalTests
             ["status"] = "produced",
             ["typeId"] = "org.example.metrics",
             ["typeVersion"] = "1.0",
-            ["typeResolution"] = "recognized",
+            ["typeResolution"] = typeResolution,
             ["subject"] = new JsonObject { ["kind"] = "git-repository", ["id"] = "example/project", ["commit"] = commit, ["repository"] = "example/project" },
             ["producer"] = new JsonObject { ["id"] = "fixture.metrics", ["version"] = "1.0", ["configDigest"] = Digest },
             ["environment"] = new JsonObject { ["platform"] = "test", ["runtime"] = ".NET", ["tools"] = new JsonArray() },

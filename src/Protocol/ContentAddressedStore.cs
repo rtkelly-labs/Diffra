@@ -47,9 +47,11 @@ public sealed class ContentAddressedStore
         var targetPath = GetObjectPath(computedDigest);
         if (File.Exists(targetPath))
         {
-            // Already present, verify its size matches
+            // Already present: skip the rewrite only when the stored bytes still hash to the digest.
+            // A corrupt object (even of the same size) is repaired by the atomic rewrite below.
+            // The existing object is hashed as a stream so a large object is never loaded into memory.
             var existingInfo = new FileInfo(targetPath);
-            if (existingInfo.Length == bytes.Length)
+            if (existingInfo.Length == bytes.Length && StoredObjectMatches(targetPath, computedDigest))
             {
                 return computedDigest;
             }
@@ -118,6 +120,32 @@ public sealed class ContentAddressedStore
     }
 
     /// <summary>
+    /// Checks whether an object with the given digest exists in the store and its stored bytes still hash to that digest.
+    /// The object is hashed as a stream rather than loaded into memory.
+    /// </summary>
+    internal bool ContainsVerified(string digest)
+    {
+        if (!IsValidDigest(digest)) return false;
+        var targetPath = GetObjectPath(digest);
+        return File.Exists(targetPath) && StoredObjectMatches(targetPath, digest);
+    }
+
+    /// <summary>Streams a stored object through SHA-256 and reports whether it matches the expected digest.</summary>
+    private static bool StoredObjectMatches(string path, string expectedDigest)
+    {
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 81920);
+            return string.Equals(ComputeStreamDigest(stream), expectedDigest, StringComparison.Ordinal);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // An object that cannot be read is treated as not matching.
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Returns the verified filesystem path for an object. Throws if the object does not exist or fails verification.
     /// </summary>
     public string GetVerifiedPath(string digest)
@@ -137,6 +165,13 @@ public sealed class ContentAddressedStore
     {
         Span<byte> hash = stackalloc byte[SHA256.HashSizeInBytes];
         SHA256.HashData(bytes, hash);
+        return "sha256:" + Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    private static string ComputeStreamDigest(Stream stream)
+    {
+        Span<byte> hash = stackalloc byte[SHA256.HashSizeInBytes];
+        SHA256.HashData(stream, hash);
         return "sha256:" + Convert.ToHexString(hash).ToLowerInvariant();
     }
 

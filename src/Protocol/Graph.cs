@@ -76,12 +76,17 @@ public sealed record NodeExecutionResult(
     string? ErrorMessage,
     TimeSpan Duration);
 
-/// <summary>Represents an immutable declared node in the Diffra computation graph.</summary>
+/// <summary>
+/// Represents an immutable declared node in the Diffra computation graph. Typed inputs and outputs
+/// carry both a type ID and a type version; V1 connections require both to match exactly (ADR 0002).
+/// </summary>
 public sealed record GraphNode(
     string Id,
     GraphNodeKind Kind,
     string? InputType,
+    string? InputTypeVersion,
     string? OutputType,
+    string? OutputTypeVersion,
     string? BaselineRole,
     IReadOnlyList<string> Dependencies,
     Func<GraphExecutionContext, CancellationToken, Task<object?>> Handler);
@@ -110,6 +115,12 @@ public sealed class GraphDefinition
 /// <summary>Fluent builder for code-first registration of Diffra composition graphs.</summary>
 public sealed class GraphBuilder
 {
+    /// <summary>Type ID declared by every subject node's output.</summary>
+    public const string SubjectTypeId = "diffra.subject";
+
+    /// <summary>Type version declared by every subject node's output.</summary>
+    public const string SubjectTypeVersion = "1.0";
+
     private readonly List<GraphNode> _nodes = [];
 
     public GraphBuilder RegisterSubject(
@@ -118,88 +129,102 @@ public sealed class GraphBuilder
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentNullException.ThrowIfNull(handler);
-        _nodes.Add(new GraphNode(id, GraphNodeKind.Subject, null, "diffra.subject", null, [], handler));
+        _nodes.Add(new GraphNode(id, GraphNodeKind.Subject, null, null, SubjectTypeId, SubjectTypeVersion, null, [], handler));
         return this;
     }
 
     public GraphBuilder RegisterProducer(
         string id,
         string outputType,
+        string outputTypeVersion,
         IEnumerable<string> dependencies,
         Func<GraphExecutionContext, CancellationToken, Task<object?>> handler)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputTypeVersion);
         ArgumentNullException.ThrowIfNull(dependencies);
         ArgumentNullException.ThrowIfNull(handler);
 
-        _nodes.Add(new GraphNode(id, GraphNodeKind.Producer, null, outputType, null, dependencies.ToList(), handler));
+        _nodes.Add(new GraphNode(id, GraphNodeKind.Producer, null, null, outputType, outputTypeVersion, null, dependencies.ToList(), handler));
         return this;
     }
 
     public GraphBuilder RegisterBaseline(
         string id,
         string outputType,
+        string outputTypeVersion,
         string baselineRole,
         IEnumerable<string> dependencies,
         Func<GraphExecutionContext, CancellationToken, Task<object?>> handler)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputTypeVersion);
         ArgumentException.ThrowIfNullOrWhiteSpace(baselineRole);
         ArgumentNullException.ThrowIfNull(dependencies);
         ArgumentNullException.ThrowIfNull(handler);
 
-        _nodes.Add(new GraphNode(id, GraphNodeKind.Baseline, null, outputType, baselineRole, dependencies.ToList(), handler));
+        _nodes.Add(new GraphNode(id, GraphNodeKind.Baseline, null, null, outputType, outputTypeVersion, baselineRole, dependencies.ToList(), handler));
         return this;
     }
 
     public GraphBuilder RegisterComparator(
         string id,
         string inputType,
+        string inputTypeVersion,
         string outputType,
+        string outputTypeVersion,
         IEnumerable<string> dependencies,
         Func<GraphExecutionContext, CancellationToken, Task<object?>> handler)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(inputType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(inputTypeVersion);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputTypeVersion);
         ArgumentNullException.ThrowIfNull(dependencies);
         ArgumentNullException.ThrowIfNull(handler);
 
-        _nodes.Add(new GraphNode(id, GraphNodeKind.Comparator, inputType, outputType, null, dependencies.ToList(), handler));
+        _nodes.Add(new GraphNode(id, GraphNodeKind.Comparator, inputType, inputTypeVersion, outputType, outputTypeVersion, null, dependencies.ToList(), handler));
         return this;
     }
 
     public GraphBuilder RegisterPolicy(
         string id,
         string inputType,
+        string inputTypeVersion,
         string outputType,
+        string outputTypeVersion,
         IEnumerable<string> dependencies,
         Func<GraphExecutionContext, CancellationToken, Task<object?>> handler)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(inputType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(inputTypeVersion);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputTypeVersion);
         ArgumentNullException.ThrowIfNull(dependencies);
         ArgumentNullException.ThrowIfNull(handler);
 
-        _nodes.Add(new GraphNode(id, GraphNodeKind.Policy, inputType, outputType, null, dependencies.ToList(), handler));
+        _nodes.Add(new GraphNode(id, GraphNodeKind.Policy, inputType, inputTypeVersion, outputType, outputTypeVersion, null, dependencies.ToList(), handler));
         return this;
     }
 
     public GraphBuilder RegisterStore(
         string id,
         string inputType,
+        string inputTypeVersion,
         IEnumerable<string> dependencies,
         Func<GraphExecutionContext, CancellationToken, Task<object?>> handler)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(inputType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(inputTypeVersion);
         ArgumentNullException.ThrowIfNull(dependencies);
         ArgumentNullException.ThrowIfNull(handler);
 
-        _nodes.Add(new GraphNode(id, GraphNodeKind.Store, inputType, null, null, dependencies.ToList(), handler));
+        _nodes.Add(new GraphNode(id, GraphNodeKind.Store, inputType, inputTypeVersion, null, null, null, dependencies.ToList(), handler));
         return this;
     }
 
@@ -212,7 +237,7 @@ public sealed class GraphBuilder
         ArgumentNullException.ThrowIfNull(dependencies);
         ArgumentNullException.ThrowIfNull(handler);
 
-        _nodes.Add(new GraphNode(id, GraphNodeKind.Presenter, null, null, null, dependencies.ToList(), handler));
+        _nodes.Add(new GraphNode(id, GraphNodeKind.Presenter, null, null, null, null, null, dependencies.ToList(), handler));
         return this;
     }
 

@@ -300,15 +300,7 @@ jobs:
             echo "::error::Judge package SHA256 ($ACTUAL_SHA) does not match expected ($EXPECTED_SHA)"
             exit 1
           fi
-          cat <<EOF > .tools-cache/nuget.config
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <packageSources>
-    <clear />
-    <add key="local-judge" value="." />
-  </packageSources>
-</configuration>
-EOF
+          echo '<configuration><packageSources><clear /><add key="local-judge" value="." /></packageSources></configuration>' > .tools-cache/nuget.config
           dotnet tool restore --configfile .tools-cache/nuget.config
           echo "Pinned Diffra judge installed:"
           dotnet tool list
@@ -412,15 +404,7 @@ EOF
             echo "::error::Judge package SHA256 ($ACTUAL_SHA) does not match expected ($EXPECTED_SHA)"
             exit 1
           fi
-          cat <<EOF > .tools-cache/nuget.config
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <packageSources>
-    <clear />
-    <add key="local-judge" value="." />
-  </packageSources>
-</configuration>
-EOF
+          echo '<configuration><packageSources><clear /><add key="local-judge" value="." /></packageSources></configuration>' > .tools-cache/nuget.config
           dotnet tool restore --configfile .tools-cache/nuget.config
 
       - name: Collect main baseline evidence

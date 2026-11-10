@@ -1,6 +1,6 @@
 {
   "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
-  "id": "sha256:d5582e0955b4e45ee669ed0abf48f79ebb1831f1b0ae94064100a24dcc9a6b88",
+  "id": "sha256:2beaad0865308bce051feeab6180b9f73cf3fa261473dcc6a6214c6c883155d7",
   "status": "produced",
   "typeId": "diffra.metrics.dogfood",
   "typeVersion": "1.0",
@@ -8,28 +8,28 @@
   "subject": {
     "kind": "git-repository",
     "id": "diffra/core",
-    "commit": "0000000000000000000000000000000000000000"
+    "commit": "da460fca7fefb8e51a501cbe598d77ec7c4445ff"
   },
   "producer": {
     "id": "diffra.dogfood",
-    "version": "0.1.0",
+    "version": "0.0.1-alpha.1",
     "configDigest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
   },
   "environment": {
     "platform": "macOS 15.7.7",
-    "runtime": ".NET 10.0.12",
+    "runtime": ".NET 10.0.14",
     "tools": [
       {
         "id": "dotnet-sdk",
-        "version": "10.0.401"
+        "version": "10.0.403"
       }
     ]
   },
   "provenance": {
-    "source": "git:0000000000000000000000000000000000000000",
+    "source": "git:da460fca7fefb8e51a501cbe598d77ec7c4445ff",
     "artifactDigests": []
   },
-  "payloadDigest": "sha256:0730da6cbc850ba08fff809432d9fd7dff764751aa59ef32d0c7b9abaa65acfa",
-  "payload": {"methodology":"static-analysis","metrics":{"aspireRuntimeDependencies":0,"compilerWarnings":0,"schemasCount":6,"sourceFilesCount":28},"scope":"diffra/core"},
+  "payloadDigest": "sha256:420e94024e833fa33fe0e2ada5fb531f01ac97a25fd8f12eefafeb0da613d2a6",
+  "payload": {"methodology":"static-analysis","metrics":{"aspireRuntimeDependencies":0,"compilerWarnings":0,"packageSizeBytes":184402,"schemasCount":6,"sourceFilesCount":28},"scope":"diffra/core"},
   "artifactRefs": []
 }

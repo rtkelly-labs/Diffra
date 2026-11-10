@@ -14,8 +14,10 @@ var rules = new JsonObject
 {
     ["id"] = "diffra.dogfood.quality-budget",
     ["version"] = "1.0.0",
-    ["warnAboveAbsoluteIncrease"] = "10",
-    ["failAboveAbsoluteIncrease"] = "50"
+    ["warnAboveAbsoluteIncrease"] = "50000",
+    ["failAboveAbsoluteIncrease"] = "200000",
+    ["warnAboveRelativeIncrease"] = "0.10",
+    ["failAboveRelativeIncrease"] = "0.50"
 };
 File.WriteAllText(rulesPath, rules.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
 
@@ -25,15 +27,15 @@ RunProcess("dotnet", "run", Path.Combine(repoRoot, "scripts", "DogfoodMetrics.cs
 
 // 3. Collect baseline evidence via diffra CLI
 var evidencePath = Path.Combine(baselinesDir, "baseline-evidence.json");
-var cliDll = Path.Combine(repoRoot, "src", "Cli", "bin", "Release", "net10.0", "Diffra.Cli.dll");
-RunProcess("dotnet", cliDll, "collect",
+const string baselineCommit = "da460fca7fefb8e51a501cbe598d77ec7c4445ff";
+RunProcess("dotnet", "diffra", "collect",
     "--payload", payloadPath,
     "--subject-id", "diffra/core",
-    "--commit", "0000000000000000000000000000000000000000",
+    "--commit", baselineCommit,
     "--type-id", "diffra.metrics.dogfood",
     "--type-version", "1.0",
     "--producer-id", "diffra.dogfood",
-    "--producer-version", "0.1.0",
+    "--producer-version", "0.0.1-alpha.1",
     "-o", evidencePath);
 
 // 4. Generate baseline-reference.json
@@ -51,18 +53,18 @@ var baselineRef = new JsonObject
     ["resolver"] = new JsonObject
     {
         ["id"] = "diffra.dogfood.resolver",
-        ["resolvedCommit"] = "0000000000000000000000000000000000000000",
+        ["resolvedCommit"] = baselineCommit,
         ["sourceRef"] = "main",
         ["version"] = "1.0"
     },
     ["role"] = "merge-base",
     ["schema"] = "https://diffra.dev/schemas/baseline-reference-v1.schema.json",
-    ["sourceStore"] = "local",
+    ["sourceStore"] = "diffra-baselines",
     ["status"] = "trusted",
-    ["subjectCommit"] = "0000000000000000000000000000000000000000",
+    ["subjectCommit"] = baselineCommit,
     ["trust"] = new JsonObject
     {
-        ["decisionId"] = "initial-baseline",
+        ["decisionId"] = $"merge-base:{baselineCommit[..12]}",
         ["issuer"] = "trusted-ci"
     }
 };

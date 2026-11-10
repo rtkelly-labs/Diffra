@@ -64,16 +64,6 @@ jobs:
       - name: Audit package vulnerabilities
         run: dotnet list package --vulnerable --include-transitive
 
-      - name: Dogfood Diffra (Self-Evaluation against Baseline Budget)
-        run: dotnet run scripts/RunDogfood.cs
-
-      - name: Upload Dogfood Review Bundle Artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: diffra-dogfood-bundle
-          path: dogfood-run/review-bundle
-          if-no-files-found: error
-
       - name: Pack Pre-Release Diffra CLI Tool
         run: dotnet pack src/Cli/Diffra.Cli.csproj --configuration Release -o artifacts/package
 
@@ -270,12 +260,54 @@ jobs:
       - name: Run property and metamorphic checks
         run: dotnet run --project tests/Protocol.Properties/Protocol.Properties.csproj --configuration Release -- 2000
 
+  dogfood:
+    name: dogfood
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Install pinned Diffra judge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          JUDGE_VERSION=$(jq -r '.tools["diffra.cli"].version' .config/dotnet-tools.json)
+          echo "Restoring pinned Diffra judge version: $JUDGE_VERSION"
+          mkdir -p .tools-cache
+          gh release download "v${JUDGE_VERSION}" \
+            --repo "${{ github.repository }}" \
+            --pattern "Diffra.Cli.${JUDGE_VERSION}.nupkg" \
+            --pattern "SHA256SUMS" \
+            --dir .tools-cache
+          (cd .tools-cache && grep "Diffra.Cli.${JUDGE_VERSION}.nupkg" SHA256SUMS > checksum.txt && sha256sum -c checksum.txt)
+          dotnet tool restore --add-source .tools-cache
+          echo "Pinned Diffra judge installed:"
+          dotnet tool list
+
+      - name: Dogfood Diffra (Self-Evaluation against Baseline Budget)
+        run: dotnet run scripts/RunDogfood.cs
+
+      - name: Upload Dogfood Review Bundle Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: diffra-dogfood-bundle
+          path: dogfood-run/review-bundle
+          if-no-files-found: ignore
+
   # The required check. It passes only when every shallow-tier job passes, so a new
   # shallow job is added to this list rather than to the repository ruleset.
   build:
     name: build
     if: always()
-    needs: [compile, schema-fixtures, jcs-differential, properties]
+    needs: [compile, schema-fixtures, jcs-differential, properties, dogfood]
     runs-on: ubuntu-latest
     steps:
       - name: Require every shallow-tier job to pass
@@ -289,3 +321,67 @@ jobs:
               exit 1
             fi
           done
+
+  record-baseline:
+    name: record-baseline
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Install pinned Diffra judge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          JUDGE_VERSION=$(jq -r '.tools["diffra.cli"].version' .config/dotnet-tools.json)
+          mkdir -p .tools-cache
+          gh release download "v${JUDGE_VERSION}" \
+            --repo "${{ github.repository }}" \
+            --pattern "Diffra.Cli.${JUDGE_VERSION}.nupkg" \
+            --pattern "SHA256SUMS" \
+            --dir .tools-cache
+          (cd .tools-cache && grep "Diffra.Cli.${JUDGE_VERSION}.nupkg" SHA256SUMS > checksum.txt && sha256sum -c checksum.txt)
+          dotnet tool restore --add-source .tools-cache
+
+      - name: Collect main baseline evidence
+        run: dotnet run scripts/RunDogfood.cs --collect-only
+
+      - name: Store baseline on diffra-baselines branch
+        run: |
+          COMMIT_SHA="${{ github.sha }}"
+          EVIDENCE_FILE="dogfood-run/candidate-evidence.json"
+          TARGET_DIR="${RUNNER_TEMP:-/tmp}/diffra-baselines"
+          rm -rf "$TARGET_DIR" 2>/dev/null || true
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git clone --branch diffra-baselines --single-branch "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "$TARGET_DIR" 2>/dev/null; then
+            cd "$TARGET_DIR"
+            mkdir -p evidence
+            cp "$GITHUB_WORKSPACE/$EVIDENCE_FILE" "evidence/${COMMIT_SHA}.json"
+            git add "evidence/${COMMIT_SHA}.json"
+            git commit -m "baseline: record evidence for ${COMMIT_SHA}"
+            git push origin diffra-baselines
+          else
+            mkdir -p "$TARGET_DIR"
+            cd "$TARGET_DIR"
+            git init -b diffra-baselines
+            mkdir -p evidence
+            cp "$GITHUB_WORKSPACE/$EVIDENCE_FILE" "evidence/${COMMIT_SHA}.json"
+            git add "evidence/${COMMIT_SHA}.json"
+            git commit -m "baseline: record evidence for ${COMMIT_SHA}"
+            git remote add origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+            git push -u origin diffra-baselines
+          fi

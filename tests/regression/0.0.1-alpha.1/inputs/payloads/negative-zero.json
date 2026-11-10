@@ -1,0 +1,9 @@
+{
+  "scope": "regression/test",
+  "methodology": "sample-metrics-v1",
+  "metrics": {
+    "negativeValue": { "value": "-100", "unit": "points" },
+    "zeroFloat": { "value": "0.0", "unit": "ms" },
+    "zeroValue": { "value": "0", "unit": "count" }
+  }
+}

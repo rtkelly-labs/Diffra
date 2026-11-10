@@ -1,0 +1,9 @@
+{
+  "scope": "example/project",
+  "methodology": "sample-metrics-v1",
+  "metrics": {
+    "complexity": { "value": "10", "unit": "cyclomatic-complexity" },
+    "latency": { "value": "100", "unit": "ms" },
+    "zeroBaseline": { "value": "0", "unit": "errors" }
+  }
+}

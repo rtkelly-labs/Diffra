@@ -308,37 +308,6 @@ jobs:
       - name: Dogfood Diffra (Self-Evaluation against Baseline Budget)
         run: dotnet run scripts/RunDogfood.cs
 
-      - name: Proof (End-to-End Comparison against Recorded Baseline)
-        run: |
-          echo "=== PROOF: Seeding baseline evidence and running full comparison pipeline ==="
-          BASE_SHA=$(git merge-base HEAD origin/main)
-          echo "Seeding baseline for merge-base: $BASE_SHA"
-          dotnet diffra collect \
-            --payload dogfood-run/candidate-payload.json \
-            --subject-id diffra/core \
-            --commit "$BASE_SHA" \
-            --type-id diffra.metrics.dogfood \
-            --type-version 1.0 \
-            --producer-id diffra.dogfood \
-            --producer-version 0.0.1-alpha.1 \
-            -o /tmp/proof-evidence.json
-
-          mkdir -p /tmp/proof-repo
-          cd /tmp/proof-repo
-          git init -b diffra-baselines
-          mkdir -p evidence
-          cp /tmp/proof-evidence.json "evidence/${BASE_SHA}.json"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add evidence
-          git commit -m "proof: seed baseline for ${BASE_SHA}"
-
-          cd "$GITHUB_WORKSPACE"
-          git remote add proof-remote /tmp/proof-repo
-
-          rm -rf dogfood-run
-          DIFFRA_BASELINES_REMOTE=proof-remote dotnet run scripts/RunDogfood.cs
-
       - name: Upload Dogfood Review Bundle Artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()

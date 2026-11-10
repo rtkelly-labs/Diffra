@@ -1,5 +1,5 @@
 # .ls-lint.yml
-# Estate-wide ban on shell (.sh, .bash, .zsh) and PowerShell (.ps1, .psm1) scripts.
+# Policy ban on shell (.sh, .bash, .zsh) and PowerShell (.ps1, .psm1) scripts.
 # Exceptions must be explicitly listed in the `ignore:` section below.
 
 ls:

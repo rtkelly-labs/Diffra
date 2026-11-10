@@ -13,6 +13,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Lint file names and script languages
+        uses: ls-lint/action@a87c5eb4fb26d7af1bd0adba203dd1e76f7e94eb # v2.3.2
+        with:
+          config: .ls-lint.yml
+
   compile:
     name: compile
     runs-on: ubuntu-latest
@@ -300,7 +312,7 @@ jobs:
   build:
     name: build
     if: always()
-    needs: [compile, schema-fixtures, jcs-differential, properties, regression-corpus]
+    needs: [lint, compile, schema-fixtures, jcs-differential, properties, regression-corpus]
     runs-on: ubuntu-latest
     steps:
       - name: Require every shallow-tier job to pass

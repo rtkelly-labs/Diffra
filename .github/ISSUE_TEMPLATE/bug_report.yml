@@ -31,7 +31,7 @@ body:
     id: minimal-sample
     attributes:
       label: Minimal Reproducible Code / Config
-      description: Provide a minimal code snippet or configuration reproducing the issue.
+      description: Provide a minimal code snippet, JSON fixture, or configuration reproducing the issue.
       render: shell
   - type: dropdown
     id: os
@@ -47,9 +47,9 @@ body:
   - type: input
     id: runtime-version
     attributes:
-      label: Runtime & Toolchain Versions
-      description: e.g., Python 3.13 / Node 22 / .NET 10 / pnpm 12 / uv 0.6
-      placeholder: e.g. Python 3.13, uv 0.6
+      label: Environment & Versions
+      description: .NET SDK version, OS version, and Diffra version (e.g. dotnet --version, diffra --version)
+      placeholder: .NET 10.0.100, Diffra 0.1.0-alpha.1
     validations:
       required: false
   - type: textarea

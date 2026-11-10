@@ -335,10 +335,9 @@ jobs:
 
           cd "$GITHUB_WORKSPACE"
           git remote add proof-remote /tmp/proof-repo
-          git fetch proof-remote +refs/heads/diffra-baselines:refs/remotes/origin/diffra-baselines
 
           rm -rf dogfood-run
-          dotnet run scripts/RunDogfood.cs
+          DIFFRA_BASELINES_REMOTE=proof-remote dotnet run scripts/RunDogfood.cs
 
       - name: Upload Dogfood Review Bundle Artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

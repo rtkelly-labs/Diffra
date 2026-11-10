@@ -64,8 +64,11 @@ if (File.Exists(baselineRefPath)) File.Delete(baselineRefPath);
 var mergeBaseCommit = ResolveMergeBaseStrict(repoRoot);
 Console.WriteLine($"Resolved merge-base against origin/main: {mergeBaseCommit}");
 
+var baselinesRemote = Environment.GetEnvironmentVariable("DIFFRA_BASELINES_REMOTE");
+if (string.IsNullOrWhiteSpace(baselinesRemote)) baselinesRemote = "origin";
+
 // Check whether diffra-baselines branch exists on remote
-var (lsRemoteExit, lsRemoteOut, lsRemoteErr) = RunProcessAllowExitCodeWithOutput("git", "ls-remote", "--heads", "origin", "diffra-baselines");
+var (lsRemoteExit, lsRemoteOut, lsRemoteErr) = RunProcessAllowExitCodeWithOutput("git", "ls-remote", "--heads", baselinesRemote, "diffra-baselines");
 if (lsRemoteExit != 0)
 {
     Console.Error.WriteLine($"[FAIL] Network or git error querying remote diffra-baselines branch (exit code {lsRemoteExit}): {lsRemoteErr}");
@@ -97,7 +100,7 @@ if (string.IsNullOrWhiteSpace(lsRemoteOut))
 }
 
 // Branch exists on remote: fetch it fresh
-var fetchExit = RunProcessAllowExitCode("git", "fetch", "origin", "+refs/heads/diffra-baselines:refs/remotes/origin/diffra-baselines");
+var fetchExit = RunProcessAllowExitCode("git", "fetch", baselinesRemote, "+refs/heads/diffra-baselines:refs/remotes/origin/diffra-baselines");
 if (fetchExit != 0)
 {
     Console.Error.WriteLine($"[FAIL] Failed to fetch origin/diffra-baselines (exit code {fetchExit}).");

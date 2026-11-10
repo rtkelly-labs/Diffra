@@ -67,6 +67,7 @@ jobs:
               -r "$rid" \
               --self-contained true \
               -p:PublishSingleFile=true \
+              -p:IncludeNativeLibrariesForSelfExtract=true \
               -p:PublishTrimmed=false \
               -p:PublishAot=false \
               -o "$dist_dir"
@@ -92,13 +93,16 @@ jobs:
           mkdir -p temp/smoke-selfcontained
           tar -xzf "$archive" -C temp/smoke-selfcontained
 
+          # Run with an empty environment so no .NET SDK or runtime is reachable.
+          sc() { env -i HOME="$HOME" PATH=/nonexistent "$PWD/temp/smoke-selfcontained/diffra" "$@"; }
+
           echo "Running --help..."
-          ./temp/smoke-selfcontained/diffra --help
+          sc --help
           test $? -eq 0
 
           echo "Running file workflow smoke test..."
           mkdir -p temp/smoke-sc-run
-          ./temp/smoke-selfcontained/diffra collect \
+          sc collect \
             --payload examples/sample-project/workflow/candidate-payload.json \
             --subject-id example/project --commit 2222222222222222222222222222222222222222 \
             --type-id org.example.metrics --type-version 1.0 \
@@ -106,18 +110,18 @@ jobs:
             -o temp/smoke-sc-run/evidence.json
           test $? -eq 0
 
-          ./temp/smoke-selfcontained/diffra diff \
+          sc diff \
             --baseline-ref examples/sample-project/workflow/baseline-reference.json \
             --baseline-evidence examples/sample-project/workflow/baseline-evidence.json \
             --evidence temp/smoke-sc-run/evidence.json -o temp/smoke-sc-run/delta.json
           test $? -eq 0
 
-          ./temp/smoke-selfcontained/diffra eval \
+          sc eval \
             --rules examples/sample-project/workflow/rules.json \
             --delta temp/smoke-sc-run/delta.json -o temp/smoke-sc-run/assessment.json
           test $? -eq 0
 
-          ./temp/smoke-selfcontained/diffra report \
+          sc report \
             temp/smoke-sc-run/delta.json --assessment temp/smoke-sc-run/assessment.json \
             --baseline-ref examples/sample-project/workflow/baseline-reference.json \
             --format html -o temp/smoke-sc-run/report.html
@@ -127,6 +131,7 @@ jobs:
           test -s temp/smoke-sc-run/delta.json
           test -s temp/smoke-sc-run/assessment.json
           test -s temp/smoke-sc-run/report.html
+          jq -e '.environment.tools == []' temp/smoke-sc-run/evidence.json
           echo "Self-contained smoke test succeeded."
 
       - name: Write SHA256SUMS checksums
@@ -175,7 +180,7 @@ jobs:
       - name: Extract CHANGELOG notes
         run: |
           project_version="${{ needs.build.outputs.version }}"
-          awk "/^## ${project_version}/{flag=1; next} /^## /{flag=0} flag" CHANGELOG.md > release-notes.md
+          awk -v v="## ${project_version} " 'index($0, v) == 1 {flag=1; next} /^## /{flag=0} flag' CHANGELOG.md > release-notes.md
           if [ ! -s release-notes.md ]; then
             echo "::error::No release notes found for version ${project_version} in CHANGELOG.md"
             exit 1

@@ -1,0 +1,201 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build-and-package
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Resolve project version
+        id: version
+        run: |
+          version=$(dotnet msbuild src/Cli/Diffra.Cli.csproj -getProperty:Version)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "DIFFRA_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Validate tag matches project version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag_name="${GITHUB_REF#refs/tags/}"
+          expected_tag="v${DIFFRA_VERSION}"
+          if [ "$tag_name" != "$expected_tag" ]; then
+            echo "::error::Tag '$tag_name' does not match expected version tag '$expected_tag'"
+            exit 1
+          fi
+          echo "Tag '$tag_name' verified against project version '$DIFFRA_VERSION'"
+
+      - name: Restore and build Release
+        run: dotnet build Diffra.slnx --configuration Release
+
+      - name: Run protocol checks
+        run: dotnet run --project tests/Protocol.Tests/Protocol.Tests.csproj --configuration Release
+
+      - name: Pack CLI tool package
+        run: |
+          mkdir -p artifacts
+          dotnet pack src/Cli/Diffra.Cli.csproj --configuration Release -o artifacts
+
+      - name: Publish self-contained single-file archives
+        run: |
+          rids=("linux-x64" "linux-arm64" "osx-x64" "osx-arm64" "win-x64")
+
+          for rid in "${rids[@]}"; do
+            echo "Publishing self-contained single-file for $rid..."
+            dist_dir="dist/$rid"
+            mkdir -p "$dist_dir"
+
+            dotnet publish src/Cli/Diffra.Cli.csproj \
+              --configuration Release \
+              -r "$rid" \
+              --self-contained true \
+              -p:PublishSingleFile=true \
+              -p:IncludeNativeLibrariesForSelfExtract=true \
+              -p:PublishTrimmed=false \
+              -p:PublishAot=false \
+              -o "$dist_dir"
+
+            cp LICENSE README.md "$dist_dir/"
+
+            if [ "$rid" = "win-x64" ]; then
+              cp "$dist_dir/Diffra.Cli.exe" "$dist_dir/diffra.exe"
+              archive_name="diffra-${DIFFRA_VERSION}-${rid}.zip"
+              (cd "$dist_dir" && zip -9 "../../artifacts/${archive_name}" diffra.exe LICENSE README.md)
+            else
+              cp "$dist_dir/Diffra.Cli" "$dist_dir/diffra"
+              chmod +x "$dist_dir/diffra"
+              archive_name="diffra-${DIFFRA_VERSION}-${rid}.tar.gz"
+              tar -czf "artifacts/${archive_name}" -C "$dist_dir" diffra LICENSE README.md
+            fi
+            echo "Created artifacts/${archive_name}"
+          done
+
+      - name: Smoke test linux-x64 self-contained binary
+        run: |
+          archive="artifacts/diffra-${DIFFRA_VERSION}-linux-x64.tar.gz"
+          mkdir -p temp/smoke-selfcontained
+          tar -xzf "$archive" -C temp/smoke-selfcontained
+
+          # Run with an empty environment so no .NET SDK or runtime is reachable.
+          sc() { env -i HOME="$HOME" PATH=/nonexistent "$PWD/temp/smoke-selfcontained/diffra" "$@"; }
+
+          echo "Running --help..."
+          sc --help
+          test $? -eq 0
+
+          echo "Running file workflow smoke test..."
+          mkdir -p temp/smoke-sc-run
+          sc collect \
+            --payload examples/sample-project/workflow/candidate-payload.json \
+            --subject-id example/project --commit 2222222222222222222222222222222222222222 \
+            --type-id org.example.metrics --type-version 1.0 \
+            --producer-id org.example.fixture --producer-version 1.0 \
+            -o temp/smoke-sc-run/evidence.json
+          test $? -eq 0
+
+          sc diff \
+            --baseline-ref examples/sample-project/workflow/baseline-reference.json \
+            --baseline-evidence examples/sample-project/workflow/baseline-evidence.json \
+            --evidence temp/smoke-sc-run/evidence.json -o temp/smoke-sc-run/delta.json
+          test $? -eq 0
+
+          sc eval \
+            --rules examples/sample-project/workflow/rules.json \
+            --delta temp/smoke-sc-run/delta.json -o temp/smoke-sc-run/assessment.json
+          test $? -eq 0
+
+          sc report \
+            temp/smoke-sc-run/delta.json --assessment temp/smoke-sc-run/assessment.json \
+            --baseline-ref examples/sample-project/workflow/baseline-reference.json \
+            --format html -o temp/smoke-sc-run/report.html
+          test $? -eq 0
+
+          test -s temp/smoke-sc-run/evidence.json
+          test -s temp/smoke-sc-run/delta.json
+          test -s temp/smoke-sc-run/assessment.json
+          test -s temp/smoke-sc-run/report.html
+          jq -e '.environment.tools == []' temp/smoke-sc-run/evidence.json
+          echo "Self-contained smoke test succeeded."
+
+      - name: Write SHA256SUMS checksums
+        run: |
+          cd artifacts
+          sha256sum Diffra.Cli.*.nupkg diffra-*.tar.gz diffra-*.zip > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          cat SHA256SUMS
+          ls -lh
+
+      - name: Upload release assets artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: diffra-release-${{ steps.version.outputs.version }}
+          path: artifacts/*
+          if-no-files-found: error
+
+  release:
+    name: publish-github-release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Verify tag matches project version
+        run: |
+          tag_name="${GITHUB_REF#refs/tags/}"
+          project_version="${{ needs.build.outputs.version }}"
+          expected_tag="v${project_version}"
+          if [ "$tag_name" != "$expected_tag" ]; then
+            echo "::error::Tag '$tag_name' does not match expected version tag '$expected_tag'"
+            exit 1
+          fi
+          echo "Tag '$tag_name' matches project version '$project_version'"
+
+      - name: Download release assets artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: diffra-release-${{ needs.build.outputs.version }}
+          path: release-assets
+
+      - name: Extract CHANGELOG notes
+        run: |
+          project_version="${{ needs.build.outputs.version }}"
+          awk -v v="## ${project_version} " 'index($0, v) == 1 {flag=1; next} /^## /{flag=0} flag' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "::error::No release notes found for version ${project_version} in CHANGELOG.md"
+            exit 1
+          fi
+          echo "Release notes extracted:"
+          cat release-notes.md
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag_name="${GITHUB_REF#refs/tags/}"
+          prerelease=()
+          case "$tag_name" in *-*) prerelease=(--prerelease) ;; esac
+          gh release create "$tag_name" \
+            release-assets/* "${prerelease[@]}" \
+            --title "$tag_name" \
+            --notes-file release-notes.md

@@ -42,7 +42,7 @@ internal static class CollectCommand
             var canonicalPayload = CanonicalJson.Canonicalize(payloadBytes);
             ValidateStructuredNumericPayload(canonicalPayload);
             var payloadDigest = EvidenceIdentity.ComputePayloadDigest(canonicalPayload);
-            var sdkVersion = ReadSdkVersion();
+            var sdkVersion = TryReadSdkVersion();
             var environment = new CollectionEnvironment(
                 RuntimeInformation.OSDescription,
                 RuntimeInformation.FrameworkDescription,
@@ -214,10 +214,14 @@ internal static class CollectCommand
             writer.WriteString("platform", environment.Platform);
             writer.WriteString("runtime", environment.Runtime);
             writer.WriteStartArray("tools");
-            writer.WriteStartObject();
-            writer.WriteString("id", "dotnet-sdk");
-            writer.WriteString("version", environment.SdkVersion);
-            writer.WriteEndObject();
+            if (environment.SdkVersion is not null)
+            {
+                writer.WriteStartObject();
+                writer.WriteString("id", "dotnet-sdk");
+                writer.WriteString("version", environment.SdkVersion);
+                writer.WriteEndObject();
+            }
+
             writer.WriteEndArray();
             writer.WriteEndObject();
 
@@ -242,7 +246,9 @@ internal static class CollectCommand
         return result;
     }
 
-    private static string ReadSdkVersion()
+    // A self-contained build can run where no .NET SDK is installed. The SDK is then
+    // not part of the environment, so it is left out of the recorded tools.
+    private static string? TryReadSdkVersion()
     {
         var startInfo = new ProcessStartInfo("dotnet")
         {
@@ -254,21 +260,32 @@ internal static class CollectCommand
         };
         startInfo.ArgumentList.Add("--version");
 
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Could not start 'dotnet --version' to record the SDK.");
-        if (!process.WaitForExit(10_000))
+        Process? process;
+        try
         {
-            process.Kill(entireProcessTree: true);
-            throw new InvalidOperationException("'dotnet --version' did not finish within 10 seconds.");
+            process = Process.Start(startInfo);
+        }
+        catch (Win32Exception)
+        {
+            return null;
         }
 
-        var output = process.StandardOutput.ReadToEnd().Trim();
-        if (process.ExitCode != 0 || output.Length == 0)
+        if (process is null)
         {
-            throw new InvalidOperationException("Could not determine the active .NET SDK version.");
+            return null;
         }
 
-        return output;
+        using (process)
+        {
+            if (!process.WaitForExit(10_000))
+            {
+                process.Kill(entireProcessTree: true);
+                throw new InvalidOperationException("'dotnet --version' did not finish within 10 seconds.");
+            }
+
+            var output = process.StandardOutput.ReadToEnd().Trim();
+            return process.ExitCode == 0 && output.Length > 0 ? output : null;
+        }
     }
 
     private static string FindSdkWorkingDirectory()
@@ -322,5 +339,5 @@ internal static class CollectCommand
         string ProducerVersion,
         string OutputPath);
 
-    private sealed record CollectionEnvironment(string Platform, string Runtime, string SdkVersion);
+    private sealed record CollectionEnvironment(string Platform, string Runtime, string? SdkVersion);
 }

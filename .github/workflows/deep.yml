@@ -16,7 +16,6 @@ on:
         required: false
         type: string
         default: '1800'
-  pull_request:
 
 permissions:
   contents: read
@@ -293,7 +292,7 @@ jobs:
       matrix:
         target: [canonical, evidence, document, delivery-index, payloads, line-ranges, bundle, bundle-zip]
     env:
-      FUZZ_SECONDS: ${{ inputs.fuzz_seconds || (github.event_name == 'pull_request' && '60' || '1800') }}
+      FUZZ_SECONDS: ${{ inputs.fuzz_seconds || '1800' }}
       FUZZ_TARGET: ${{ matrix.target }}
       FUZZ_FINDINGS: ${{ github.workspace }}/.fuzz/findings
       FUZZ_CORPUS: ${{ github.workspace }}/.fuzz/corpus

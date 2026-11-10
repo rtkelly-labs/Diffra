@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: build
+  compile:
+    name: compile
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -269,3 +269,23 @@ jobs:
 
       - name: Run property and metamorphic checks
         run: dotnet run --project tests/Protocol.Properties/Protocol.Properties.csproj --configuration Release -- 2000
+
+  # The required check. It passes only when every shallow-tier job passes, so a new
+  # shallow job is added to this list rather than to the repository ruleset.
+  build:
+    name: build
+    if: always()
+    needs: [compile, schema-fixtures, jcs-differential, properties]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every shallow-tier job to pass
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Shallow-tier results: $RESULTS"
+          for result in $RESULTS; do
+            if [ "$result" != "success" ]; then
+              echo "::error::A shallow-tier job finished with '$result'."
+              exit 1
+            fi
+          done

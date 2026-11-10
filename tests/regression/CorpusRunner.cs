@@ -69,7 +69,7 @@ public static class CorpusRunner
                     }
                 }
 
-                var (exitCode, _, stderr) = ToolExecutor.Run(candidateTool, resolvedArgs, caseRunDir);
+                var (exitCode, stderr) = ToolExecutor.Run(candidateTool, resolvedArgs, caseRunDir);
                 if (exitCode != testCase.ExpectedExitCode)
                 {
                     var msg = $"Exit code mismatch: expected {testCase.ExpectedExitCode}, got {exitCode}. Stderr: {stderr}";
@@ -295,8 +295,8 @@ public static class CorpusRunner
                     return list;
                 }
 
-                var (oldCode, _, _) = ToolExecutor.Run(oldTool, ResolveArgs(oldCaseDir), oldCaseDir);
-                var (newCode, _, newErr) = ToolExecutor.Run(newTool, ResolveArgs(newCaseDir), newCaseDir);
+                var (oldCode, _) = ToolExecutor.Run(oldTool, ResolveArgs(oldCaseDir), oldCaseDir);
+                var (newCode, newErr) = ToolExecutor.Run(newTool, ResolveArgs(newCaseDir), newCaseDir);
 
                 if (oldCode != newCode)
                 {
@@ -475,9 +475,13 @@ public static class CorpusRunner
                                 break;
                             case "https://diffra.dev/schemas/delta-v1.schema.json":
                                 DocumentIdentity.Verify("delta", bytes);
+                                _ = JsonSerializer.Deserialize<DeltaDocument>(bytes, JsonOptions)
+                                    ?? throw new InvalidOperationException("Failed to deserialize Delta document");
                                 break;
                             case "https://diffra.dev/schemas/assessment-v1.schema.json":
                                 DocumentIdentity.Verify("assessment", bytes);
+                                _ = JsonSerializer.Deserialize<AssessmentDocument>(bytes, JsonOptions)
+                                    ?? throw new InvalidOperationException("Failed to deserialize Assessment document");
                                 break;
                             case "https://diffra.dev/schemas/manifest-v1.schema.json":
                                 DocumentIdentity.Verify("manifest", bytes);
@@ -544,21 +548,29 @@ public static class CorpusRunner
             return false;
         }
 
-        var passed = true;
-        var expectedFiles = Directory.EnumerateFiles(expectedDir, "*.*", SearchOption.AllDirectories).ToList();
-        foreach (var expFile in expectedFiles)
-        {
-            var relPath = Path.GetRelativePath(expectedDir, expFile);
-            var actFile = Path.Combine(actualDir, relPath);
+        var expFiles = Directory.EnumerateFiles(expectedDir, "*.*", SearchOption.AllDirectories)
+            .Select(f => Path.GetRelativePath(expectedDir, f))
+            .ToHashSet(StringComparer.Ordinal);
+        var actFiles = Directory.EnumerateFiles(actualDir, "*.*", SearchOption.AllDirectories)
+            .Select(f => Path.GetRelativePath(actualDir, f))
+            .ToHashSet(StringComparer.Ordinal);
 
-            if (!File.Exists(actFile))
-            {
-                var msg = $"Missing output file in directory: {relPath}";
-                Console.WriteLine($"FAIL {caseId} ({relPath}): {msg}");
-                summary.Failures.Add((caseId, relPath, null, msg));
-                passed = false;
-                continue;
-            }
+        var missing = expFiles.Except(actFiles).ToList();
+        var extra = actFiles.Except(expFiles).ToList();
+
+        if (missing.Count > 0 || extra.Count > 0)
+        {
+            var msg = $"Directory inventory mismatch: {missing.Count} missing, {extra.Count} unexpected.";
+            Console.WriteLine($"FAIL {caseId}: {msg}");
+            summary.Failures.Add((caseId, actualDir, null, msg));
+            return false;
+        }
+
+        var passed = true;
+        foreach (var relPath in expFiles)
+        {
+            var expFile = Path.Combine(expectedDir, relPath);
+            var actFile = Path.Combine(actualDir, relPath);
 
             var expBytes = File.ReadAllBytes(expFile);
             var actBytes = File.ReadAllBytes(actFile);

@@ -280,7 +280,7 @@ public static class CorpusGenerator
                 "-o", outputPath
             };
 
-            var (code, _, err) = ToolExecutor.Run(tool, args);
+            var (code, err) = ToolExecutor.Run(tool, args);
             if (code != 0)
             {
                 throw new InvalidOperationException($"Failed to collect evidence for {payloadFile}: {err}");
@@ -454,7 +454,7 @@ public static class CorpusGenerator
 
         void RunTool(string[] args, int expectedExitCode, string caseDesc)
         {
-            var (exitCode, _, err) = ToolExecutor.Run(tool, args, corpusDir);
+            var (exitCode, err) = ToolExecutor.Run(tool, args, corpusDir);
             if (exitCode != expectedExitCode)
             {
                 throw new InvalidOperationException($"Case '{caseDesc}' failed during corpus generation: expected exit code {expectedExitCode}, got {exitCode}: {err}");

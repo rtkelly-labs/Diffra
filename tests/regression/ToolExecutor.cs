@@ -4,7 +4,7 @@ namespace Diffra.Regression;
 
 public static class ToolExecutor
 {
-    public static (int ExitCode, string StandardOutput, string StandardError) Run(
+    public static (int ExitCode, string StandardError) Run(
         string tool,
         IReadOnlyList<string> args,
         string? workingDirectory = null)
@@ -54,10 +54,10 @@ public static class ToolExecutor
         psi.UseShellExecute = false;
 
         using var process = Process.Start(psi) ?? throw new InvalidOperationException($"Failed to start process: {tool}");
-        var stdout = process.StandardOutput.ReadToEnd();
+        _ = process.StandardOutput.ReadToEnd();
         var stderr = process.StandardError.ReadToEnd();
         process.WaitForExit();
 
-        return (process.ExitCode, stdout, stderr);
+        return (process.ExitCode, stderr);
     }
 }

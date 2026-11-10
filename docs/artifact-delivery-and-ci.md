@@ -190,6 +190,25 @@ records its source tag and commit. Publication on `docs.ryankelly.dev` covers
 public product documentation; release assets carry downloadable CLI binaries,
 and private adopter bundles stay behind repository or cloud access controls.
 
+## Diffra's own test tiers
+
+Diffra tests itself in three tiers. The plan and its order of work are in
+[plans/test-foundation.md](plans/test-foundation.md).
+
+| Tier | When | Gate |
+| --- | --- | --- |
+| Shallow | Every pull request and push to `main` (`ci.yml`) | Required. The `build` check passes only when every shallow job passes. |
+| Deep | Nightly on `main`, on demand, and before a release | Fuzzing, mutation testing, long property runs and the five-platform matrix. A release requires it on the tagged commit. |
+| Regression | Nightly on `main` and before a release | Frozen corpora from earlier releases must reproduce, and the released and candidate tools must agree. A release requires it on the tagged commit. |
+
+The shallow tier is the build and unit tests, the schema fixtures, the
+canonical JSON differential test, the property tests, the smoke test of the
+packed tool, and the dogfood gate. It stays under ten minutes. A new shallow job
+joins the `needs` list of the `build` job in `ci.yml`, so the required check
+covers it without a ruleset change. Fuzzing (`fuzz.yml`) and mutation testing
+(`mutation.yml`) belong to the deep tier and run on demand until the deep
+workflow schedules them.
+
 ## Acceptance checks
 
 - A private release with a narrowly scoped read token produces the same folder

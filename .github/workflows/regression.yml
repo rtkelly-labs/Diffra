@@ -1,0 +1,57 @@
+name: Regression
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *' # Nightly at 03:00 UTC
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    name: regression-suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Download released Diffra.Cli 0.0.1-alpha.1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p temp/pinned-tool
+          gh release download v0.0.1-alpha.1 -R rtkelly-labs/Diffra \
+            --pattern "Diffra.Cli.0.0.1-alpha.1.nupkg" \
+            --pattern "SHA256SUMS" \
+            --dir temp/pinned-tool
+          cd temp/pinned-tool
+          grep "Diffra.Cli.0.0.1-alpha.1.nupkg" SHA256SUMS | sha256sum -c -
+          cd ../..
+          dotnet tool install Diffra.Cli --add-source temp/pinned-tool --tool-path temp/pinned-bin --version 0.0.1-alpha.1
+
+      - name: Build solution
+        run: dotnet build Diffra.slnx --configuration Release
+
+      - name: Pack Candidate Diffra CLI Tool
+        run: |
+          version=$(dotnet msbuild src/Cli/Diffra.Cli.csproj -getProperty:Version)
+          dotnet pack src/Cli/Diffra.Cli.csproj --configuration Release -o artifacts/package
+          dotnet tool install Diffra.Cli --add-source artifacts/package --tool-path temp/candidate-bin --version "$version"
+
+      - name: Run regression corpus against candidate build
+        run: dotnet run --project tests/regression/Diffra.Regression.csproj --configuration Release --no-build -- --tool temp/candidate-bin/diffra
+
+      - name: Run old vs new tool comparison against v0.0.1-alpha.1
+        run: dotnet run --project tests/regression/Diffra.Regression.csproj --configuration Release --no-build -- --compare --old temp/pinned-bin/diffra --new temp/candidate-bin/diffra

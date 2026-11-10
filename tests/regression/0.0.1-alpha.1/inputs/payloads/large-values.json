@@ -1,0 +1,8 @@
+{
+  "scope": "regression/test",
+  "methodology": "sample-metrics-v1",
+  "metrics": {
+    "largeInteger": 9007199254740991,
+    "largeDecimal": { "value": "12345678901234567890.987654321", "unit": "score" }
+  }
+}

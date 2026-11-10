@@ -1,0 +1,693 @@
+{
+  "Version": "0.0.1-alpha.1",
+  "Cases": [
+    {
+      "Id": "collect-standard",
+      "Command": "collect",
+      "Args": [
+        "collect",
+        "--payload",
+        "inputs/payloads/standard.json",
+        "--subject-id",
+        "regression/corpus",
+        "--commit",
+        "1111111111111111111111111111111111111111",
+        "--type-id",
+        "org.diffra.metrics",
+        "--type-version",
+        "1.0",
+        "--producer-id",
+        "org.diffra.test",
+        "--producer-version",
+        "1.0",
+        "-o",
+        "output/evidence-standard.json"
+      ],
+      "InputFiles": [
+        "inputs/payloads/standard.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/evidence-standard.json",
+          "OutputArg": "output/evidence-standard.json",
+          "NormalizeEnvironment": true,
+          "IsDirectory": false
+        }
+      ],
+      "ExpectedExitCode": 0
+    },
+    {
+      "Id": "collect-empty-metrics",
+      "Command": "collect",
+      "Args": [
+        "collect",
+        "--payload",
+        "inputs/payloads/empty.json",
+        "--subject-id",
+        "regression/corpus",
+        "--commit",
+        "1111111111111111111111111111111111111111",
+        "--type-id",
+        "org.diffra.metrics",
+        "--type-version",
+        "1.0",
+        "--producer-id",
+        "org.diffra.test",
+        "--producer-version",
+        "1.0",
+        "-o",
+        "output/evidence-empty.json"
+      ],
+      "InputFiles": [
+        "inputs/payloads/empty.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/evidence-empty.json",
+          "OutputArg": "output/evidence-empty.json",
+          "NormalizeEnvironment": true,
+          "IsDirectory": false
+        }
+      ],
+      "ExpectedExitCode": 0
+    },
+    {
+      "Id": "collect-large-values",
+      "Command": "collect",
+      "Args": [
+        "collect",
+        "--payload",
+        "inputs/payloads/large-values.json",
+        "--subject-id",
+        "regression/corpus",
+        "--commit",
+        "1111111111111111111111111111111111111111",
+        "--type-id",
+        "org.diffra.metrics",
+        "--type-version",
+        "1.0",
+        "--producer-id",
+        "org.diffra.test",
+        "--producer-version",
+        "1.0",
+        "-o",
+        "output/evidence-large-values.json"
+      ],
+      "InputFiles": [
+        "inputs/payloads/large-values.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/evidence-large-values.json",
+          "OutputArg": "output/evidence-large-values.json",
+          "NormalizeEnvironment": true,
+          "IsDirectory": false
+        }
+      ],
+      "ExpectedExitCode": 0
+    },
+    {
+      "Id": "collect-unicode-keys",
+      "Command": "collect",
+      "Args": [
+        "collect",
+        "--payload",
+        "inputs/payloads/unicode-keys.json",
+        "--subject-id",
+        "regression/corpus",
+        "--commit",
+        "1111111111111111111111111111111111111111",
+        "--type-id",
+        "org.diffra.metrics",
+        "--type-version",
+        "1.0",
+        "--producer-id",
+        "org.diffra.test",
+        "--producer-version",
+        "1.0",
+        "-o",
+        "output/evidence-unicode-keys.json"
+      ],
+      "InputFiles": [
+        "inputs/payloads/unicode-keys.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/evidence-unicode-keys.json",
+          "OutputArg": "output/evidence-unicode-keys.json",
+          "NormalizeEnvironment": true,
+          "IsDirectory": false
+        }
+      ],
+      "ExpectedExitCode": 0
+    },
+    {
+      "Id": "collect-negative-zero",
+      "Command": "collect",
+      "Args": [
+        "collect",
+        "--payload",
+        "inputs/payloads/negative-zero.json",
+        "--subject-id",
+        "regression/corpus",
+        "--commit",
+        "1111111111111111111111111111111111111111",
+        "--type-id",
+        "org.diffra.metrics",
+        "--type-version",
+        "1.0",
+        "--producer-id",
+        "org.diffra.test",
+        "--producer-version",
+        "1.0",
+        "-o",
+        "output/evidence-negative-zero.json"
+      ],
+      "InputFiles": [
+        "inputs/payloads/negative-zero.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/evidence-negative-zero.json",
+          "OutputArg": "output/evidence-negative-zero.json",
+          "NormalizeEnvironment": true,
+          "IsDirectory": false
+        }
+      ],
+      "ExpectedExitCode": 0
+    },
+    {
+      "Id": "diff-unchanged",
+      "Command": "diff",
+      "Args": [
+        "diff",
+        "--baseline-ref",
+        "inputs/baseline-reference.json",
+        "--baseline-evidence",
+        "inputs/evidence/baseline.json",
+        "--evidence",
+        "inputs/evidence/candidate-unchanged.json",
+        "-o",
+        "output/delta-unchanged.json"
+      ],
+      "InputFiles": [
+        "inputs/baseline-reference.json",
+        "inputs/evidence/baseline.json",
+        "inputs/evidence/candidate-unchanged.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/delta-unchanged.json",
+          "OutputArg": "output/delta-unchanged.json",
+          "NormalizeEnvironment": false,
+          "IsDirectory": false
+        }
+      ],
+      "ExpectedExitCode": 0
+    },
+    {
+      "Id": "diff-improved",
+      "Command": "diff",
+      "Args": [
+        "diff",
+        "--baseline-ref",
+        "inputs/baseline-reference.json",
+        "--baseline-evidence",
+        "inputs/evidence/baseline.json",
+        "--evidence",
+        "inputs/evidence/candidate-improved.json",
+        "-o",
+        "output/delta-improved.json"
+      ],
+      "InputFiles": [
+        "inputs/baseline-reference.json",
+        "inputs/evidence/baseline.json",
+        "inputs/evidence/candidate-improved.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/delta-improved.json",
+          "OutputArg": "output/delta-improved.json",
+          "NormalizeEnvironment": false,
+          "IsDirectory": false
+        }
+      ],
+      "ExpectedExitCode": 0
+    },
+    {
+      "Id": "diff-regressed",
+      "Command": "diff",
+      "Args": [
+        "diff",
+        "--baseline-ref",
+        "inputs/baseline-reference.json",
+        "--baseline-evidence",
+        "inputs/evidence/baseline.json",
+        "--evidence",
+        "inputs/evidence/candidate-regressed.json",
+        "-o",
+        "output/delta-regressed.json"
+      ],
+      "InputFiles": [
+        "inputs/baseline-reference.json",
+        "inputs/evidence/baseline.json",
+        "inputs/evidence/candidate-regressed.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/delta-regressed.json",
+          "OutputArg": "output/delta-regressed.json",
+          "NormalizeEnvironment": false,
+          "IsDirectory": false
+        }
+      ],
+      "ExpectedExitCode": 0
+    },
+    {
+      "Id": "diff-added",
+      "Command": "diff",
+      "Args": [
+        "diff",
+        "--baseline-ref",
+        "inputs/baseline-reference.json",
+        "--baseline-evidence",
+        "inputs/evidence/baseline.json",
+        "--evidence",
+        "inputs/evidence/candidate-added.json",
+        "-o",
+        "output/delta-added.json"
+      ],
+      "InputFiles": [
+        "inputs/baseline-reference.json",
+        "inputs/evidence/baseline.json",
+        "inputs/evidence/candidate-added.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/delta-added.json",
+          "OutputArg": "output/delta-added.json",
+          "NormalizeEnvironment": false,
+          "IsDirectory": false
+        }
+      ],
+      "ExpectedExitCode": 0
+    },
+    {
+      "Id": "diff-removed",
+      "Command": "diff",
+      "Args": [
+        "diff",
+        "--baseline-ref",
+        "inputs/baseline-reference.json",
+        "--baseline-evidence",
+        "inputs/evidence/baseline.json",
+        "--evidence",
+        "inputs/evidence/candidate-removed.json",
+        "-o",
+        "output/delta-removed.json"
+      ],
+      "InputFiles": [
+        "inputs/baseline-reference.json",
+        "inputs/evidence/baseline.json",
+        "inputs/evidence/candidate-removed.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/delta-removed.json",
+          "OutputArg": "output/delta-removed.json",
+          "NormalizeEnvironment": false,
+          "IsDirectory": false
+        }
+      ],
+      "ExpectedExitCode": 0
+    },
+    {
+      "Id": "diff-incompatible",
+      "Command": "diff",
+      "Args": [
+        "diff",
+        "--baseline-ref",
+        "inputs/baseline-reference.json",
+        "--baseline-evidence",
+        "inputs/evidence/baseline.json",
+        "--evidence",
+        "inputs/evidence/candidate-incompatible.json",
+        "-o",
+        "output/delta-incompatible.json"
+      ],
+      "InputFiles": [
+        "inputs/baseline-reference.json",
+        "inputs/evidence/baseline.json",
+        "inputs/evidence/candidate-incompatible.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/delta-incompatible.json",
+          "OutputArg": "output/delta-incompatible.json",
+          "NormalizeEnvironment": false,
+          "IsDirectory": false
+        }
+      ],
+      "ExpectedExitCode": 0
+    },
+    {
+      "Id": "diff-zero-eval",
+      "Command": "diff",
+      "Args": [
+        "diff",
+        "--baseline-ref",
+        "inputs/baseline-reference.json",
+        "--baseline-evidence",
+        "inputs/evidence/baseline.json",
+        "--evidence",
+        "inputs/evidence/candidate-zero-eval.json",
+        "-o",
+        "output/delta-zero-eval.json"
+      ],
+      "InputFiles": [
+        "inputs/baseline-reference.json",
+        "inputs/evidence/baseline.json",
+        "inputs/evidence/candidate-zero-eval.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/delta-zero-eval.json",
+          "OutputArg": "output/delta-zero-eval.json",
+          "NormalizeEnvironment": false,
+          "IsDirectory": false
+        }
+      ],
+      "ExpectedExitCode": 0
+    },
+    {
+      "Id": "eval-pass",
+      "Command": "eval",
+      "Args": [
+        "eval",
+        "--rules",
+        "inputs/rules/pass.json",
+        "--delta",
+        "inputs/deltas/delta-improved.json",
+        "-o",
+        "output/eval-pass.json"
+      ],
+      "InputFiles": [
+        "inputs/rules/pass.json",
+        "inputs/deltas/delta-improved.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/eval-pass.json",
+          "OutputArg": "output/eval-pass.json",
+          "NormalizeEnvironment": false,
+          "IsDirectory": false
+        }
+      ],
+      "ExpectedExitCode": 0
+    },
+    {
+      "Id": "eval-warn",
+      "Command": "eval",
+      "Args": [
+        "eval",
+        "--rules",
+        "inputs/rules/warn.json",
+        "--delta",
+        "inputs/deltas/delta-regressed.json",
+        "-o",
+        "output/eval-warn.json"
+      ],
+      "InputFiles": [
+        "inputs/rules/warn.json",
+        "inputs/deltas/delta-regressed.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/eval-warn.json",
+          "OutputArg": "output/eval-warn.json",
+          "NormalizeEnvironment": false,
+          "IsDirectory": false
+        }
+      ],
+      "ExpectedExitCode": 0
+    },
+    {
+      "Id": "eval-fail",
+      "Command": "eval",
+      "Args": [
+        "eval",
+        "--rules",
+        "inputs/rules/fail.json",
+        "--delta",
+        "inputs/deltas/delta-regressed.json",
+        "-o",
+        "output/eval-fail.json"
+      ],
+      "InputFiles": [
+        "inputs/rules/fail.json",
+        "inputs/deltas/delta-regressed.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/eval-fail.json",
+          "OutputArg": "output/eval-fail.json",
+          "NormalizeEnvironment": false,
+          "IsDirectory": false
+        }
+      ],
+      "ExpectedExitCode": 3
+    },
+    {
+      "Id": "eval-needs-review",
+      "Command": "eval",
+      "Args": [
+        "eval",
+        "--rules",
+        "inputs/rules/relative-zero.json",
+        "--delta",
+        "inputs/deltas/delta-zero-eval.json",
+        "-o",
+        "output/eval-needs-review.json"
+      ],
+      "InputFiles": [
+        "inputs/rules/relative-zero.json",
+        "inputs/deltas/delta-zero-eval.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/eval-needs-review.json",
+          "OutputArg": "output/eval-needs-review.json",
+          "NormalizeEnvironment": false,
+          "IsDirectory": false
+        }
+      ],
+      "ExpectedExitCode": 3
+    },
+    {
+      "Id": "eval-inconclusive",
+      "Command": "eval",
+      "Args": [
+        "eval",
+        "--rules",
+        "inputs/rules/pass.json",
+        "--delta",
+        "inputs/deltas/delta-incompatible.json",
+        "-o",
+        "output/eval-inconclusive.json"
+      ],
+      "InputFiles": [
+        "inputs/rules/pass.json",
+        "inputs/deltas/delta-incompatible.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/eval-inconclusive.json",
+          "OutputArg": "output/eval-inconclusive.json",
+          "NormalizeEnvironment": false,
+          "IsDirectory": false
+        }
+      ],
+      "ExpectedExitCode": 3
+    },
+    {
+      "Id": "report-html",
+      "Command": "report",
+      "Args": [
+        "report",
+        "inputs/deltas/delta-regressed.json",
+        "--assessment",
+        "inputs/assessments/assessment-warn.json",
+        "--baseline-ref",
+        "inputs/baseline-reference.json",
+        "--format",
+        "html",
+        "-o",
+        "output/report.html"
+      ],
+      "InputFiles": [
+        "inputs/deltas/delta-regressed.json",
+        "inputs/assessments/assessment-warn.json",
+        "inputs/baseline-reference.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/report.html",
+          "OutputArg": "output/report.html",
+          "NormalizeEnvironment": false,
+          "IsDirectory": false
+        }
+      ],
+      "ExpectedExitCode": 0
+    },
+    {
+      "Id": "report-json",
+      "Command": "report",
+      "Args": [
+        "report",
+        "inputs/deltas/delta-regressed.json",
+        "--assessment",
+        "inputs/assessments/assessment-warn.json",
+        "--baseline-ref",
+        "inputs/baseline-reference.json",
+        "--format",
+        "json",
+        "-o",
+        "output/report.json"
+      ],
+      "InputFiles": [
+        "inputs/deltas/delta-regressed.json",
+        "inputs/assessments/assessment-warn.json",
+        "inputs/baseline-reference.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/report.json",
+          "OutputArg": "output/report.json",
+          "NormalizeEnvironment": false,
+          "IsDirectory": false
+        }
+      ],
+      "ExpectedExitCode": 0
+    },
+    {
+      "Id": "report-markdown",
+      "Command": "report",
+      "Args": [
+        "report",
+        "inputs/deltas/delta-regressed.json",
+        "--assessment",
+        "inputs/assessments/assessment-warn.json",
+        "--baseline-ref",
+        "inputs/baseline-reference.json",
+        "--format",
+        "markdown",
+        "-o",
+        "output/report.md"
+      ],
+      "InputFiles": [
+        "inputs/deltas/delta-regressed.json",
+        "inputs/assessments/assessment-warn.json",
+        "inputs/baseline-reference.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/report.md",
+          "OutputArg": "output/report.md",
+          "NormalizeEnvironment": false,
+          "IsDirectory": false
+        }
+      ],
+      "ExpectedExitCode": 0
+    },
+    {
+      "Id": "bundle-export",
+      "Command": "bundle",
+      "Args": [
+        "bundle",
+        "export",
+        "--manifest",
+        "inputs/manifest.json",
+        "--delta",
+        "inputs/deltas/delta-regressed.json",
+        "--assessment",
+        "inputs/assessments/assessment-warn.json",
+        "--baseline-ref",
+        "inputs/baseline-reference.json",
+        "-o",
+        "output/bundle.zip"
+      ],
+      "InputFiles": [
+        "inputs/manifest.json",
+        "inputs/deltas/delta-regressed.json",
+        "inputs/assessments/assessment-warn.json",
+        "inputs/baseline-reference.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/bundle.zip",
+          "OutputArg": "output/bundle.zip",
+          "NormalizeEnvironment": false,
+          "IsDirectory": false
+        }
+      ],
+      "ExpectedExitCode": 0
+    },
+    {
+      "Id": "bundle-import",
+      "Command": "bundle",
+      "Args": [
+        "bundle",
+        "import",
+        "--bundle",
+        "expected/bundle.zip",
+        "--store",
+        "output/imported-cas"
+      ],
+      "InputFiles": [
+        "expected/bundle.zip"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/imported-cas",
+          "OutputArg": "output/imported-cas",
+          "NormalizeEnvironment": false,
+          "IsDirectory": true
+        }
+      ],
+      "ExpectedExitCode": 0
+    },
+    {
+      "Id": "present-bundle",
+      "Command": "present",
+      "Args": [
+        "present",
+        "bundle",
+        "--delta",
+        "inputs/deltas/delta-regressed.json",
+        "--assessment",
+        "inputs/assessments/assessment-warn.json",
+        "--baseline-ref",
+        "inputs/baseline-reference.json",
+        "--manifest",
+        "inputs/manifest.json",
+        "-o",
+        "output/presentation"
+      ],
+      "InputFiles": [
+        "inputs/deltas/delta-regressed.json",
+        "inputs/assessments/assessment-warn.json",
+        "inputs/baseline-reference.json",
+        "inputs/manifest.json"
+      ],
+      "ExpectedOutputs": [
+        {
+          "Path": "expected/presentation",
+          "OutputArg": "output/presentation",
+          "NormalizeEnvironment": false,
+          "IsDirectory": true
+        }
+      ],
+      "ExpectedExitCode": 0
+    }
+  ]
+}

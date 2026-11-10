@@ -1,0 +1,6 @@
+{
+  "id": "org.example.budget",
+  "version": "1.0.0",
+  "warnAboveRelativeIncrease": "0.10",
+  "failAboveRelativeIncrease": "0.50"
+}

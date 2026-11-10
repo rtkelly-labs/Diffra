@@ -198,5 +198,4 @@ jobs:
           gh release create "$tag_name" \
             release-assets/* "${prerelease[@]}" \
             --title "$tag_name" \
-            --notes-file release-notes.md \
-            --prerelease
+            --notes-file release-notes.md

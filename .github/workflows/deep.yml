@@ -1,0 +1,571 @@
+name: Deep
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      fuzz_seconds:
+        description: 'Fuzzing time per target, in seconds'
+        required: false
+        default: '1800'
+  workflow_call:
+    inputs:
+      fuzz_seconds:
+        description: 'Fuzzing time per target, in seconds'
+        required: false
+        type: string
+        default: '1800'
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SHARPFUZZ_VERSION: 2.3.0
+  LIBFUZZER_DOTNET_URL: https://github.com/Metalnem/libfuzzer-dotnet/releases/download/v2025.05.02.0904/libfuzzer-dotnet-ubuntu
+  LIBFUZZER_DOTNET_SHA256: c2c2a90d94c409a4af339a0d4f244e0442c5a5d249be0f1252ba07871f285958
+
+jobs:
+  # 1. OS matrix: unit tests and the CLI end-to-end suite across five platforms
+  os-matrix:
+    name: os-matrix (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            runner: ubuntu-latest
+            rid: linux-x64
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+            rid: linux-arm64
+          - platform: macos-arm64
+            runner: macos-latest
+            rid: osx-arm64
+          - platform: macos-x64
+            runner: macos-15-intel
+            rid: osx-x64
+          - platform: win-x64
+            runner: windows-latest
+            rid: win-x64
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Resolve project version
+        id: version
+        shell: bash
+        run: |
+          version=$(dotnet msbuild src/Cli/Diffra.Cli.csproj -getProperty:Version)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "DIFFRA_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Build solution
+        run: dotnet build Diffra.slnx --configuration Release
+
+      - name: Run protocol and integration test suite
+        shell: bash
+        run: |
+          mkdir -p temp
+          dotnet run --project tests/Protocol.Tests/Protocol.Tests.csproj --configuration Release --no-build | tee temp/protocol-tests.log
+          test_count=$(grep -c '^PASS ' temp/protocol-tests.log || true)
+          echo "TEST_COUNT=$test_count" >> "$GITHUB_ENV"
+
+      - name: Pack CLI tool package
+        run: dotnet pack src/Cli/Diffra.Cli.csproj --configuration Release -o artifacts/package
+
+      - name: Smoke test installed Diffra CLI tool
+        shell: bash
+        run: |
+          dotnet tool install Diffra.Cli --add-source artifacts/package --tool-path runner-bin --version "$DIFFRA_VERSION"
+          mkdir -p temp/smoke
+
+          CLI_BIN="./runner-bin/diffra"
+          if [ ! -f "$CLI_BIN" ] && [ -f "${CLI_BIN}.exe" ]; then
+            CLI_BIN="${CLI_BIN}.exe"
+          fi
+
+          "$CLI_BIN" collect \
+            --payload examples/sample-project/workflow/candidate-payload.json \
+            --subject-id example/project --commit 2222222222222222222222222222222222222222 \
+            --type-id org.example.metrics --type-version 1.0 \
+            --producer-id org.example.fixture --producer-version 1.0 \
+            -o temp/smoke/evidence.json
+          test $? -eq 0
+
+          "$CLI_BIN" diff \
+            --baseline-ref examples/sample-project/workflow/baseline-reference.json \
+            --baseline-evidence examples/sample-project/workflow/baseline-evidence.json \
+            --evidence temp/smoke/evidence.json -o temp/smoke/delta.json
+          test $? -eq 0
+
+          "$CLI_BIN" eval \
+            --rules examples/sample-project/workflow/rules.json \
+            --delta temp/smoke/delta.json -o temp/smoke/assessment.json
+          test $? -eq 0
+
+          "$CLI_BIN" report \
+            temp/smoke/delta.json --assessment temp/smoke/assessment.json \
+            --baseline-ref examples/sample-project/workflow/baseline-reference.json \
+            --format html -o temp/smoke/report.html
+          test $? -eq 0
+
+          test -s temp/smoke/evidence.json
+          test -s temp/smoke/delta.json
+          test -s temp/smoke/assessment.json
+          test -s temp/smoke/report.html
+
+      - name: Record platform test results
+        shell: bash
+        run: |
+          mkdir -p metadata
+          pkg_file=$(ls artifacts/package/Diffra.Cli.*.nupkg | head -1)
+          pkg_size=0
+          if [ -f "$pkg_file" ]; then
+            pkg_size=$(wc -c < "$pkg_file" | tr -d ' ')
+          fi
+
+          cat <<EOF > metadata/platform-${{ matrix.platform }}.json
+          {
+            "platform": "${{ matrix.platform }}",
+            "runner": "${{ matrix.runner }}",
+            "rid": "${{ matrix.rid }}",
+            "unitTests": "success",
+            "toolSmoke": "success",
+            "testCount": ${TEST_COUNT:-27},
+            "packageSize": $pkg_size,
+            "packageName": "$(basename "$pkg_file")"
+          }
+          EOF
+          cat metadata/platform-${{ matrix.platform }}.json
+
+      - name: Upload platform test metadata
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: platform-${{ matrix.platform }}
+          path: metadata/platform-${{ matrix.platform }}.json
+          if-no-files-found: error
+
+  # 2. Archive smoke test on the native OS without .NET on PATH
+  archive-smoke:
+    name: archive-smoke (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            runner: ubuntu-latest
+            rid: linux-x64
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+            rid: linux-arm64
+          - platform: macos-arm64
+            runner: macos-latest
+            rid: osx-arm64
+          - platform: macos-x64
+            runner: macos-15-intel
+            rid: osx-x64
+          - platform: win-x64
+            runner: windows-latest
+            rid: win-x64
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Resolve project version
+        id: version
+        shell: bash
+        run: |
+          version=$(dotnet msbuild src/Cli/Diffra.Cli.csproj -getProperty:Version)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "DIFFRA_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Publish self-contained single-file archive
+        shell: bash
+        run: |
+          dist_dir="dist/${{ matrix.rid }}"
+          mkdir -p "$dist_dir" artifacts
+
+          dotnet publish src/Cli/Diffra.Cli.csproj \
+            --configuration Release \
+            -r "${{ matrix.rid }}" \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:PublishTrimmed=false \
+            -p:PublishAot=false \
+            -o "$dist_dir"
+
+          cp LICENSE README.md "$dist_dir/"
+
+          if [ "${{ matrix.rid }}" = "win-x64" ]; then
+            cp "$dist_dir/Diffra.Cli.exe" "$dist_dir/diffra.exe"
+            archive_name="diffra-${DIFFRA_VERSION}-${{ matrix.rid }}.zip"
+            (cd "$dist_dir" && zip -9 "../../artifacts/${archive_name}" diffra.exe LICENSE README.md)
+          else
+            cp "$dist_dir/Diffra.Cli" "$dist_dir/diffra"
+            chmod +x "$dist_dir/diffra"
+            archive_name="diffra-${DIFFRA_VERSION}-${{ matrix.rid }}.tar.gz"
+            tar -czf "artifacts/${archive_name}" -C "$dist_dir" diffra LICENSE README.md
+          fi
+          echo "ARCHIVE_NAME=$archive_name" >> "$GITHUB_ENV"
+          archive_size=$(wc -c < "artifacts/${archive_name}" | tr -d ' ')
+          echo "ARCHIVE_SIZE=$archive_size" >> "$GITHUB_ENV"
+
+      - name: Smoke test self-contained archive without .NET on PATH
+        shell: bash
+        run: |
+          mkdir -p temp/smoke-selfcontained
+          if [ "${{ matrix.rid }}" = "win-x64" ]; then
+            unzip -q "artifacts/$ARCHIVE_NAME" -d temp/smoke-selfcontained
+            SYSTEMROOT_WIN="${SYSTEMROOT:-C:\\Windows}"
+            SYSTEM32_WIN="${SYSTEMROOT_WIN}\\System32"
+            sc() {
+              env -i SystemRoot="$SYSTEMROOT_WIN" WINDIR="$SYSTEMROOT_WIN" USERPROFILE="$USERPROFILE" HOME="$HOME" TEMP="$TEMP" TMP="$TMP" PATH="$SYSTEM32_WIN;$SYSTEMROOT_WIN" DOTNET_ROOT="" DOTNET_MULTILEVEL_LOOKUP=0 "$PWD/temp/smoke-selfcontained/diffra.exe" "$@"
+            }
+          else
+            tar -xzf "artifacts/$ARCHIVE_NAME" -C temp/smoke-selfcontained
+            sc() {
+              env -i HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" PATH=/nonexistent DOTNET_ROOT="" "$PWD/temp/smoke-selfcontained/diffra" "$@"
+            }
+          fi
+
+          echo "Running --help..."
+          sc --help
+          test $? -eq 0
+
+          echo "Running file workflow smoke test..."
+          mkdir -p temp/smoke-sc-run
+          sc collect \
+            --payload examples/sample-project/workflow/candidate-payload.json \
+            --subject-id example/project --commit 2222222222222222222222222222222222222222 \
+            --type-id org.example.metrics --type-version 1.0 \
+            --producer-id org.example.fixture --producer-version 1.0 \
+            -o temp/smoke-sc-run/evidence.json
+          test $? -eq 0
+
+          sc diff \
+            --baseline-ref examples/sample-project/workflow/baseline-reference.json \
+            --baseline-evidence examples/sample-project/workflow/baseline-evidence.json \
+            --evidence temp/smoke-sc-run/evidence.json -o temp/smoke-sc-run/delta.json
+          test $? -eq 0
+
+          sc eval \
+            --rules examples/sample-project/workflow/rules.json \
+            --delta temp/smoke-sc-run/delta.json -o temp/smoke-sc-run/assessment.json
+          test $? -eq 0
+
+          sc report \
+            temp/smoke-sc-run/delta.json --assessment temp/smoke-sc-run/assessment.json \
+            --baseline-ref examples/sample-project/workflow/baseline-reference.json \
+            --format html -o temp/smoke-sc-run/report.html
+          test $? -eq 0
+
+          test -s temp/smoke-sc-run/evidence.json
+          test -s temp/smoke-sc-run/delta.json
+          test -s temp/smoke-sc-run/assessment.json
+          test -s temp/smoke-sc-run/report.html
+          jq -e '.environment.tools == []' temp/smoke-sc-run/evidence.json
+          echo "Self-contained native smoke test succeeded."
+
+      - name: Record archive metadata
+        shell: bash
+        run: |
+          mkdir -p metadata
+          cat <<EOF > metadata/archive-${{ matrix.platform }}.json
+          {
+            "platform": "${{ matrix.platform }}",
+            "runner": "${{ matrix.runner }}",
+            "rid": "${{ matrix.rid }}",
+            "archiveSmoke": "success",
+            "archiveName": "$ARCHIVE_NAME",
+            "archiveSize": $ARCHIVE_SIZE
+          }
+          EOF
+          cat metadata/archive-${{ matrix.platform }}.json
+
+      - name: Upload archive metadata
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: archive-${{ matrix.platform }}
+          path: metadata/archive-${{ matrix.platform }}.json
+          if-no-files-found: error
+
+  # 3. Long-budget fuzzing across all targets
+  fuzz:
+    name: fuzz (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [canonical, evidence, document, delivery-index, payloads, line-ranges, bundle, bundle-zip]
+    env:
+      FUZZ_SECONDS: ${{ inputs.fuzz_seconds || (github.event_name == 'pull_request' && '60' || '1800') }}
+      FUZZ_TARGET: ${{ matrix.target }}
+      FUZZ_FINDINGS: ${{ github.workspace }}/.fuzz/findings
+      FUZZ_CORPUS: ${{ github.workspace }}/.fuzz/corpus
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Build and instrument harness
+        run: |
+          dotnet tool install --tool-path "$RUNNER_TEMP/sharpfuzz" SharpFuzz.CommandLine --version "$SHARPFUZZ_VERSION"
+          dotnet publish tests/Protocol.Fuzz/Protocol.Fuzz.csproj --configuration Release --output "$RUNNER_TEMP/fuzz"
+          cp -R "$RUNNER_TEMP/fuzz" "$RUNNER_TEMP/fuzz-plain"
+          "$RUNNER_TEMP/sharpfuzz/sharpfuzz" "$RUNNER_TEMP/fuzz/Diffra.Protocol.dll"
+
+      - name: Download libfuzzer-dotnet
+        run: |
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/libfuzzer-dotnet" "$LIBFUZZER_DOTNET_URL"
+          echo "$LIBFUZZER_DOTNET_SHA256  $RUNNER_TEMP/libfuzzer-dotnet" | sha256sum --check
+          chmod +x "$RUNNER_TEMP/libfuzzer-dotnet"
+
+      - name: Seed corpus
+        run: dotnet "$RUNNER_TEMP/fuzz-plain/Diffra.Protocol.Fuzz.dll" seed "$FUZZ_CORPUS" "$GITHUB_WORKSPACE"
+
+      - name: Fuzz
+        id: fuzz
+        continue-on-error: true
+        run: |
+          mkdir -p "$FUZZ_FINDINGS"
+          set +e
+          timeout --kill-after=30 "$((FUZZ_SECONDS + 120))" setsid --wait "$RUNNER_TEMP/libfuzzer-dotnet" \
+            -max_total_time="$FUZZ_SECONDS" -timeout=10 -print_final_stats=1 \
+            -artifact_prefix="$FUZZ_FINDINGS/libfuzzer-" \
+            --target_path=dotnet --target_arg="$RUNNER_TEMP/fuzz/Diffra.Protocol.Fuzz.dll" \
+            "$FUZZ_CORPUS/$FUZZ_TARGET" > "$RUNNER_TEMP/fuzz.log" 2>&1
+          status=$?
+          pkill -f "Diffra.Protocol.Fuzz.dll" || true
+          tail -n 80 "$RUNNER_TEMP/fuzz.log"
+          exit "$status"
+
+      - name: Summarize and record stats
+        if: always()
+        run: |
+          execs=$(grep 'stat::number_of_executed_units:' "$RUNNER_TEMP/fuzz.log" | awk '{print $2}' | tail -1)
+          [ -z "$execs" ] && execs=$(grep -E '^#[0-9]+' "$RUNNER_TEMP/fuzz.log" | tail -1 | sed -E 's/^#([0-9]+).*/\1/')
+          [ -z "$execs" ] && execs=0
+
+          exec_per_sec=$(grep 'stat::average_exec_per_sec:' "$RUNNER_TEMP/fuzz.log" | awk '{print $2}' | tail -1)
+          [ -z "$exec_per_sec" ] && exec_per_sec=$(grep -oE 'exec/s: [0-9]+' "$RUNNER_TEMP/fuzz.log" | tail -1 | awk '{print $2}')
+          [ -z "$exec_per_sec" ] && exec_per_sec=0
+
+          findings_count=$(find "$FUZZ_FINDINGS" -type f ! -name 'observation-*' 2>/dev/null | wc -l | tr -d ' ')
+
+          mkdir -p metadata
+          cat <<EOF > metadata/fuzz-stats-${FUZZ_TARGET}.json
+          {
+            "target": "$FUZZ_TARGET",
+            "executions": $execs,
+            "execPerSecond": $exec_per_sec,
+            "findingsCount": $findings_count,
+            "status": "${{ steps.fuzz.outcome }}"
+          }
+          EOF
+          cat metadata/fuzz-stats-${FUZZ_TARGET}.json
+
+          {
+            echo "## Fuzz: $FUZZ_TARGET (${FUZZ_SECONDS}s)"
+            echo
+            echo "libFuzzer outcome: ${{ steps.fuzz.outcome }}"
+            echo "Executions: $execs ($exec_per_sec exec/s)"
+            echo "Findings: $findings_count"
+            echo
+            echo '```text'
+            grep -E '^(#[0-9]+.*(DONE|pulse)|stat::|==[0-9]+== ERROR|SUMMARY|INFO: Seed|INFO: .* files found)' "$RUNNER_TEMP/fuzz.log" | tail -n 25 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload findings and corpus
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: fuzz-${{ matrix.target }}
+          path: |
+            .fuzz
+            metadata/fuzz-stats-${{ matrix.target }}.json
+          include-hidden-files: true
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Fail on findings
+        run: |
+          if [ "${{ steps.fuzz.outcome }}" != "success" ] || [ -n "$(find "$FUZZ_FINDINGS" -name '*.txt' ! -name 'observation-*')" ]; then
+            echo "::error::Fuzzing found issues for $FUZZ_TARGET; see the job summary and the fuzz-$FUZZ_TARGET artifact."
+            exit 1
+          fi
+
+  # 4. Mutation testing across all of Protocol
+  mutation:
+    name: mutation (all Protocol)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Build solution
+        run: dotnet build Diffra.slnx --configuration Release
+
+      - name: Baseline - run adapter suite unmutated
+        run: |
+          start=$(date +%s)
+          dotnet test tests/Protocol.Tests.Stryker/Protocol.Tests.Stryker.csproj --configuration Release --logger "console;verbosity=normal"
+          echo "BASELINE_SECONDS=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
+
+      - name: Install Stryker.NET
+        run: dotnet tool install dotnet-stryker --version 5.0.0 --tool-path "$RUNNER_TEMP/stryker"
+
+      - name: Run Stryker across all of Protocol
+        working-directory: tests/Protocol.Tests.Stryker
+        run: |
+          start=$(date +%s)
+          "$RUNNER_TEMP/stryker/dotnet-stryker" \
+            --project Diffra.Protocol.csproj \
+            --test-project Protocol.Tests.Stryker.csproj \
+            --configuration Release \
+            --reporter html --reporter json --reporter progress --reporter cleartext \
+            --output "$GITHUB_WORKSPACE/stryker-output" \
+            --break-at 80
+          echo "STRYKER_SECONDS=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
+
+      - name: Summarise
+        if: always()
+        run: |
+          report=$(find "$GITHUB_WORKSPACE/stryker-output" -name 'mutation-report.json' | head -1)
+          {
+            echo "## Stryker.NET: Full Protocol Scope"
+            echo
+            echo "Unmutated suite: ${BASELINE_SECONDS:-n/a} s. Stryker: ${STRYKER_SECONDS:-n/a} s."
+            echo
+            if [ -n "$report" ]; then
+              echo "| File | Killed | Survived | Timeout | NoCoverage | Other | Score (covered) | Score (all) |"
+              echo "| --- | --- | --- | --- | --- | --- | --- | --- |"
+              jq -r '.files | to_entries[] | .key as $f | [.value.mutants[].status] as $s
+                | ($s|map(select(.=="Killed"))|length) as $k
+                | ($s|map(select(.=="Survived"))|length) as $sv
+                | ($s|map(select(.=="Timeout"))|length) as $t
+                | ($s|map(select(.=="NoCoverage"))|length) as $n
+                | (($s|length) - $k - $sv - $t - $n) as $o
+                | "| \($f|split("/")|last) | \($k) | \($sv) | \($t) | \($n) | \($o) | \(if ($k+$t+$sv)>0 then (100*($k+$t)/($k+$t+$sv)|floor) else "n/a" end)% | \(if ($k+$t+$sv+$n)>0 then (100*($k+$t)/($k+$t+$sv+$n)|floor) else "n/a" end)% |"' "$report"
+            else
+              echo "No mutation-report.json produced."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: stryker-report
+          path: stryker-output
+          retention-days: 14
+          if-no-files-found: warn
+
+  # 5. High-iteration property runs
+  properties:
+    name: properties (100k iterations)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Run high-iteration property and metamorphic checks
+        run: |
+          mkdir -p metadata
+          dotnet run --project tests/Protocol.Properties/Protocol.Properties.csproj --configuration Release -- 100000
+          cat <<EOF > metadata/properties-summary.json
+          {
+            "status": "success",
+            "iterations": 100000,
+            "propertyCount": 6
+          }
+          EOF
+
+      - name: Upload properties summary
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: properties-summary
+          path: metadata/properties-summary.json
+          if-no-files-found: ignore
+
+  # 6. Deep summary job
+  deep:
+    name: deep
+    if: always()
+    needs: [os-matrix, archive-smoke, fuzz, mutation, properties]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Download all job artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          path: artifacts-summary
+
+      - name: Generate deep summary
+        run: dotnet run scripts/DeepSummary.cs -- artifacts-summary deep-summary.json
+
+      - name: Upload deep summary artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: deep-summary
+          path: deep-summary.json
+          if-no-files-found: error
+
+      - name: Require every deep-tier job to pass
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Deep-tier results: $RESULTS"
+          for result in $RESULTS; do
+            if [ "$result" != "success" ]; then
+              echo "::error::A deep-tier job finished with '$result'."
+              exit 1
+            fi
+          done

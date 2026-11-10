@@ -74,6 +74,7 @@ Each step is one PR.
 3. **Regression suite.** The frozen corpus seeded from 0.0.1-alpha.1, backward reads, and the old vs new tool comparison.
    Status: complete (seeded from 0.0.1-alpha.1).
 4. **Deep workflow.** An OS matrix, a nightly schedule, and mutation testing across all of Protocol.
+   Status: implemented in `.github/workflows/deep.yml` with five-platform runner matrix, native archive smoke tests, long-budget parallel fuzzing, Stryker mutation testing across all of Protocol, 100k property checks, and machine-readable `deep-summary.json`.
 5. **Release gate.** `release.yml` requires the deep and regression workflows on the tagged commit.
 6. **Test strength as Evidence.** Turn the deep-run results into Evidence and gate on them.
 

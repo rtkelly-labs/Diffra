@@ -1,5 +1,7 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Diffra.Protocol;
 
 namespace Diffra.Regression;
 
@@ -21,7 +23,7 @@ public static class DocumentNormalizer
         }
 
         var normalizedJson = node?.ToJsonString(new JsonSerializerOptions { WriteIndented = false }) ?? "{}";
-        return Diffra.Protocol.CanonicalJson.Canonicalize(System.Text.Encoding.UTF8.GetBytes(normalizedJson));
+        return CanonicalJson.Canonicalize(Encoding.UTF8.GetBytes(normalizedJson));
     }
 
     public static byte[] NormalizeDeltaJson(byte[] jsonBytes)
@@ -41,6 +43,6 @@ public static class DocumentNormalizer
         }
 
         var normalizedJson = node?.ToJsonString(new JsonSerializerOptions { WriteIndented = false }) ?? "{}";
-        return Diffra.Protocol.CanonicalJson.Canonicalize(System.Text.Encoding.UTF8.GetBytes(normalizedJson));
+        return CanonicalJson.Canonicalize(Encoding.UTF8.GetBytes(normalizedJson));
     }
 }

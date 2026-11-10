@@ -17,7 +17,7 @@ public static class CorpusRunner
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
-    public static bool RunCandidate(string corpusDir, string candidateTool, RunSummary summary)
+    public static void RunCandidate(string corpusDir, string candidateTool, RunSummary summary)
     {
         var manifestPath = Path.Combine(corpusDir, "manifest.json");
         if (!File.Exists(manifestPath))
@@ -41,6 +41,15 @@ public static class CorpusRunner
                 var caseRunDir = Path.Combine(tempRoot, testCase.Id);
                 Directory.CreateDirectory(caseRunDir);
 
+                foreach (var inputFile in testCase.InputFiles)
+                {
+                    var fullPath = Path.Combine(corpusDir, inputFile);
+                    if (!File.Exists(fullPath) && !Directory.Exists(fullPath))
+                    {
+                        throw new FileNotFoundException($"Declared input '{inputFile}' for case '{testCase.Id}' not found at '{fullPath}'.");
+                    }
+                }
+
                 var resolvedArgs = new List<string>();
                 foreach (var arg in testCase.Args)
                 {
@@ -60,7 +69,7 @@ public static class CorpusRunner
                     }
                 }
 
-                var (exitCode, stdout, stderr) = ToolExecutor.Run(candidateTool, resolvedArgs, caseRunDir);
+                var (exitCode, _, stderr) = ToolExecutor.Run(candidateTool, resolvedArgs, caseRunDir);
                 if (exitCode != testCase.ExpectedExitCode)
                 {
                     var msg = $"Exit code mismatch: expected {testCase.ExpectedExitCode}, got {exitCode}. Stderr: {stderr}";
@@ -235,11 +244,9 @@ public static class CorpusRunner
                 // ignore temp cleanup error
             }
         }
-
-        return summary.Failures.Count == 0;
     }
 
-    public static bool RunComparison(string corpusDir, string oldTool, string newTool, RunSummary summary)
+    public static void RunComparison(string corpusDir, string oldTool, string newTool, RunSummary summary)
     {
         var manifestPath = Path.Combine(corpusDir, "manifest.json");
         if (!File.Exists(manifestPath))
@@ -288,7 +295,7 @@ public static class CorpusRunner
                     return list;
                 }
 
-                var (oldCode, _, oldErr) = ToolExecutor.Run(oldTool, ResolveArgs(oldCaseDir), oldCaseDir);
+                var (oldCode, _, _) = ToolExecutor.Run(oldTool, ResolveArgs(oldCaseDir), oldCaseDir);
                 var (newCode, _, newErr) = ToolExecutor.Run(newTool, ResolveArgs(newCaseDir), newCaseDir);
 
                 if (oldCode != newCode)
@@ -433,8 +440,6 @@ public static class CorpusRunner
                 // ignore cleanup error
             }
         }
-
-        return summary.Failures.Count == 0;
     }
 
     public static void RunBackwardReads(string corpusDir, RunSummary summary)

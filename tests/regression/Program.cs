@@ -85,7 +85,7 @@ if (mode == "generate")
 
 var corpora = Directory.EnumerateDirectories(corpusRoot)
     .Where(d => File.Exists(Path.Combine(d, "manifest.json")))
-    .OrderBy(d => Path.GetFileName(d), StringComparer.Ordinal)
+    .OrderBy(Path.GetFileName, StringComparer.Ordinal)
     .ToList();
 
 if (corpora.Count == 0)

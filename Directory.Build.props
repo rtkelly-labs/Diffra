@@ -7,7 +7,7 @@
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Deterministic>true</Deterministic>
-    <Version>0.0.1-preview</Version>
+    <Version>0.0.1-alpha.1</Version>
     <Authors>Ryan Kelly</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/rtkelly-labs/Diffra</RepositoryUrl>

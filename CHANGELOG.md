@@ -5,9 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 0.0.1-preview - 2026-11-10
+## 0.0.1-alpha.1 - 2026-11-10
 
-Diffra 0.0.1-preview is an initial unstable preview release. The protocol contracts, schemas, document shapes, and CLI flags may change in any 0.0.x release.
+Diffra 0.0.1-alpha.1 is an initial unstable alpha release. The protocol contracts, schemas, document shapes, and CLI flags may change in any 0.0.x release.
 
 In this release, only the `Diffra.Cli` .NET tool package and standalone single-file executables are published. The protocol library (`Diffra.Protocol`) is bundled inside the tool package.
 
@@ -37,5 +37,5 @@ The core protocol library provides the following capabilities (callable directly
 
 ### Distribution
 
-- `Diffra.Cli` .NET tool package (`Diffra.Cli.0.0.1-preview.nupkg`) attached to the GitHub Release (publication to NuGet.org will come in a later release).
+- `Diffra.Cli` .NET tool package (`Diffra.Cli.0.0.1-alpha.1.nupkg`) attached to the GitHub Release (publication to NuGet.org will come in a later release).
 - Published self-contained single-file binary archives for `linux-x64`, `linux-arm64`, `osx-x64`, `osx-arm64`, and `win-x64` with SHA-256 checksums (`SHA256SUMS`).

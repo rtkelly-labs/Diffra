@@ -58,14 +58,14 @@ jobs:
       - name: Build solution
         run: dotnet build Diffra.slnx --configuration Release
 
+      - name: Pack Pre-Release Diffra CLI Tool
+        run: dotnet pack src/Cli/Diffra.Cli.csproj --configuration Release -o artifacts/package
+
       - name: Run protocol and integration test suite
         run: dotnet run --project tests/Protocol.Tests/Protocol.Tests.csproj --configuration Release --no-build
 
       - name: Audit package vulnerabilities
         run: dotnet list package --vulnerable --include-transitive
-
-      - name: Pack Pre-Release Diffra CLI Tool
-        run: dotnet pack src/Cli/Diffra.Cli.csproj --configuration Release -o artifacts/package
 
       - name: Smoke test installed Diffra CLI tool
         run: |

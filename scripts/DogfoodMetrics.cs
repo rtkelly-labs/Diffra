@@ -29,14 +29,27 @@ if (nupkgFiles.Length == 0)
 {
     var tempPackageDir = Path.Combine(repoRoot, "dogfood-run", "package");
     Directory.CreateDirectory(tempPackageDir);
-    using var packProcess = Process.Start(new ProcessStartInfo("dotnet")
+    var start = new ProcessStartInfo("dotnet")
     {
-        ArgumentList = { "pack", Path.Combine(repoRoot, "src", "Cli", "Diffra.Cli.csproj"), "-c", "Release", "-o", tempPackageDir },
         RedirectStandardOutput = true,
         RedirectStandardError = true,
         UseShellExecute = false
-    });
-    packProcess?.WaitForExit();
+    };
+    start.ArgumentList.Add("pack");
+    start.ArgumentList.Add(Path.Combine(repoRoot, "src", "Cli", "Diffra.Cli.csproj"));
+    start.ArgumentList.Add("-c");
+    start.ArgumentList.Add("Release");
+    start.ArgumentList.Add("-o");
+    start.ArgumentList.Add(tempPackageDir);
+    using var packProcess = Process.Start(start);
+    if (packProcess != null)
+    {
+        var stdoutTask = packProcess.StandardOutput.ReadToEndAsync();
+        var stderrTask = packProcess.StandardError.ReadToEndAsync();
+        packProcess.WaitForExit();
+        _ = stdoutTask.GetAwaiter().GetResult();
+        _ = stderrTask.GetAwaiter().GetResult();
+    }
     nupkgFiles = Directory.GetFiles(tempPackageDir, "Diffra.Cli.*.nupkg", SearchOption.TopDirectoryOnly);
 }
 

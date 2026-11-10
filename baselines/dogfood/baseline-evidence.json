@@ -1,6 +1,6 @@
 {
   "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
-  "id": "sha256:2beaad0865308bce051feeab6180b9f73cf3fa261473dcc6a6214c6c883155d7",
+  "id": "sha256:5e78f3088c95de5d681ca610e61151386b48469ce1f68be170305b2bebddb529",
   "status": "produced",
   "typeId": "diffra.metrics.dogfood",
   "typeVersion": "1.0",
@@ -29,7 +29,7 @@
     "source": "git:da460fca7fefb8e51a501cbe598d77ec7c4445ff",
     "artifactDigests": []
   },
-  "payloadDigest": "sha256:420e94024e833fa33fe0e2ada5fb531f01ac97a25fd8f12eefafeb0da613d2a6",
-  "payload": {"methodology":"static-analysis","metrics":{"aspireRuntimeDependencies":0,"compilerWarnings":0,"packageSizeBytes":184402,"schemasCount":6,"sourceFilesCount":28},"scope":"diffra/core"},
+  "payloadDigest": "sha256:5bad71fcae7088e0a38e3e347b3e0619ff189898d6b515a6eb6180c5f48f3e34",
+  "payload": {"methodology":"static-analysis","metrics":{"aspireRuntimeDependencies":0,"compilerWarnings":0,"packageSizeBytes":184402,"schemasCount":12,"sourceFilesCount":29},"scope":"diffra/core"},
   "artifactRefs": []
 }

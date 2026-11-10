@@ -70,8 +70,8 @@ if (!hasBaseline)
         inconclusiveReport.AppendLine("\n\n## 🐕 Diffra Self-Evaluation (Dogfood)\n");
         inconclusiveReport.AppendLine("### Assessment: `inconclusive`\n");
         inconclusiveReport.AppendLine("> [!NOTE]");
-        inconclusiveReport.AppendLine($"> No baseline Evidence document was found for merge-base `{mergeBaseCommit ?? "unknown"}` on branch `diffra-baselines`.");
-        inconclusiveReport.AppendLine($"> Candidate Evidence was generated for commit `{commit}` using pinned judge `{judgeVersion}`.");
+        inconclusiveReport.Append("> No baseline Evidence document was found for merge-base `").Append(mergeBaseCommit ?? "unknown").Append("` on branch `diffra-baselines`.\n");
+        inconclusiveReport.Append("> Candidate Evidence was generated for commit `").Append(commit).Append("` using pinned judge `").Append(judgeVersion).Append("`.\n");
         inconclusiveReport.AppendLine("> Gate status: **Passed (inconclusive / bootstrap)**.\n");
         File.AppendAllText(stepSummary, inconclusiveReport.ToString());
     }

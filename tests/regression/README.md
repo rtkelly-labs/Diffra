@@ -63,3 +63,11 @@ This single command:
 2. Generates canonical baseline evidence, baseline references, and manifests.
 3. Executes the released `diffra` tool across `collect`, `diff`, `eval`, `report`, `bundle`, and `present` commands.
 4. Materializes expected outputs and records `manifest.json`.
+
+## Determinism and Environment Normalization
+
+- **Direct Byte-for-Byte Verification**: By default, every case requires byte-for-byte identity against expected documents.
+- **Collect Provenance**: `diffra collect` records host platform, runtime, and SDK versions in Evidence documents. For `collect` cases, Evidence documents are verified for deterministic identity and schema conformance, with environment metadata normalized for cross-machine comparison.
+- **Delta Runtime Provenance**: `diffra diff` records `System.Environment.Version` in `delta.provenance.environment.runtime`, which is included in the canonical SHA-256 identity of the Delta document. When running across environments with differing host .NET runtime patch releases (e.g., .NET 10.0.14 vs 10.0.15), the runner falls back to normalizing runtime environment fields while strictly asserting that all semantic fields (change kinds, paths, numeric values, relative/absolute calculations, units, comparator identity, and evidence references) match identically.
+- **Zero-Tolerance Semantic Gating**: Assessment (`eval`), report (`html`, `json`, `markdown`), bundle (`export`, `import`), and presentation documents taken from committed inputs must match byte-for-byte.
+

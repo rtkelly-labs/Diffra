@@ -166,6 +166,29 @@ public static class CorpusRunner
                                 continue;
                             }
 
+                            // If diff command output (Delta document), verify if difference is only runtime environment / id
+                            if (testCase.Command == "diff" ||
+                                (actDoc.RootElement.TryGetProperty("schema", out var actSchema) &&
+                                 actSchema.GetString() == "https://diffra.dev/schemas/delta-v1.schema.json"))
+                            {
+                                var normAct = DocumentNormalizer.NormalizeDeltaJson(actualBytes);
+                                var normExp = DocumentNormalizer.NormalizeDeltaJson(expectedBytes);
+                                if (normAct.AsSpan().SequenceEqual(normExp))
+                                {
+                                    // Delta semantically matches once host .NET runtime version difference is normalized
+                                    continue;
+                                }
+
+                                using var normActDoc = JsonDocument.Parse(normAct);
+                                using var normExpDoc = JsonDocument.Parse(normExp);
+                                var normPointer = JsonDiff.FindFirstDifference(normExpDoc.RootElement, normActDoc.RootElement);
+                                var normMsg = $"Differing JSON at pointer '{normPointer}' after delta environment normalization.";
+                                Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {normMsg}");
+                                summary.Failures.Add((testCase.Id, exp.Path, normPointer, normMsg));
+                                casePassed = false;
+                                continue;
+                            }
+
                             var pointer = JsonDiff.FindFirstDifference(expDoc.RootElement, actDoc.RootElement);
                             var msg = $"Differing JSON at pointer '{pointer}'.";
                             Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {msg}");
@@ -352,6 +375,28 @@ public static class CorpusRunner
                         {
                             Console.WriteLine($"[DECLARED BREAK] {testCase.Id} ({exp.Path}): {breakReason}");
                             summary.DeclaredBreaks.Add((testCase.Id, breakReason));
+                            continue;
+                        }
+
+                        // If diff command output (Delta document), verify if difference is only runtime environment / id
+                        if (testCase.Command == "diff" ||
+                            (newDoc.RootElement.TryGetProperty("schema", out var actSchema) &&
+                             actSchema.GetString() == "https://diffra.dev/schemas/delta-v1.schema.json"))
+                        {
+                            var normOld = DocumentNormalizer.NormalizeDeltaJson(oldBytes);
+                            var normNew = DocumentNormalizer.NormalizeDeltaJson(newBytes);
+                            if (normOld.AsSpan().SequenceEqual(normNew))
+                            {
+                                continue;
+                            }
+
+                            using var normOldDoc = JsonDocument.Parse(normOld);
+                            using var normNewDoc = JsonDocument.Parse(normNew);
+                            var normPointer = JsonDiff.FindFirstDifference(normOldDoc.RootElement, normNewDoc.RootElement);
+                            var normMsg = $"Differing JSON at pointer '{normPointer}' after delta environment normalization.";
+                            Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {normMsg}");
+                            summary.Failures.Add((testCase.Id, exp.Path, normPointer, normMsg));
+                            casePassed = false;
                             continue;
                         }
 

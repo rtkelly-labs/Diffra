@@ -42,13 +42,18 @@ if (nupkgFiles.Length == 0)
     start.ArgumentList.Add("-o");
     start.ArgumentList.Add(tempPackageDir);
     using var packProcess = Process.Start(start);
-    if (packProcess != null)
+    if (packProcess == null)
     {
-        var stdoutTask = packProcess.StandardOutput.ReadToEndAsync();
-        var stderrTask = packProcess.StandardError.ReadToEndAsync();
-        packProcess.WaitForExit();
-        _ = stdoutTask.GetAwaiter().GetResult();
-        _ = stderrTask.GetAwaiter().GetResult();
+        throw new InvalidOperationException("Failed to start dotnet pack process.");
+    }
+    var stdoutTask = packProcess.StandardOutput.ReadToEndAsync();
+    var stderrTask = packProcess.StandardError.ReadToEndAsync();
+    packProcess.WaitForExit();
+    var stdout = stdoutTask.GetAwaiter().GetResult();
+    var stderr = stderrTask.GetAwaiter().GetResult();
+    if (packProcess.ExitCode != 0)
+    {
+        throw new InvalidOperationException($"dotnet pack failed with exit code {packProcess.ExitCode}:\n{stderr}\n{stdout}");
     }
     nupkgFiles = Directory.GetFiles(tempPackageDir, "Diffra.Cli.*.nupkg", SearchOption.TopDirectoryOnly);
 }
@@ -57,6 +62,11 @@ if (nupkgFiles.Length > 0)
 {
     var nupkg = nupkgFiles.OrderByDescending(f => File.GetLastWriteTimeUtc(f)).First();
     packageSizeBytes = new FileInfo(nupkg).Length;
+}
+
+if (packageSizeBytes <= 0)
+{
+    throw new InvalidOperationException("Failed to measure packageSizeBytes: no valid nupkg was found or package size is zero.");
 }
 
 var metricsNode = new JsonObject

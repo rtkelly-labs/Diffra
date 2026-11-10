@@ -10,6 +10,15 @@ var baselinesDir = Path.Combine(repoRoot, "baselines", "dogfood");
 var workDir = Path.Combine(repoRoot, "dogfood-run");
 Directory.CreateDirectory(workDir);
 
+// Guard: A PR must not supply tracked baseline or dogfood run files.
+var trackedFiles = CaptureOutput("git", "ls-files", "dogfood-run").Trim();
+if (!string.IsNullOrWhiteSpace(trackedFiles))
+{
+    Console.Error.WriteLine($"[FAIL] Tracked files found under dogfood-run/:\n{trackedFiles}\nA PR must not supply tracked baseline or dogfood run files.");
+    Environment.Exit(1);
+    return;
+}
+
 Console.WriteLine($"=== Diffra Dogfooding Execution (Pinned Judge: {judgeVersion}) ===");
 
 // 1. Collect candidate metrics
@@ -46,31 +55,39 @@ if (args.Contains("--collect-only"))
 Console.WriteLine("3. Resolving merge-base baseline Evidence...");
 var baselineEvidencePath = Path.Combine(workDir, "baseline-evidence.json");
 var baselineRefPath = Path.Combine(workDir, "baseline-reference.json");
-var mergeBaseCommit = ResolveMergeBase(repoRoot);
 
-bool hasBaseline = false;
-if (File.Exists(baselineEvidencePath) && new FileInfo(baselineEvidencePath).Length > 0)
+// Never trust pre-existing baseline files; always remove before resolution
+if (File.Exists(baselineEvidencePath)) File.Delete(baselineEvidencePath);
+if (File.Exists(baselineRefPath)) File.Delete(baselineRefPath);
+
+// Always compute merge-base against origin/main (never GITHUB_BASE_REF) so stacked PRs work
+var mergeBaseCommit = ResolveMergeBaseStrict(repoRoot);
+Console.WriteLine($"Resolved merge-base against origin/main: {mergeBaseCommit}");
+
+// Check whether diffra-baselines branch exists on remote
+var (lsRemoteExit, lsRemoteOut, lsRemoteErr) = RunProcessAllowExitCodeWithOutput("git", "ls-remote", "--heads", "origin", "diffra-baselines");
+if (lsRemoteExit != 0)
 {
-    hasBaseline = true;
-}
-else if (!string.IsNullOrWhiteSpace(mergeBaseCommit))
-{
-    hasBaseline = TryFetchBaselineEvidence(mergeBaseCommit, baselineEvidencePath);
+    Console.Error.WriteLine($"[FAIL] Network or git error querying remote diffra-baselines branch (exit code {lsRemoteExit}): {lsRemoteErr}");
+    Environment.Exit(lsRemoteExit);
+    return;
 }
 
-if (!hasBaseline)
+var stepSummary = Environment.GetEnvironmentVariable("GITHUB_STEP_SUMMARY");
+
+if (string.IsNullOrWhiteSpace(lsRemoteOut))
 {
-    Console.WriteLine($"\n[INCONCLUSIVE] No baseline Evidence found for merge-base '{mergeBaseCommit ?? "unknown"}' on diffra-baselines.");
+    // Case (a): diffra-baselines branch does not exist yet (bootstrap)
+    Console.WriteLine("\n[INCONCLUSIVE] Case (a): diffra-baselines branch does not exist yet (bootstrap).");
     Console.WriteLine("Reporting inconclusive assessment to GITHUB_STEP_SUMMARY. Gating permitted for bootstrap run.");
 
-    var stepSummary = Environment.GetEnvironmentVariable("GITHUB_STEP_SUMMARY");
     if (!string.IsNullOrEmpty(stepSummary) && File.Exists(stepSummary))
     {
         var inconclusiveReport = new StringBuilder();
         inconclusiveReport.AppendLine("\n\n## 🐕 Diffra Self-Evaluation (Dogfood)\n");
         inconclusiveReport.AppendLine("### Assessment: `inconclusive`\n");
         inconclusiveReport.AppendLine("> [!NOTE]");
-        inconclusiveReport.Append("> No baseline Evidence document was found for merge-base `").Append(mergeBaseCommit ?? "unknown").Append("` on branch `diffra-baselines`.\n");
+        inconclusiveReport.AppendLine("> Case (a): `diffra-baselines` branch does not exist yet on remote (bootstrap).");
         inconclusiveReport.Append("> Candidate Evidence was generated for commit `").Append(commit).Append("` using pinned judge `").Append(judgeVersion).Append("`.\n");
         inconclusiveReport.AppendLine("> Gate status: **Passed (inconclusive / bootstrap)**.\n");
         File.AppendAllText(stepSummary, inconclusiveReport.ToString());
@@ -79,11 +96,81 @@ if (!hasBaseline)
     return;
 }
 
+// Branch exists on remote: fetch it fresh
+var fetchExit = RunProcessAllowExitCode("git", "fetch", "origin", "+refs/heads/diffra-baselines:refs/remotes/origin/diffra-baselines");
+if (fetchExit != 0)
+{
+    Console.Error.WriteLine($"[FAIL] Failed to fetch origin/diffra-baselines (exit code {fetchExit}).");
+    Environment.Exit(fetchExit);
+    return;
+}
+
+// Find baseline Evidence for merge-base or any of its first-parent ancestors within the last 20 commits
+var ancestorList = CaptureOutput("git", "rev-list", "--first-parent", "-n", "20", mergeBaseCommit)
+    .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+string? matchedCommit = null;
+foreach (var sha in ancestorList)
+{
+    var (showExit, showOut, _) = RunProcessAllowExitCodeWithOutput("git", "show", $"origin/diffra-baselines:evidence/{sha}.json");
+    if (showExit == 0 && !string.IsNullOrWhiteSpace(showOut))
+    {
+        File.WriteAllText(baselineEvidencePath, showOut);
+        matchedCommit = sha;
+        break;
+    }
+}
+
+if (matchedCommit == null)
+{
+    // Case (b): no Evidence exists for merge-base or any first-parent ancestor within 20 commits
+    Console.WriteLine("::warning::No baseline Evidence found for merge-base or any first-parent ancestor within 20 commits.");
+    Console.WriteLine($"\n[INCONCLUSIVE] Case (b): No Evidence found for merge-base '{mergeBaseCommit}' or ancestors within 20 commits on diffra-baselines.");
+    Console.WriteLine("Reporting inconclusive assessment to GITHUB_STEP_SUMMARY. Gating permitted for ancestor fallback.");
+
+    if (!string.IsNullOrEmpty(stepSummary) && File.Exists(stepSummary))
+    {
+        var inconclusiveReport = new StringBuilder();
+        inconclusiveReport.AppendLine("\n\n## 🐕 Diffra Self-Evaluation (Dogfood)\n");
+        inconclusiveReport.AppendLine("### Assessment: `inconclusive`\n");
+        inconclusiveReport.AppendLine("> [!WARNING]");
+        inconclusiveReport.Append("> Case (b): No baseline Evidence found for merge-base `").Append(mergeBaseCommit).Append("` or any first-parent ancestor within 20 commits on `diffra-baselines`.\n");
+        inconclusiveReport.Append("> Candidate Evidence was generated for commit `").Append(commit).Append("` using pinned judge `").Append(judgeVersion).Append("`.\n");
+        inconclusiveReport.AppendLine("> Gate status: **Passed (inconclusive / no ancestor baseline)**.\n");
+        File.AppendAllText(stepSummary, inconclusiveReport.ToString());
+    }
+
+    return;
+}
+
+Console.WriteLine($"[BASELINE] Resolved baseline Evidence from commit '{matchedCommit}' (merge-base was '{mergeBaseCommit}').");
+
+// Validate baseline evidence JSON
+try
+{
+    var evidenceRawBytes = File.ReadAllBytes(baselineEvidencePath);
+    using var parsedDoc = JsonDocument.Parse(evidenceRawBytes);
+    var root = parsedDoc.RootElement;
+    if (root.ValueKind != JsonValueKind.Object ||
+        !root.TryGetProperty("id", out var idElem) || idElem.ValueKind != JsonValueKind.String ||
+        !root.TryGetProperty("subject", out var subjElem) || subjElem.ValueKind != JsonValueKind.Object ||
+        !subjElem.TryGetProperty("commit", out var commitElem) || commitElem.ValueKind != JsonValueKind.String)
+    {
+        throw new JsonException("Baseline evidence document is missing required schema fields.");
+    }
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine($"[FAIL] Malformed baseline Evidence document at '{baselineEvidencePath}': {ex.Message}");
+    Environment.Exit(1);
+    return;
+}
+
 // 4. Construct verified Baseline Reference
 Console.WriteLine("4. Building verified Baseline Reference document...");
-BuildBaselineReference(baselineEvidencePath, mergeBaseCommit!, baselineRefPath);
+BuildBaselineReference(baselineEvidencePath, matchedCommit, baselineRefPath);
 
-// 5. Diff against baseline
+// 5. Diff against baseline (the pinned judge validates the baseline reference ID and structure)
 Console.WriteLine("5. Computing typed Delta against merge-base baseline...");
 var deltaPath = Path.Combine(workDir, "delta.json");
 
@@ -93,7 +180,7 @@ RunProcess("dotnet", "diffra", "diff",
     "--evidence", candidateEvidence,
     "-o", deltaPath);
 
-// 6. Evaluate Delta against policy rules
+// 6. Evaluate Delta against quality rules
 Console.WriteLine("6. Evaluating Delta against quality rules...");
 var rulesPath = Path.Combine(baselinesDir, "rules.json");
 var assessmentPath = Path.Combine(workDir, "assessment.json");
@@ -140,15 +227,30 @@ Console.WriteLine("\n[SUCCESS] Diffra dogfooding run passed all quality policies
 static string ReadJudgeVersion(string repoRoot)
 {
     var manifestPath = Path.Combine(repoRoot, ".config", "dotnet-tools.json");
-    if (!File.Exists(manifestPath)) return "0.0.1-alpha.1";
-    using var doc = JsonDocument.Parse(File.ReadAllText(manifestPath));
-    if (doc.RootElement.TryGetProperty("tools", out var tools) &&
-        tools.TryGetProperty("diffra.cli", out var cli) &&
-        cli.TryGetProperty("version", out var ver))
+    if (File.Exists(manifestPath))
     {
-        return ver.GetString() ?? "0.0.1-alpha.1";
+        using var doc = JsonDocument.Parse(File.ReadAllText(manifestPath));
+        if (doc.RootElement.TryGetProperty("tools", out var tools) &&
+            tools.TryGetProperty("diffra.cli", out var cli) &&
+            cli.TryGetProperty("version", out var ver) &&
+            ver.GetString() is { } versionStr)
+        {
+            return versionStr;
+        }
     }
-    return "0.0.1-alpha.1";
+    return ReadProjectVersion(repoRoot);
+}
+
+static string ReadProjectVersion(string repoRoot)
+{
+    var propsPath = Path.Combine(repoRoot, "Directory.Build.props");
+    if (File.Exists(propsPath))
+    {
+        var text = File.ReadAllText(propsPath);
+        var match = System.Text.RegularExpressions.Regex.Match(text, @"<Version>([^<]+)</Version>");
+        if (match.Success) return match.Groups[1].Value.Trim();
+    }
+    throw new InvalidOperationException("Could not determine version from Directory.Build.props.");
 }
 
 static string? TryGetHeadCommit()
@@ -164,62 +266,36 @@ static string? TryGetHeadCommit()
     }
 }
 
-static string? ResolveMergeBase(string repoRoot)
+static string ResolveMergeBaseStrict(string repoRoot)
 {
-    var baseRef = Environment.GetEnvironmentVariable("GITHUB_BASE_REF");
-    var target = string.IsNullOrWhiteSpace(baseRef) ? "origin/main" : $"origin/{baseRef}";
-
-    var exitCode = RunProcessAllowExitCode("git", "rev-parse", "--verify", target);
-    if (exitCode != 0)
+    const string target = "origin/main";
+    var verifyExit = RunProcessAllowExitCode("git", "rev-parse", "--verify", target);
+    if (verifyExit != 0)
     {
-        RunProcessAllowExitCode("git", "fetch", "origin", "main");
+        var fetchExit = RunProcessAllowExitCode("git", "fetch", "origin", "main");
+        if (fetchExit != 0)
+        {
+            Console.Error.WriteLine("[FAIL] Failed to fetch origin/main for merge-base resolution.");
+            Environment.Exit(1);
+        }
     }
 
     try
     {
         var mergeBase = CaptureOutput("git", "merge-base", "HEAD", target).Trim();
-        return string.IsNullOrWhiteSpace(mergeBase) ? null : mergeBase;
-    }
-    catch
-    {
-        return null;
-    }
-}
-
-static bool TryFetchBaselineEvidence(string commitSha, string destinationPath)
-{
-    RunProcessAllowExitCode("git", "fetch", "origin", "diffra-baselines:refs/remotes/origin/diffra-baselines");
-
-    var start = new ProcessStartInfo("git")
-    {
-        ArgumentList = { "show", $"origin/diffra-baselines:evidence/{commitSha}.json" },
-        RedirectStandardOutput = true,
-        RedirectStandardError = true,
-        UseShellExecute = false
-    };
-
-    try
-    {
-        using var proc = Process.Start(start);
-        if (proc == null) return false;
-        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
-        var stderrTask = proc.StandardError.ReadToEndAsync();
-        proc.WaitForExit();
-        var stdout = stdoutTask.GetAwaiter().GetResult();
-        _ = stderrTask.GetAwaiter().GetResult();
-
-        if (proc.ExitCode == 0 && !string.IsNullOrWhiteSpace(stdout))
+        if (string.IsNullOrWhiteSpace(mergeBase))
         {
-            File.WriteAllText(destinationPath, stdout);
-            return true;
+            Console.Error.WriteLine("[FAIL] Null or empty merge-base returned against origin/main.");
+            Environment.Exit(1);
         }
+        return mergeBase;
     }
-    catch
+    catch (Exception ex)
     {
-        // ignored
+        Console.Error.WriteLine($"[FAIL] Error computing merge-base against origin/main: {ex.Message}");
+        Environment.Exit(1);
+        throw;
     }
-
-    return false;
 }
 
 static void BuildBaselineReference(string evidencePath, string resolvedCommit, string outputPath)
@@ -228,8 +304,7 @@ static void BuildBaselineReference(string evidencePath, string resolvedCommit, s
     using var evidenceDoc = JsonDocument.Parse(evidenceBytes);
     var evidenceId = evidenceDoc.RootElement.GetProperty("id").GetString()!;
 
-    var fakeManifest = Encoding.UTF8.GetBytes("{\"diffra\":\"baseline-manifest\"}");
-    var manifestDigest = "sha256:" + Convert.ToHexString(SHA256.HashData(fakeManifest)).ToLowerInvariant();
+    var manifestDigest = "sha256:" + Convert.ToHexStringLower(SHA256.HashData(evidenceBytes));
 
     var baselineRef = new JsonObject
     {
@@ -257,7 +332,7 @@ static void BuildBaselineReference(string evidencePath, string resolvedCommit, s
     var sortedJson = SortJson(baselineRef);
     var unsignedBytes = Encoding.UTF8.GetBytes(sortedJson);
     var framed = Encoding.ASCII.GetBytes("diffra/v1\0baseline-reference\0").Concat(unsignedBytes).ToArray();
-    var refId = "sha256:" + Convert.ToHexString(SHA256.HashData(framed)).ToLowerInvariant();
+    var refId = "sha256:" + Convert.ToHexStringLower(SHA256.HashData(framed));
     baselineRef["id"] = refId;
 
     var finalJson = SortJson(baselineRef);
@@ -297,33 +372,21 @@ static void RunProcess(string filename, params string[] args)
     var exitCode = RunProcessAllowExitCode(filename, args);
     if (exitCode != 0)
     {
-        throw new InvalidOperationException($"Command failed with exit code {exitCode}.");
+        throw new InvalidOperationException($"Command '{filename} {string.Join(' ', args)}' failed with exit code {exitCode}.");
     }
 }
 
 static int RunProcessAllowExitCode(string filename, params string[] args)
 {
-    var start = new ProcessStartInfo(filename)
+    var (exitCode, _, stderr) = RunProcessAllowExitCodeWithOutput(filename, args);
+    if (!string.IsNullOrWhiteSpace(stderr) && exitCode != 0)
     {
-        RedirectStandardOutput = true,
-        RedirectStandardError = true,
-        UseShellExecute = false
-    };
-    foreach (var arg in args) start.ArgumentList.Add(arg);
-    using var proc = Process.Start(start)!;
-    var stdoutTask = proc.StandardOutput.ReadToEndAsync();
-    var stderrTask = proc.StandardError.ReadToEndAsync();
-    proc.WaitForExit();
-    _ = stdoutTask.GetAwaiter().GetResult();
-    var err = stderrTask.GetAwaiter().GetResult();
-    if (!string.IsNullOrWhiteSpace(err) && proc.ExitCode != 0)
-    {
-        Console.Error.WriteLine(err);
+        Console.Error.WriteLine(stderr);
     }
-    return proc.ExitCode;
+    return exitCode;
 }
 
-static string CaptureOutput(string filename, params string[] args)
+static (int exitCode, string stdout, string stderr) RunProcessAllowExitCodeWithOutput(string filename, params string[] args)
 {
     var start = new ProcessStartInfo(filename)
     {
@@ -337,10 +400,16 @@ static string CaptureOutput(string filename, params string[] args)
     var stderrTask = proc.StandardError.ReadToEndAsync();
     proc.WaitForExit();
     var stdout = stdoutTask.GetAwaiter().GetResult();
-    var err = stderrTask.GetAwaiter().GetResult();
-    if (proc.ExitCode != 0)
+    var stderr = stderrTask.GetAwaiter().GetResult();
+    return (proc.ExitCode, stdout, stderr);
+}
+
+static string CaptureOutput(string filename, params string[] args)
+{
+    var (exitCode, stdout, stderr) = RunProcessAllowExitCodeWithOutput(filename, args);
+    if (exitCode != 0)
     {
-        throw new InvalidOperationException($"Command failed with exit code {proc.ExitCode}: {err}");
+        throw new InvalidOperationException($"Command '{filename} {string.Join(' ', args)}' failed with exit code {exitCode}: {stderr}");
     }
     return stdout;
 }

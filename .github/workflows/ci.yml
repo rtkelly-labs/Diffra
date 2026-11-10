@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   compile:
@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Enforce No Python Scripts Policy
         run: |
@@ -117,6 +119,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Check the schemas against the JSON Schema metaschema
         run: |
@@ -160,6 +164,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Checkout RFC 8785 test vectors (cyberphone/json-canonicalization)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -251,6 +257,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
@@ -268,6 +276,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
@@ -279,20 +288,65 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           JUDGE_VERSION=$(jq -r '.tools["diffra.cli"].version' .config/dotnet-tools.json)
+          EXPECTED_SHA=$(jq -r '.sha256' .config/judge-sha256.json)
           echo "Restoring pinned Diffra judge version: $JUDGE_VERSION"
           mkdir -p .tools-cache
           gh release download "v${JUDGE_VERSION}" \
             --repo "${{ github.repository }}" \
             --pattern "Diffra.Cli.${JUDGE_VERSION}.nupkg" \
-            --pattern "SHA256SUMS" \
             --dir .tools-cache
-          (cd .tools-cache && grep "Diffra.Cli.${JUDGE_VERSION}.nupkg" SHA256SUMS > checksum.txt && sha256sum -c checksum.txt)
-          dotnet tool restore --add-source .tools-cache
+          ACTUAL_SHA=$(sha256sum ".tools-cache/Diffra.Cli.${JUDGE_VERSION}.nupkg" | awk '{print $1}')
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::Judge package SHA256 ($ACTUAL_SHA) does not match expected ($EXPECTED_SHA)"
+            exit 1
+          fi
+          cat <<EOF > .tools-cache/nuget.config
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <clear />
+    <add key="local-judge" value="." />
+  </packageSources>
+</configuration>
+EOF
+          dotnet tool restore --configfile .tools-cache/nuget.config
           echo "Pinned Diffra judge installed:"
           dotnet tool list
 
       - name: Dogfood Diffra (Self-Evaluation against Baseline Budget)
         run: dotnet run scripts/RunDogfood.cs
+
+      - name: Proof (End-to-End Comparison against Recorded Baseline)
+        run: |
+          echo "=== PROOF: Seeding baseline evidence and running full comparison pipeline ==="
+          BASE_SHA=$(git merge-base HEAD origin/main)
+          echo "Seeding baseline for merge-base: $BASE_SHA"
+          dotnet diffra collect \
+            --payload dogfood-run/candidate-payload.json \
+            --subject-id diffra/core \
+            --commit "$BASE_SHA" \
+            --type-id diffra.metrics.dogfood \
+            --type-version 1.0 \
+            --producer-id diffra.dogfood \
+            --producer-version 0.0.1-alpha.1 \
+            -o /tmp/proof-evidence.json
+
+          mkdir -p /tmp/proof-repo
+          cd /tmp/proof-repo
+          git init -b diffra-baselines
+          mkdir -p evidence
+          cp /tmp/proof-evidence.json "evidence/${BASE_SHA}.json"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add evidence
+          git commit -m "proof: seed baseline for ${BASE_SHA}"
+
+          cd "$GITHUB_WORKSPACE"
+          git remote add proof-remote /tmp/proof-repo
+          git fetch proof-remote +refs/heads/diffra-baselines:refs/remotes/origin/diffra-baselines
+
+          rm -rf dogfood-run
+          dotnet run scripts/RunDogfood.cs
 
       - name: Upload Dogfood Review Bundle Artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -322,18 +376,19 @@ jobs:
             fi
           done
 
-  record-baseline:
-    name: record-baseline
+  record-baseline-collect:
+    name: record-baseline-collect
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [build]
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
@@ -345,43 +400,61 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           JUDGE_VERSION=$(jq -r '.tools["diffra.cli"].version' .config/dotnet-tools.json)
+          EXPECTED_SHA=$(jq -r '.sha256' .config/judge-sha256.json)
+          echo "Restoring pinned Diffra judge version: $JUDGE_VERSION"
           mkdir -p .tools-cache
           gh release download "v${JUDGE_VERSION}" \
             --repo "${{ github.repository }}" \
             --pattern "Diffra.Cli.${JUDGE_VERSION}.nupkg" \
-            --pattern "SHA256SUMS" \
             --dir .tools-cache
-          (cd .tools-cache && grep "Diffra.Cli.${JUDGE_VERSION}.nupkg" SHA256SUMS > checksum.txt && sha256sum -c checksum.txt)
-          dotnet tool restore --add-source .tools-cache
+          ACTUAL_SHA=$(sha256sum ".tools-cache/Diffra.Cli.${JUDGE_VERSION}.nupkg" | awk '{print $1}')
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::Judge package SHA256 ($ACTUAL_SHA) does not match expected ($EXPECTED_SHA)"
+            exit 1
+          fi
+          cat <<EOF > .tools-cache/nuget.config
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <clear />
+    <add key="local-judge" value="." />
+  </packageSources>
+</configuration>
+EOF
+          dotnet tool restore --configfile .tools-cache/nuget.config
 
       - name: Collect main baseline evidence
         run: dotnet run scripts/RunDogfood.cs --collect-only
 
-      - name: Store baseline on diffra-baselines branch
-        run: |
-          COMMIT_SHA="${{ github.sha }}"
-          EVIDENCE_FILE="dogfood-run/candidate-evidence.json"
-          TARGET_DIR="${RUNNER_TEMP:-/tmp}/diffra-baselines"
-          rm -rf "$TARGET_DIR" 2>/dev/null || true
+      - name: Upload Candidate Evidence Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: candidate-evidence
+          path: dogfood-run/candidate-evidence.json
+          if-no-files-found: error
 
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+  record-baseline-publish:
+    name: record-baseline-publish
+    needs: [record-baseline-collect]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-          if git clone --branch diffra-baselines --single-branch "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "$TARGET_DIR" 2>/dev/null; then
-            cd "$TARGET_DIR"
-            mkdir -p evidence
-            cp "$GITHUB_WORKSPACE/$EVIDENCE_FILE" "evidence/${COMMIT_SHA}.json"
-            git add "evidence/${COMMIT_SHA}.json"
-            git commit -m "baseline: record evidence for ${COMMIT_SHA}"
-            git push origin diffra-baselines
-          else
-            mkdir -p "$TARGET_DIR"
-            cd "$TARGET_DIR"
-            git init -b diffra-baselines
-            mkdir -p evidence
-            cp "$GITHUB_WORKSPACE/$EVIDENCE_FILE" "evidence/${COMMIT_SHA}.json"
-            git add "evidence/${COMMIT_SHA}.json"
-            git commit -m "baseline: record evidence for ${COMMIT_SHA}"
-            git remote add origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
-            git push -u origin diffra-baselines
-          fi
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Download Candidate Evidence Artifact
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4
+        with:
+          name: candidate-evidence
+          path: dogfood-run
+
+      - name: Publish baseline to diffra-baselines branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: dotnet run scripts/PublishBaseline.cs dogfood-run/candidate-evidence.json "${{ github.sha }}"

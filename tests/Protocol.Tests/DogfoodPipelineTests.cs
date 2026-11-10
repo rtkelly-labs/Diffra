@@ -19,14 +19,10 @@ public static class DogfoodPipelineTests
 
         try
         {
-            var baselinesDir = Path.Combine(repoRoot, "baselines", "dogfood");
-            var baselineRef = Path.Combine(baselinesDir, "baseline-reference.json");
-            var baselineEvidence = Path.Combine(baselinesDir, "baseline-evidence.json");
-            var rulesPath = Path.Combine(baselinesDir, "rules.json");
-
-            if (!File.Exists(baselineRef) || !File.Exists(baselineEvidence) || !File.Exists(rulesPath))
+            var rulesPath = Path.Combine(repoRoot, "baselines", "dogfood", "rules.json");
+            if (!File.Exists(rulesPath))
             {
-                throw new InvalidOperationException("Dogfood baseline files are missing from baselines/dogfood.");
+                throw new InvalidOperationException("Quality rules file is missing from baselines/dogfood/rules.json.");
             }
 
             // 1. Collect candidate metrics via DogfoodMetrics.cs
@@ -62,7 +58,54 @@ public static class DogfoodPipelineTests
                 "--producer-version", "0.1.0",
                 "-o", candidateEvidence);
 
-            // 3. Diff against baseline
+            // 3. Synthesize baseline evidence and verified reference in tempDir
+            var baselineEvidence = Path.Combine(tempDir, "baseline-evidence.json");
+            const string baselineCommit = "1111111111111111111111111111111111111111";
+            RunProcess("dotnet", cliDll, "collect",
+                "--payload", candidatePayload,
+                "--subject-id", "diffra/core",
+                "--commit", baselineCommit,
+                "--type-id", "diffra.metrics.dogfood",
+                "--type-version", "1.0",
+                "--producer-id", "diffra.dogfood",
+                "--producer-version", "0.1.0",
+                "-o", baselineEvidence);
+
+            var evidenceBytes = File.ReadAllBytes(baselineEvidence);
+            using var evidenceDoc = JsonDocument.Parse(evidenceBytes);
+            var evidenceId = evidenceDoc.RootElement.GetProperty("id").GetString()!;
+            var manifestDigest = "sha256:" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(evidenceBytes));
+
+            var baselineRefObj = new System.Text.Json.Nodes.JsonObject
+            {
+                ["evidenceId"] = evidenceId,
+                ["manifestDigest"] = manifestDigest,
+                ["resolver"] = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["id"] = "diffra.dogfood.resolver",
+                    ["resolvedCommit"] = baselineCommit,
+                    ["sourceRef"] = "main",
+                    ["version"] = "1.0"
+                },
+                ["role"] = "merge-base",
+                ["schema"] = "https://diffra.dev/schemas/baseline-reference-v1.schema.json",
+                ["sourceStore"] = "diffra-baselines",
+                ["status"] = "trusted",
+                ["subjectCommit"] = baselineCommit,
+                ["trust"] = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["decisionId"] = $"merge-base:{baselineCommit[..12]}",
+                    ["issuer"] = "trusted-ci"
+                }
+            };
+
+            var baselineRefBytes = System.Text.Encoding.UTF8.GetBytes(baselineRefObj.ToJsonString());
+            var refId = DocumentIdentity.ComputeId("baseline-reference", baselineRefBytes);
+            baselineRefObj["id"] = refId;
+            var baselineRef = Path.Combine(tempDir, "baseline-reference.json");
+            File.WriteAllBytes(baselineRef, CanonicalJson.Canonicalize(System.Text.Encoding.UTF8.GetBytes(baselineRefObj.ToJsonString())));
+
+            // 4. Diff against baseline
             var deltaPath = Path.Combine(tempDir, "delta.json");
             RunProcess("dotnet", cliDll, "diff",
                 "--baseline-ref", baselineRef,
@@ -70,7 +113,7 @@ public static class DogfoodPipelineTests
                 "--evidence", candidateEvidence,
                 "-o", deltaPath);
 
-            // 4. Eval against rules
+            // 5. Eval against rules
             var assessmentPath = Path.Combine(tempDir, "assessment.json");
             var evalCode = RunProcessAllowExitCode("dotnet", cliDll, "eval",
                 "--rules", rulesPath,
@@ -89,7 +132,7 @@ public static class DogfoodPipelineTests
                 throw new InvalidOperationException($"Expected non-failing assessment outcome (pass or warn), got {outcome}.");
             }
 
-            // 5. Present bundle
+            // 6. Present bundle
             var reviewDir = Path.Combine(tempDir, "bundle");
             RunProcess("dotnet", cliDll, "present", "bundle",
                 "--delta", deltaPath,

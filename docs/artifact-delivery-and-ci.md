@@ -207,12 +207,13 @@ packed tool, and the dogfood gate. It stays under ten minutes. A new shallow job
 joins the `needs` list of the `build` job in `ci.yml`, so the required check
 covers it without a ruleset change. The deep tier runs via `.github/workflows/deep.yml`
 on a nightly schedule on `main`, on demand via `workflow_dispatch`, and as a reusable
-workflow (`workflow_call`) for release gating. It runs the full unit test and packed
-CLI end-to-end suites across five platforms (Linux x64/arm64, macOS arm64/x64, Windows x64),
-executes native archive smoke tests in stripped environments without .NET on PATH,
-fuzzes all protocol targets in parallel for a long budget, runs Stryker mutation testing
-across all Protocol source, executes property checks at 100,000 iterations, and aggregates all
-results into a machine-readable `deep-summary.json` artifact.
+workflow (`workflow_call`) for release gating. Platform legs are light: each of the five
+platforms (Linux x64, Linux arm64, macOS arm64, macOS x64, Windows x64) publishes and
+smoke-tests its native self-contained archive in a stripped environment without .NET on PATH.
+Heavy work runs once on Linux (`ubuntu-latest`): full protocol unit tests, packed CLI tool
+smoke test, parallel fuzzing across all targets for a long budget, Stryker mutation testing
+across all Protocol source, and high-iteration property checks at 100,000 iterations.
+All results aggregate into a machine-readable `deep-summary.json` artifact.
 
 ## Acceptance checks
 

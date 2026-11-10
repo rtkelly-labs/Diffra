@@ -17,7 +17,6 @@ bool mutationScoreFound = false;
 
 if (Directory.Exists(artifactsDir))
 {
-    // 1. Process platform & archive results
     foreach (var file in Directory.GetFiles(artifactsDir, "*.json", SearchOption.AllDirectories))
     {
         var fileName = Path.GetFileName(file);
@@ -56,19 +55,22 @@ if (Directory.Exists(artifactsDir))
                         }
                     }
 
-                    if (root.TryGetProperty("testCount", out var tcProp) && tcProp.TryGetInt32(out var tc) && tc > maxTestCount)
-                    {
-                        maxTestCount = tc;
-                    }
                     if (root.TryGetProperty("archiveSize", out var asProp) && asProp.TryGetInt64(out var asVal))
                     {
                         archiveSizes[platName] = asVal;
                     }
-                    if (root.TryGetProperty("packageSize", out var psProp) && psProp.TryGetInt64(out var psVal))
-                    {
-                        var pkgName = root.TryGetProperty("packageName", out var pn) ? pn.GetString() ?? "Diffra.Cli.nupkg" : "Diffra.Cli.nupkg";
-                        packageSizes[pkgName] = psVal;
-                    }
+                }
+            }
+            else if (fileName.StartsWith("test-summary", StringComparison.OrdinalIgnoreCase))
+            {
+                if (root.TryGetProperty("testCount", out var tcProp) && tcProp.TryGetInt32(out var tc) && tc > maxTestCount)
+                {
+                    maxTestCount = tc;
+                }
+                if (root.TryGetProperty("packageSize", out var psProp) && psProp.TryGetInt64(out var psVal))
+                {
+                    var pkgName = root.TryGetProperty("packageName", out var pn) ? pn.GetString() ?? "Diffra.Cli.nupkg" : "Diffra.Cli.nupkg";
+                    packageSizes[pkgName] = psVal;
                 }
             }
             else if (fileName.StartsWith("fuzz-stats-", StringComparison.OrdinalIgnoreCase))
@@ -184,24 +186,35 @@ if (!string.IsNullOrEmpty(stepSummaryPath))
     writer.WriteLine("## Deep Test Tier Summary");
     writer.WriteLine();
     writer.WriteLine($"- **Test Count:** {maxTestCount}");
-    writer.WriteLine($"- **Mutation Score:** {(mutationScoreFound ? $"{mutationScore:F1}%" : "n/a")}");
+    writer.WriteLine($"- **Mutation Score:** {(mutationScoreFound ? $"{mutationScore:F2}%" : "n/a")}");
     writer.WriteLine($"- **Fuzzing Total Executions:** {totalFuzzExecutions:N0} (Findings: {totalFuzzFindings})");
     writer.WriteLine();
 
     if (platforms.Count > 0)
     {
-        writer.WriteLine("### Platform Results");
-        writer.WriteLine("| Platform | Runner | Unit Tests | Tool Smoke | Archive Smoke | Archive Size |");
-        writer.WriteLine("| --- | --- | --- | --- | --- | --- |");
+        writer.WriteLine("### Native Archive Smoke Test Results");
+        writer.WriteLine("| Platform | Runner | Archive Smoke | Archive Name | Archive Size |");
+        writer.WriteLine("| --- | --- | --- | --- | --- |");
         foreach (var plat in platforms)
         {
             var p = plat.Value!.AsObject();
             var runner = p.TryGetPropertyValue("runner", out var r) ? r?.ToString() : "-";
-            var ut = p.TryGetPropertyValue("unitTests", out var u) ? u?.ToString() : "-";
-            var ts = p.TryGetPropertyValue("toolSmoke", out var t) ? t?.ToString() : "-";
             var asRes = p.TryGetPropertyValue("archiveSmoke", out var a) ? a?.ToString() : "-";
-            var size = archiveSizes.TryGetPropertyValue(plat.Key, out var s) ? $"{s} bytes" : "-";
-            writer.WriteLine($"| {plat.Key} | {runner} | {ut} | {ts} | {asRes} | {size} |");
+            var archiveName = p.TryGetPropertyValue("archiveName", out var an) ? an?.ToString() : "-";
+            var size = archiveSizes.TryGetPropertyValue(plat.Key, out var s) ? $"{s:N0} bytes" : "-";
+            writer.WriteLine($"| {plat.Key} | {runner} | {asRes} | {archiveName} | {size} |");
+        }
+        writer.WriteLine();
+    }
+
+    if (packageSizes.Count > 0)
+    {
+        writer.WriteLine("### Package Sizes");
+        writer.WriteLine("| Package | Size |");
+        writer.WriteLine("| --- | --- |");
+        foreach (var pkg in packageSizes)
+        {
+            writer.WriteLine($"| {pkg.Key} | {pkg.Value} bytes |");
         }
         writer.WriteLine();
     }

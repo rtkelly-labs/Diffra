@@ -28,7 +28,7 @@ strength with Diffra.
 | Tier | When | Contents | Time budget |
 |---|---|---|---|
 | Shallow | Every PR (required checks) | build, unit tests, schema fixtures, short property and differential runs, packed-tool smoke test, dogfood gate with the pinned judge | ≤ 10 min |
-| Deep | Nightly on main, on demand, and before a release | fuzzing for every target; mutation testing across all of Protocol (threshold 80); high-iteration property runs; unit tests and the CLI end-to-end suite on ubuntu x64 and arm64, macOS x64 and arm64, and Windows x64; each release archive smoke-tested on its own OS | ≤ 60 min |
+| Deep | Nightly on main, on demand, and before a release | fuzzing for every target; mutation testing across all of Protocol; high-iteration property runs; unit tests and the CLI end-to-end suite on Linux; five-platform native archive smoke matrix (Linux x64/arm64, macOS arm64/x64, Windows x64) | ≤ 60 min |
 | Regression | Before a release, and nightly | frozen corpus, backward reads, old vs new tool comparison (below) | ≤ 15 min |
 
 ## Regression suite

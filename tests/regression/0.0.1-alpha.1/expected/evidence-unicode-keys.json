@@ -1,0 +1,35 @@
+{
+  "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
+  "id": "sha256:fbd2283468602a5cb9724a1e836f71e49e8779807dca1870f74f0037a8470e0e",
+  "status": "produced",
+  "typeId": "org.diffra.metrics",
+  "typeVersion": "1.0",
+  "typeResolution": "recognized",
+  "subject": {
+    "kind": "git-repository",
+    "id": "regression/corpus",
+    "commit": "1111111111111111111111111111111111111111"
+  },
+  "producer": {
+    "id": "org.diffra.test",
+    "version": "1.0",
+    "configDigest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "environment": {
+    "platform": "macOS 15.7.7",
+    "runtime": ".NET 10.0.14",
+    "tools": [
+      {
+        "id": "dotnet-sdk",
+        "version": "10.0.403"
+      }
+    ]
+  },
+  "provenance": {
+    "source": "git:1111111111111111111111111111111111111111",
+    "artifactDigests": []
+  },
+  "payloadDigest": "sha256:61a6549e944c3f9554a4e6ac7610aa2b8a7eb517b0f34ff0906b1f9231955cfb",
+  "payload": {"methodology":"sample-metrics-v1","metrics":{"déjà_vu":42,"méthode/coût":{"unit":"cycles","value":"15"}},"scope":"regression/test"},
+  "artifactRefs": []
+}

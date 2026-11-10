@@ -1,0 +1,35 @@
+{
+  "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
+  "id": "sha256:d2ef316041633d9f8a3ff6c7508c97dec7935a992d1a11b610ea06c0667a8a52",
+  "status": "produced",
+  "typeId": "org.diffra.metrics",
+  "typeVersion": "1.0",
+  "typeResolution": "recognized",
+  "subject": {
+    "kind": "git-repository",
+    "id": "regression/corpus",
+    "commit": "1111111111111111111111111111111111111111"
+  },
+  "producer": {
+    "id": "org.diffra.test",
+    "version": "1.0",
+    "configDigest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "environment": {
+    "platform": "macOS 15.7.7",
+    "runtime": ".NET 10.0.14",
+    "tools": [
+      {
+        "id": "dotnet-sdk",
+        "version": "10.0.403"
+      }
+    ]
+  },
+  "provenance": {
+    "source": "git:1111111111111111111111111111111111111111",
+    "artifactDigests": []
+  },
+  "payloadDigest": "sha256:a54e3c1556b017f32bdb5a0f94730ce3d7499391373716d9a801bc8416240f21",
+  "payload": {"methodology":"sample-metrics-v1","metrics":{"negativeValue":{"unit":"points","value":"-100"},"zeroFloat":{"unit":"ms","value":"0.0"},"zeroValue":{"unit":"count","value":"0"}},"scope":"regression/test"},
+  "artifactRefs": []
+}

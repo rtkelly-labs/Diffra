@@ -1,0 +1,35 @@
+{
+  "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
+  "id": "sha256:ad0343e41f2fb2ea03a6dd128efb607dac860be88e45b3617722df0918999938",
+  "status": "produced",
+  "typeId": "org.diffra.metrics",
+  "typeVersion": "1.0",
+  "typeResolution": "recognized",
+  "subject": {
+    "kind": "git-repository",
+    "id": "regression/corpus",
+    "commit": "1111111111111111111111111111111111111111"
+  },
+  "producer": {
+    "id": "org.diffra.test",
+    "version": "1.0",
+    "configDigest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "environment": {
+    "platform": "macOS 15.7.7",
+    "runtime": ".NET 10.0.14",
+    "tools": [
+      {
+        "id": "dotnet-sdk",
+        "version": "10.0.403"
+      }
+    ]
+  },
+  "provenance": {
+    "source": "git:1111111111111111111111111111111111111111",
+    "artifactDigests": []
+  },
+  "payloadDigest": "sha256:d70cb4c7f5e28c0de76da4f395f5568fe08733e864679220d3e82c872791da9b",
+  "payload": {"methodology":"sample-metrics-v1","metrics":{"complexity":{"unit":"cyclomatic-complexity","value":"5"},"coverage":{"unit":"percent","value":"85.5"},"methodCount":{"unit":"methods","value":"2"}},"scope":"example/project"},
+  "artifactRefs": []
+}

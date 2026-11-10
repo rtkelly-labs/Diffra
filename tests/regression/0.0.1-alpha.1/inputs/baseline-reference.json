@@ -1,0 +1,21 @@
+{
+  "schema": "https://diffra.dev/schemas/baseline-reference-v1.schema.json",
+  "id": "sha256:651f3d7d58e2d9176b2dbdaa7071c30b72ba3542f7ef5cfcbe355173995f272f",
+  "role": "merge-base",
+  "status": "trusted",
+  "evidenceId": "sha256:dd754f85c6194acc8313a372d153164d1f9b9cd10d70d0d48451b87ea98ca084",
+  "subjectCommit": "1111111111111111111111111111111111111111",
+  "manifestDigest": "sha256:6d560cfbd938993f08de299e278b1610dbdb19404b32579dd125c931edda12fd",
+  "resolver": {
+    "id": "org.diffra.regression-resolver",
+    "version": "1.0",
+    "resolvedCommit": "1111111111111111111111111111111111111111",
+    "sourceRef": "local-fixture"
+  },
+  "sourceStore": "local-fixture",
+  "trust": {
+    "issuer": "fixture-only",
+    "decisionId": "demonstration",
+    "decisionDigest": "sha256:2b9cc4a9db471dbe900f09fbe469af30efdd8a740f938e325120903fb274339d"
+  }
+}

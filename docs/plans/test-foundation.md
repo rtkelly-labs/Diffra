@@ -72,6 +72,7 @@ Each step is one PR.
 1. **Document the tiers.** Add them to `docs/artifact-delivery-and-ci.md`, and make the shallow tier the required check set.
 2. **Dogfood gate.** Use the pinned judge, with baselines produced by main.
 3. **Regression suite.** The frozen corpus seeded from 0.0.1-alpha.1, backward reads, and the old vs new tool comparison.
+   Status: complete (seeded from 0.0.1-alpha.1).
 4. **Deep workflow.** An OS matrix, a nightly schedule, and mutation testing across all of Protocol.
 5. **Release gate.** `release.yml` requires the deep and regression workflows on the tagged commit.
 6. **Test strength as Evidence.** Turn the deep-run results into Evidence and gate on them.

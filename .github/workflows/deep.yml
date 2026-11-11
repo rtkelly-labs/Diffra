@@ -15,6 +15,16 @@ on:
         default: 'all'
   workflow_call:
     inputs:
+      strict:
+        description: 'Enforce strict release gating constraints'
+        required: false
+        type: boolean
+        default: true
+      caller:
+        description: 'Internal caller identifier'
+        required: false
+        type: string
+        default: 'workflow_call'
       fuzz_seconds:
         description: 'Fuzzing time per target, in seconds'
         required: false
@@ -37,8 +47,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: deep-${{ github.event_name == 'workflow_call' && format('call-{0}', github.run_id) || github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'workflow_call' && !startsWith(github.ref, 'refs/tags/') }}
+  group: ${{ inputs.caller == 'workflow_call' && format('deep-call-{0}', github.run_id) || format('deep-{0}', github.ref) }}
+  cancel-in-progress: ${{ inputs.caller != 'workflow_call' && !startsWith(github.ref, 'refs/tags/') }}
 
 defaults:
   run:
@@ -48,6 +58,7 @@ env:
   SHARPFUZZ_VERSION: 2.3.0
   LIBFUZZER_DOTNET_URL: https://github.com/Metalnem/libfuzzer-dotnet/releases/download/v2025.05.02.0904/libfuzzer-dotnet-ubuntu
   LIBFUZZER_DOTNET_SHA256: c2c2a90d94c409a4af339a0d4f244e0442c5a5d249be0f1252ba07871f285958
+  MUTATION_THRESHOLD: "57"
 
 jobs:
   # 1. Light platform matrix: native self-contained archive smoke test across five platforms
@@ -367,17 +378,23 @@ jobs:
       - name: Validate release call constraints and set matrix
         id: set-matrix
         env:
-          EVENT_NAME: ${{ github.event_name }}
+          STRICT: ${{ inputs.strict == true || inputs.caller == 'workflow_call' }}
+          CALLER: ${{ inputs.caller }}
           TARGET: ${{ inputs.target }}
           FUZZ_SECONDS: ${{ inputs.fuzz_seconds || '1800' }}
         run: |
-          if [ "$EVENT_NAME" = "workflow_call" ]; then
+          if ! [[ "$FUZZ_SECONDS" =~ ^[0-9]+$ ]] || [ "$FUZZ_SECONDS" -le 0 ]; then
+            echo "::error::Invalid fuzz_seconds value: '$FUZZ_SECONDS'. Must be a positive integer."
+            exit 1
+          fi
+
+          if [ "$STRICT" = "true" ] || [ "$CALLER" = "workflow_call" ]; then
             if [ -n "$TARGET" ] && [ "$TARGET" != "all" ]; then
-              echo "::error::workflow_call must run all fuzz targets (cannot weaken gate with target='$TARGET')"
+              echo "::error::Strict release-gate mode requires all fuzz targets (got target='$TARGET')"
               exit 1
             fi
-            if [ -n "$FUZZ_SECONDS" ] && [ "$FUZZ_SECONDS" -lt 300 ]; then
-              echo "::error::workflow_call fuzz budget must be at least 300s (got $FUZZ_SECONDS)"
+            if [ "$FUZZ_SECONDS" -lt 300 ]; then
+              echo "::error::Strict release-gate mode requires fuzz budget of at least 300s (got $FUZZ_SECONDS)"
               exit 1
             fi
           fi
@@ -499,7 +516,12 @@ jobs:
 
       - name: Fail on findings
         run: |
-          crash_files=$(find "$FUZZ_FINDINGS" -type f \( -name 'crash-*' -o -name 'leak-*' -o -name 'timeout-*' -o -name 'oom-*' -o -name '*.txt' \) ! -name 'observation-*' 2>/dev/null || true)
+          crash_files=$(find "$FUZZ_FINDINGS" -type f \( \
+            -name 'libfuzzer-crash-*' -o -name 'crash-*' -o \
+            -name 'libfuzzer-leak-*' -o -name 'leak-*' -o \
+            -name 'libfuzzer-timeout-*' -o -name 'timeout-*' -o \
+            -name 'libfuzzer-oom-*' -o -name 'oom-*' -o \
+            -name '*.txt' \) ! -name 'observation-*' 2>/dev/null || true)
           if [ "${{ steps.fuzz.outcome }}" != "success" ] || [ -n "$crash_files" ]; then
             echo "::error::Fuzzing found issues for $FUZZ_TARGET; see the job summary and the deep-fuzz-$FUZZ_TARGET artifact."
             exit 1
@@ -542,7 +564,7 @@ jobs:
             --configuration Release \
             --reporter html --reporter json --reporter progress --reporter cleartext \
             --output "$GITHUB_WORKSPACE/stryker-output" \
-            --break-at 57
+            --break-at "$MUTATION_THRESHOLD"
           echo "STRYKER_SECONDS=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
 
       - name: Verify hard gates on Comparison and Assessment
@@ -683,7 +705,8 @@ jobs:
           GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
           FUZZ_BUDGET_SECONDS: ${{ inputs.fuzz_seconds || '1800' }}
           FUZZ_TARGET: ${{ inputs.target || 'all' }}
-          MUTATION_THRESHOLD: "57"
+          STRICT: ${{ inputs.strict == true || inputs.caller == 'workflow_call' }}
+          MUTATION_THRESHOLD: ${{ env.MUTATION_THRESHOLD }}
           JOB_RESULTS_JSON: ${{ toJson(needs) }}
         run: dotnet run scripts/DeepSummary.cs -- artifacts-summary deep-summary.json
 

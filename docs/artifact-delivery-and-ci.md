@@ -198,7 +198,7 @@ Diffra tests itself in three tiers. The plan and its order of work are in
 | Tier | When | Gate |
 | --- | --- | --- |
 | Shallow | Every pull request and push to `main` (`ci.yml`) | Required. The `build` check passes only when every shallow job passes. |
-| Deep | Nightly on `main`, on demand, and before a release (`deep.yml`) | Five-platform archive smoke matrix, full-scope Protocol mutation testing (floor 57 ratcheting upward, 80 gate on Comparison and Assessment), fuzzing across all targets, 100k property runs, and unit/e2e checks. Aggregated into `deep-summary.json`. Required for release. |
+| Deep | Nightly on `main`, on demand, and before a release (`deep.yml`) | Five-platform archive smoke matrix, full-scope Protocol mutation testing (floor 57 ratcheting upward, 80 gate on Comparison and Assessment), fuzzing across all targets, 100k property runs, and unit/e2e checks. Aggregated into `deep-summary.json`. Will be required for release (release gate). |
 | Regression | Nightly on `main` and before a release | Frozen corpora from earlier releases must reproduce, and the released and candidate tools must agree. A release requires it on the tagged commit. |
 
 The shallow tier is the build and unit tests, the schema fixtures, the

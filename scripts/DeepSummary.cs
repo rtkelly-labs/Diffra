@@ -2,8 +2,14 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-var artifactsDir = args.Length > 0 ? args[0] : "artifacts-summary";
-var outputPath = args.Length > 1 ? args[1] : "deep-summary.json";
+if (args.Length < 2)
+{
+    Console.Error.WriteLine("Error: DeepSummary requires two arguments: <artifacts-dir> <output-json-path>");
+    return 1;
+}
+
+var artifactsDir = args[0];
+var outputPath = args[1];
 
 var errors = new List<string>();
 
@@ -14,7 +20,7 @@ if (string.IsNullOrEmpty(schemaVersion))
     errors.Add("Missing required SCHEMA_VERSION environment variable");
 }
 
-var commitSha = Environment.GetEnvironmentVariable("GITHUB_SHA") ?? Environment.GetEnvironmentVariable("COMMIT_SHA");
+var commitSha = Environment.GetEnvironmentVariable("GITHUB_SHA");
 if (string.IsNullOrEmpty(commitSha))
 {
     errors.Add("Missing required GITHUB_SHA environment variable");
@@ -31,6 +37,16 @@ int? fuzzBudgetSeconds = int.TryParse(fuzzBudgetStr, NumberStyles.Integer, Cultu
 if (!fuzzBudgetSeconds.HasValue)
 {
     errors.Add("Missing or invalid FUZZ_BUDGET_SECONDS environment variable");
+}
+
+var strictModeStr = Environment.GetEnvironmentVariable("STRICT");
+bool strictMode = string.Equals(strictModeStr, "true", StringComparison.OrdinalIgnoreCase);
+if (strictMode)
+{
+    if (!fuzzBudgetSeconds.HasValue || fuzzBudgetSeconds.Value < 1800)
+    {
+        errors.Add(string.Create(CultureInfo.InvariantCulture, $"Strict mode requires full fuzz budget (at least 1800s, got {fuzzBudgetSeconds?.ToString(CultureInfo.InvariantCulture) ?? "null"})"));
+    }
 }
 
 var mutationThresholdStr = Environment.GetEnvironmentVariable("MUTATION_THRESHOLD");
@@ -56,6 +72,23 @@ else
         {
             var result = job.Value.TryGetProperty("result", out var resProp) ? resProp.GetString() : null;
             jobResults[job.Name] = result;
+        }
+
+        string[] expectedJobs = ["platform", "test", "fuzz", "mutation", "properties"];
+        foreach (var ej in expectedJobs)
+        {
+            if (!jobResults.ContainsKey(ej))
+            {
+                errors.Add($"Missing job result for '{ej}' in JOB_RESULTS_JSON");
+            }
+            else
+            {
+                var res = jobResults[ej]?.ToString();
+                if (res != "success")
+                {
+                    errors.Add($"Job '{ej}' result is '{res ?? "null"}' (expected 'success')");
+                }
+            }
         }
     }
     catch (Exception ex)
@@ -85,6 +118,7 @@ double? mutationScore = null;
 double? comparisonScore = null;
 double? assessmentScore = null;
 
+string? propertiesStatus = null;
 long? propertyIterations = null;
 int? propertiesChecked = null;
 int? propertiesPassed = null;
@@ -204,6 +238,12 @@ foreach (var file in Directory.GetFiles(artifactsDir, "*.json", SearchOption.All
         }
         else if (fileName.StartsWith("properties-summary", StringComparison.OrdinalIgnoreCase))
         {
+            propertiesStatus = root.TryGetProperty("status", out var ps) ? ps.GetString() : null;
+            if (propertiesStatus != "success")
+            {
+                errors.Add($"properties-summary status is '{propertiesStatus ?? "null"}' (expected 'success')");
+            }
+
             if (root.TryGetProperty("iterations", out var itProp) && itProp.TryGetInt64(out var itVal))
             {
                 propertyIterations = itVal;
@@ -376,12 +416,21 @@ if (!testsFailed.HasValue || testsFailed.Value != 0)
 if (string.IsNullOrEmpty(unitTestsStatus)) errors.Add("Missing unitTestsStatus from test-summary");
 if (string.IsNullOrEmpty(toolSmokeStatus)) errors.Add("Missing toolSmokeStatus from test-summary");
 
-// Validate mutation scores
-if (!mutationScore.HasValue) errors.Add("Missing mutationScore from mutation-report");
+// Validate mutation scores: must meet threshold and gates
+if (!mutationScore.HasValue)
+{
+    errors.Add("Missing mutationScore from mutation-report");
+}
+else if (mutationThreshold.HasValue && mutationScore.Value < mutationThreshold.Value)
+{
+    errors.Add(string.Create(CultureInfo.InvariantCulture, $"mutationScore {mutationScore.Value:F2}% is below threshold {mutationThreshold.Value}%"));
+}
+
 if (!comparisonScore.HasValue) errors.Add("Missing comparisonScore from mutation-report");
 if (!assessmentScore.HasValue) errors.Add("Missing assessmentScore from mutation-report");
 
 // Validate property checks: propertiesFailed must be 0 and propertiesChecked > 0
+if (string.IsNullOrEmpty(propertiesStatus)) errors.Add("Missing propertiesStatus from properties-summary");
 if (!propertyIterations.HasValue) errors.Add("Missing propertyIterations from properties-summary");
 if (!propertiesChecked.HasValue || propertiesChecked.Value <= 0)
 {
@@ -396,10 +445,10 @@ if (!propertiesFailed.HasValue || propertiesFailed.Value != 0)
     errors.Add(string.Create(CultureInfo.InvariantCulture, $"propertiesFailed must be 0 (got {propertiesFailed?.ToString(CultureInfo.InvariantCulture) ?? "null"})"));
 }
 
-// Validate fuzz targets: require all expected targets
+// Validate fuzz targets: require all expected targets (strict mode requires all 8)
 var expectedTarget = Environment.GetEnvironmentVariable("FUZZ_TARGET");
 string[] allFuzzTargets = ["canonical", "evidence", "document", "delivery-index", "payloads", "line-ranges", "bundle", "bundle-zip"];
-string[] requiredTargets = (string.IsNullOrEmpty(expectedTarget) || expectedTarget == "all")
+string[] requiredTargets = (strictMode || string.IsNullOrEmpty(expectedTarget) || expectedTarget == "all")
     ? allFuzzTargets
     : [expectedTarget];
 
@@ -411,8 +460,12 @@ foreach (var reqTarget in requiredTargets)
     }
 }
 
+var passed = errors.Count == 0;
 var summary = new JsonObject
 {
+    ["status"] = passed ? "pass" : "fail",
+    ["result"] = passed ? "success" : "failure",
+    ["passed"] = passed,
     ["schemaVersion"] = schemaVersion,
     ["commit"] = commitSha,
     ["ref"] = gitRef,
@@ -436,6 +489,7 @@ var summary = new JsonObject
     },
     ["properties"] = new JsonObject
     {
+        ["status"] = propertiesStatus,
         ["iterations"] = propertyIterations,
         ["propertiesChecked"] = propertiesChecked,
         ["propertiesPassed"] = propertiesPassed,
@@ -466,6 +520,7 @@ if (!string.IsNullOrEmpty(stepSummaryPath))
     using var writer = File.AppendText(stepSummaryPath);
     writer.WriteLine("## Deep Test Tier Summary");
     writer.WriteLine();
+    writer.WriteLine($"- **Status:** {(passed ? "PASS" : "FAIL")}");
     writer.WriteLine($"- **Schema Version:** {schemaVersion ?? "null"}");
     writer.WriteLine($"- **Commit:** {commitSha ?? "n/a"}");
     writer.WriteLine($"- **Test Count:** {testCount?.ToString(CultureInfo.InvariantCulture) ?? "null"} ({testsPassed?.ToString(CultureInfo.InvariantCulture) ?? "null"} passed, {testsFailed?.ToString(CultureInfo.InvariantCulture) ?? "null"} failed)");

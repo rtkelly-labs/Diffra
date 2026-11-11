@@ -102,6 +102,8 @@ public static class ReportingTests
         Contains(markdown, "## Policy assessment");
         Contains(markdown, "version `2\\.1\\.0`");
         Contains(markdown, "unit\\|&lt;unsafe&gt;&amp;");
+        DoesNotContain(markdown, "\r");
+        Contains(markdown, "\n");
     }
 
     private static void MismatchedAssessmentIsRejected()

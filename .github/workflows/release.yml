@@ -9,15 +9,27 @@ on:
 permissions:
   contents: read
 
+# No workflow-level concurrency on purpose. A called workflow evaluates github.workflow and
+# github.ref as the caller's values, so a group here could match regression.yml's own group
+# and cancel or block the gate.
+
+# Every job, including the called deep and regression workflows, checks out github.sha: the
+# tagged commit for a tag push, or the head of the dispatched ref for a dry run. A dry run
+# takes the same path as a tag release up to the publish job, so a green dry run means the
+# commit is ready to release.
 jobs:
-  build:
-    name: build-and-package
+  # Cheap checks first, so a bad tag or a missing corpus fails before the deep tier starts.
+  preflight:
+    name: preflight
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
@@ -42,11 +54,64 @@ jobs:
           fi
           echo "Tag '$tag_name' verified against project version '$DIFFRA_VERSION'"
 
-      - name: Restore and build Release
-        run: dotnet build Diffra.slnx --configuration Release
+      # A release freezes its own regression corpus (see "Releasing Diffra" in
+      # docs/artifact-delivery-and-ci.md). A tag release fails without it; a dry run warns.
+      - name: Require the regression corpus for this version
+        run: |
+          corpus="tests/regression/${DIFFRA_VERSION}/manifest.json"
+          if [ -f "$corpus" ]; then
+            echo "Regression corpus found: $corpus"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "::error::No regression corpus at tests/regression/${DIFFRA_VERSION}/. The release PR must add it before the tag is pushed."
+            exit 1
+          else
+            echo "::warning::No regression corpus at tests/regression/${DIFFRA_VERSION}/. A tag release of this version fails until the release PR adds it."
+          fi
 
-      - name: Run protocol checks
-        run: dotnet run --project tests/Protocol.Tests/Protocol.Tests.csproj --configuration Release
+  # The deep tier on the commit being released. A called run is always strict: every fuzz
+  # target at the strict floor, and the mutation floors that deep.yml enforces.
+  deep:
+    name: deep
+    needs: [preflight]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/deep.yml
+
+  # The regression tier on the commit being released.
+  regression:
+    name: regression
+    needs: [preflight]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/regression.yml
+
+  build:
+    name: build-and-package
+    needs: [preflight, deep, regression]
+    runs-on: ubuntu-latest
+    env:
+      DIFFRA_VERSION: ${{ needs.preflight.outputs.version }}
+    outputs:
+      version: ${{ needs.preflight.outputs.version }}
+    steps:
+      - name: Require a passing deep tier
+        env:
+          DEEP_RESULT: ${{ needs.deep.outputs.result }}
+        run: |
+          if [ "$DEEP_RESULT" != "success" ]; then
+            echo "::error::The deep tier reported '$DEEP_RESULT', not 'success'."
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
 
       - name: Pack CLI tool package
         run: |
@@ -145,25 +210,29 @@ jobs:
       - name: Upload release assets artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: diffra-release-${{ steps.version.outputs.version }}
+          name: diffra-release-${{ needs.preflight.outputs.version }}
           path: artifacts/*
           if-no-files-found: error
 
   release:
     name: publish-github-release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build]
+    needs: [build, deep, regression]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      PROJECT_VERSION: ${{ needs.build.outputs.version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Verify tag matches project version
         run: |
           tag_name="${GITHUB_REF#refs/tags/}"
-          project_version="${{ needs.build.outputs.version }}"
+          project_version="$PROJECT_VERSION"
           expected_tag="v${project_version}"
           if [ "$tag_name" != "$expected_tag" ]; then
             echo "::error::Tag '$tag_name' does not match expected version tag '$expected_tag'"
@@ -179,7 +248,7 @@ jobs:
 
       - name: Extract CHANGELOG notes
         run: |
-          project_version="${{ needs.build.outputs.version }}"
+          project_version="$PROJECT_VERSION"
           awk -v v="## ${project_version} " 'index($0, v) == 1 {flag=1; next} /^## /{flag=0} flag' CHANGELOG.md > release-notes.md
           if [ ! -s release-notes.md ]; then
             echo "::error::No release notes found for version ${project_version} in CHANGELOG.md"

@@ -114,6 +114,10 @@ Comparison of every other field in the document continues strictly. Any differen
 
 ## Adding a Corpus for a New Release
 
+A tag release fails unless `tests/regression/<version>/` exists, so the release PR adds it.
+"Releasing Diffra" in [docs/artifact-delivery-and-ci.md](../../docs/artifact-delivery-and-ci.md)
+describes how to get the packaged build from a dry run before the tag exists.
+
 To freeze a new corpus for release `<version>` using a verified released binary:
 
 ```sh

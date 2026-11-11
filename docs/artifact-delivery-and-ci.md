@@ -198,7 +198,7 @@ Diffra tests itself in three tiers. The plan and its order of work are in
 | Tier | When | Gate |
 | --- | --- | --- |
 | Shallow | Every pull request and push to `main` (`ci.yml`) | Required. The `build` check passes only when every shallow job passes. |
-| Deep | Nightly on `main`, on demand, and before a release (`deep.yml`) | Five-platform archive smoke matrix, full-scope Protocol mutation testing (floor 57 ratcheting upward, 80 gate on Comparison and Assessment), fuzzing across all targets, 100k property runs, and unit/e2e checks. Aggregated into `deep-summary.json`. Will be required for release (release gate). |
+| Deep | Nightly on `main`, on demand, and before a release (`deep.yml`) | Five-platform archive smoke matrix, full-scope Protocol mutation testing (floor 57 ratcheting upward, 80 gate on Comparison and Assessment), fuzzing across all targets, 100k property runs, and unit/e2e checks. Aggregated into `deep-summary.json`. A release requires it on the tagged commit. |
 | Regression | Nightly on `main` and before a release | Frozen corpora from earlier releases must reproduce, and the released and candidate tools must agree. A release requires it on the tagged commit. |
 
 The shallow tier is the build and unit tests, the schema fixtures, the
@@ -245,6 +245,52 @@ unintended changes to metrics or policies.
   verified Baseline Reference, and evaluate the Delta. If no baseline exists for the
   merge-base (such as in new repositories or bootstrap runs), the gate reports the
   assessment outcome as `inconclusive` in the step summary without failing the build.
+
+### Releasing Diffra
+
+`release.yml` runs on a `v*` tag push and on a manual `workflow_dispatch` dry run. Both
+take the same path, on the exact commit being released (`github.sha`: the tagged commit,
+or the head of the dispatched ref):
+
+1. `preflight` resolves the version from `Directory.Build.props`. On a tag push it fails
+   unless the tag is `v<version>`, and fails unless `tests/regression/<version>/` exists.
+   A dry run only warns about a missing corpus.
+2. `deep` and `regression` call `deep.yml` and `regression.yml` as reusable workflows
+   with `contents: read`. A called deep run is always strict, so a release cannot shorten
+   the fuzz budget, skip a fuzz target or lower a mutation floor.
+3. `build-and-package` needs both tiers. It packs the CLI tool, publishes the five
+   self-contained archives, smoke-tests the linux-x64 archive with no .NET on `PATH`,
+   and writes `SHA256SUMS`. It runs no tests of its own; the deep tier covers them.
+4. `publish-github-release` runs only for a tag push, needs the build and both tiers, and
+   is the only job with `contents: write`.
+
+If either tier fails or is skipped, no GitHub Release is created. A green dry run
+therefore means the commit is ready to release.
+
+A release PR bumps `<Version>`, adds the `CHANGELOG.md` section, and adds the frozen
+regression corpus `tests/regression/<version>/`. `generate` needs a packaged build of that
+version, which exists before the tag only as a dry-run artifact:
+
+1. Dispatch `release.yml` on the release PR branch. It warns that the corpus is missing.
+2. Download the `diffra-release-<version>` artifact from that run into `temp/`, and
+   install the tool from its package:
+   `dotnet tool install Diffra.Cli --add-source temp/release --tool-path temp/release-bin --version <version>`.
+3. Run the one-command generator, passing the package digest from the artifact's
+   `SHA256SUMS`; see "Adding a Corpus for a New Release" in
+   [tests/regression/README.md](../tests/regression/README.md):
+
+   ```sh
+   dotnet run --project tests/regression/Diffra.Regression.csproj -- generate <version> \
+     --tool temp/release-bin/diffra \
+     --package temp/release/Diffra.Cli.<version>.nupkg \
+     --expected-sha256 <digest-from-SHA256SUMS>
+   ```
+
+4. Commit `tests/regression/<version>/` to the release PR. Once it merges, tag the merge
+   commit `v<version>`.
+
+The corpus records the digest of the dry-run package. The tag build packs the same
+version again, so the published package's digest may differ from the recorded one.
 
 ## Acceptance checks
 

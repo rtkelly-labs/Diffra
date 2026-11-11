@@ -77,6 +77,7 @@ Each step is one PR.
 4. **Deep workflow.** An OS matrix, a nightly schedule, and mutation testing across all of Protocol.
    Status: implemented in `.github/workflows/deep.yml` with five-platform native archive smoke matrix (Linux x64/arm64, macOS arm64/x64, Windows x64), long-budget parallel fuzzing, full-scope Protocol mutation testing (floor 57 for all of Protocol, ratcheting upward over time; 80 gate on Comparison and Assessment), 100k property checks, and machine-readable `deep-summary.json`.
 5. **Release gate.** `release.yml` requires the deep and regression workflows on the tagged commit.
+   Status: implemented in `.github/workflows/release.yml`; a tag release also requires `tests/regression/<version>/` (see "Releasing Diffra" in `docs/artifact-delivery-and-ci.md`).
 6. **Test strength as Evidence.** Turn the deep-run results into Evidence and gate on them.
 
 ## Done when

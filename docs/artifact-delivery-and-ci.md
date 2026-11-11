@@ -314,7 +314,8 @@ The encodings keep every real change at a relative change of at least 1e-4:
   their smallest step is about 1e-3. This also keeps run-to-run jitter of a few bytes out of
   the size gate.
 
-The schema and `DeepEvidence.cs` both enforce these bounds. The self-check exercises them at
+The schema enforces the value ranges, and `DeepEvidence.cs` (`AssertJudgeSafe`) also enforces
+the three-significant-figure rounding. The self-check exercises them at
 the edges: 10000 to 10001, -10000 to -9999, and the step across a power of ten. It also runs an
 informational control with a 1e-5 change, which this judge rejects. Once the judge pin moves to
 a release with the decimal-formatting fix, the control is accepted and the job prints a

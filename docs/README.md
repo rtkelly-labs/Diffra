@@ -44,7 +44,7 @@ built.
 | Code coverage evidence | Library | `Coverage.cs`, `schemas/coverage-v1.schema.json` | [0002](adr/0002-project-file-and-datasets.md) |
 | Time-series projections and charts | Library | `TimeSeriesGraph.cs`, `schemas/timeseries-v1.schema.json` | [0003](adr/0003-comparison-history-and-noise.md) |
 | CloudEvents envelope | Library | `CloudEvents.cs`, `schemas/cloudevent-diffra-v1.schema.json` | [0008](adr/0008-optional-events-and-telemetry.md) |
-| Composition graph: validation and execution | Library | `Graph.cs`, `GraphValidator.cs`, `GraphExecutor.cs` | [0009](adr/0009-dependencies-and-extensions.md) |
+| Graph data model and validation, to be reworked for the CI job graph | Library, in the separate `Diffra.Graph` project | `src/Graph/` | [0009](adr/0009-dependencies-and-extensions.md) |
 | External command producers | Library | `ExternalCommandAdapter.cs`, `EvidenceDocumentBuilder.cs` | |
 | Project file, typed metrics and collection root | Planned; schemas and examples only | `schemas/project-v1.schema.json`, `schemas/collection-v1.schema.json`, `examples/project-file/` | [0002](adr/0002-project-file-and-datasets.md) |
 | `baseline verify`, `baseline update`, promotion commands | Not planned: approval and promotion are not part of the open tool | | [0005](adr/0005-surface-do-not-enforce.md) |

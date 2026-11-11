@@ -98,6 +98,6 @@ dotnet run --project src/Cli/Diffra.Cli.csproj -c Release --no-build -- report \
   --format html -o temp/demo/report.html
 ```
 
-The sample reference simulates a trusted resolver. Its issuer is `fixture-only`. The current local `diff` command checks the reference's shape and digest, but does not authenticate the issuer; do not accept a PR-supplied reference as a CI trust decision. The Git merge-base resolver, two-run promotion records, and graph execution exist as library APIs but are not yet wired into the CLI; the Parquet integration is planned. Native Parquet golden, compilation, and API gates must remain required when that integration is added.
+The sample reference simulates a trusted resolver. Its issuer is `fixture-only`. The current local `diff` command checks the reference's shape and digest, but does not authenticate the issuer; do not accept a PR-supplied reference as a CI trust decision. The Git merge-base resolver, and two-run promotion records exist as library APIs but are not yet wired into the CLI; the Parquet integration is planned. Native Parquet golden, compilation, and API gates must remain required when that integration is added.
 
 `eval` writes an Assessment before returning exit code 3 for `fail`, `needs-review`, or `inconclusive`. Invalid input returns 2; file or execution errors return 1. A report without an Assessment states that it has no policy verdict.

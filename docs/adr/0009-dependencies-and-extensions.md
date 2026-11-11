@@ -34,6 +34,6 @@ code-first builder and a graph executor, which the root project file replaces.
 ## Current code
 
 No project under `src/` has a package reference; the CLI has one framework reference, to
-ASP.NET Core, for `present`. `Graph.cs`, `GraphValidator.cs` and
-`GraphExecutor.cs` in the protocol library implement a code-first composition graph that nothing
-outside the tests calls.
+ASP.NET Core, for `present`. The graph data model and validator live in
+`src/Graph/`, outside the protocol library, and nothing outside the tests calls them yet. They
+still describe the earlier composition graph and have not been reworked for the CI job graph.

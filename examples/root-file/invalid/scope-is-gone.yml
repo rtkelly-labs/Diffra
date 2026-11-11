@@ -1,0 +1,10 @@
+schema: https://diffra.net/schemas/root-file-v1.schema.json
+# Invalid: `scope` belonged to the single-project file; projects are named under `projects`.
+scope: example/library
+datasets:
+  warnings:
+    type: count
+    unit: warnings
+    from: { payload: "metrics.json" }
+projects:
+  main: { datasets: { warnings: null } }

@@ -1,0 +1,9 @@
+schema: https://diffra.net/schemas/root-file-v1.schema.json
+# Invalid: a collection's severities sit in a named rule set, not on the dataset's collection.
+datasets:
+  packages:
+    type: text
+    collection: { kind: set, removed: fail }
+    from: { payload: "packages.json" }
+projects:
+  main: { datasets: { packages: null } }

@@ -38,11 +38,12 @@ the open tool can reach.
 7. **Each workflow file has its own collecting job.** It gathers the bundles from that
    workflow's jobs, runs the final step, and writes a partial record for the commit. Values are
    converted in the job that produced them.
+8. **Schema identifiers are `https://` URLs on the project domain**, of the form
+   `https://diffra.net/schemas/<name>-v<n>.schema.json`.
 
 ## Not yet decided
 
 - The storage interface.
-- The form of schema identifiers (`https://` URLs on the project domain, or `urn:` identifiers).
 - Whether the wire documents are renamed to the glossary's terms now.
 - How the collecting job merges bundles that disagree (proposed: identical duplicates are dropped,
   a later attempt of the same job replaces an earlier one, and two different values for the same
@@ -56,3 +57,7 @@ domain-separated SHA-256 over canonical JSON, environment included, decimals as 
 `diffra bundle export|import` moves results between machines through a content-addressed store and
 includes a Baseline reference. The self-evaluation workflow stores one file per commit on an
 orphan branch.
+
+`schemas/root-file-v1.schema.json` uses a `diffra.net` identifier. The other schemas and the
+documents that cite them still use the earlier `diffra.dev` identifiers; changing them changes
+stored output and the frozen regression corpus, which is a release decision.

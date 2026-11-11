@@ -1,0 +1,11 @@
+schema: https://diffra.net/schemas/root-file-v1.schema.json
+# Invalid: rules belong in a named rule set, not on the dataset's fields.
+datasets:
+  coverage:
+    type: diffra/coverage@1
+    from: { cobertura: "coverage.xml" }
+    fields:
+      lineRate:
+        check: { fail: { below: 0.8 } }
+projects:
+  main: { datasets: { coverage: null } }

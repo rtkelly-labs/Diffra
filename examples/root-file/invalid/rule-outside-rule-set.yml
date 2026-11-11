@@ -1,0 +1,10 @@
+schema: https://diffra.net/schemas/root-file-v1.schema.json
+# Invalid: a custom dataset's rules sit in a named rule set, not on the dataset itself.
+datasets:
+  warnings:
+    type: count
+    unit: warnings
+    from: { payload: "metrics.json" }
+    check: { fail: { above: 0 } }
+projects:
+  main: { datasets: { warnings: null } }

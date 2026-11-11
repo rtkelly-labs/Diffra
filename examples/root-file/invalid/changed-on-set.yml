@@ -1,0 +1,12 @@
+schema: https://diffra.net/schemas/root-file-v1.schema.json
+# Invalid: `changed` is the severity of an ordered collection; a set uses `added` and `removed`.
+datasets:
+  packages:
+    type: text
+    collection: { kind: set }
+    from: { payload: "packages.json" }
+    rules:
+      default:
+        collection: { changed: fail }
+projects:
+  main: { datasets: { packages: default } }

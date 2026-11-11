@@ -1,8 +1,8 @@
 # Diffra in testing terms
 
 Diffra is a form of **differential testing**: it judges a change by comparing what the software
-produces now with what it produced at the commit it branched from. This page places Diffra among the
-testing techniques it borrows from, and says what it adds to them.
+produces for a pull request with what it produced at the commit the pull request branched from.
+This page places Diffra among the testing techniques it borrows from, and says what it adds to them.
 
 ## The oracle problem
 
@@ -16,7 +16,8 @@ it asks "how does this output differ from a reference I already trust?" The refe
 another implementation of the same specification (McKeeman's original use, for C compilers), the
 same program on different inputs that should agree, or the same program at an earlier commit.
 Diffra uses the last: the reference is the record stored for the commit the pull request branched
-from, called the comparison point ([0003](adr/0003-comparison-history-and-noise.md)).
+from, or for the target branch tip when CI tests the merged result. That commit is the comparison
+point ([0003](adr/0003-comparison-history-and-noise.md)).
 
 ## Techniques Diffra builds on
 
@@ -48,16 +49,15 @@ fail. An Assessment applies a named, versioned policy to one Delta. Changing the
 new Assessment and leaves the Delta and the Evidence untouched, so the same measured change can be
 judged under a stricter rule later without measuring again.
 
-### A reference the pull request cannot rewrite
+### No reference in the branch to regenerate
 
 The failure mode of snapshot testing is the update command. When a snapshot fails, the quickest
 fix is to regenerate it in the same pull request, and a reviewer sees a large file change they are
 unlikely to read. The test then passes because the candidate approved itself.
 
-Diffra has no stored copy in the branch to regenerate. The comparison point is the record CI
-stored when it ran on a commit already on the target branch, so a pull request cannot change it.
-A pull request's own record becomes a comparison point only for later pull requests, after it has
-merged and run on the target branch. When the commit a pull request branched from has no record,
+Diffra has no stored copy in the branch, so there is nothing to regenerate in the diff. The
+reference is the record CI stored for the comparison point, a commit already on the target branch.
+When the commit a pull request branched from has no record,
 Diffra uses the nearest earlier one in its history window and states how far back it is; when
 none has a record, it says it cannot attribute the change. There is no approval or promotion
 step.
@@ -65,9 +65,9 @@ step.
 ### Unknown is not a pass
 
 A test runner reports pass or fail. Diffra has explicit states for the cases in between: evidence
-that could not be produced, inputs that failed validation, comparisons the host cannot perform, and
-comparisons that could not reach a result. None of them is reported as a pass. An adopter who
-turns on enforcement cannot get a passing step because a producer crashed and wrote nothing.
+that could not be produced, inputs that failed validation, comparisons Diffra cannot perform, and
+comparisons that could not reach a result. None of them can produce a passing Assessment, so a
+step that enforces the result cannot pass because a producer crashed and wrote nothing.
 
 ## What Diffra does not replace
 
@@ -89,8 +89,8 @@ Today the steps are separate CLI operations from the earlier design:
 2. The comparison point is found: the record for the commit the pull request branched from, or
    the nearest earlier one in the history window.
 3. `diffra diff` writes a policy-free Delta.
-4. `diffra eval` applies rules and writes an Assessment. Its exit code still reports a failing
-   Assessment; under [0005](adr/0005-surface-do-not-enforce.md), failing the build becomes an
+4. `diffra eval` applies rules and writes an Assessment. Its exit code is non-zero for any outcome
+   other than pass or warn; under [0005](adr/0005-surface-do-not-enforce.md), failing the build becomes an
    opt-in setting.
 5. `diffra report` or `diffra present` renders the result for review.
 
@@ -98,7 +98,7 @@ Steps 1, 3, 4 and 5 are CLI commands. Step 2 is done by the self-evaluation scri
 [feature status](README.md#feature-status). In the design set by the
 [decision records](adr/), each job that produces data runs one `diffra record` command and a
 collecting job gathers the records for the commit
-([0002](adr/0002-project-file-and-datasets.md)).
+([0002](adr/0002-project-file-and-datasets.md), [0004](adr/0004-records-integrity-and-storage.md)).
 
 ## Further reading
 

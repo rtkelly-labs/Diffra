@@ -148,11 +148,16 @@ if (fetchExit != 0)
     return;
 }
 
-// Find baseline Evidence for merge-base or any of its first-parent ancestors within the last 20 commits
-var ancestorList = CaptureOutput("git", "rev-list", "--first-parent", "-n", "20", mergeBaseCommit)
+// The comparison point is the merge base. When it has no record, use the nearest recorded
+// first-parent ancestor inside the history window and state the distance, because the changes
+// merged in between are then part of the comparison (docs/adr/0003-comparison-history-and-noise.md).
+// The window is fixed here until the root file provides it as a setting.
+const int HistoryWindowCommits = 20;
+var ancestorList = CaptureOutput("git", "rev-list", "--first-parent", "-n", HistoryWindowCommits.ToString(System.Globalization.CultureInfo.InvariantCulture), mergeBaseCommit)
     .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
 string? matchedCommit = null;
+var matchedDistance = 0;
 foreach (var sha in ancestorList)
 {
     var (showExit, showOut, showErr) = RunProcessAllowExitCodeWithOutput("git", "show", $"origin/{baselinesBranch}:evidence/{sha}.json");
@@ -186,6 +191,7 @@ foreach (var sha in ancestorList)
 
         File.WriteAllText(baselineEvidencePath, showOut);
         matchedCommit = sha;
+        matchedDistance = Array.IndexOf(ancestorList, sha);
         break;
     }
     else
@@ -205,10 +211,10 @@ foreach (var sha in ancestorList)
 
 if (matchedCommit == null)
 {
-    // Case (b): no Evidence exists for merge-base or any first-parent ancestor within 20 commits
-    Console.WriteLine("::warning::No baseline Evidence found for merge-base or any first-parent ancestor within 20 commits.");
-    Console.WriteLine($"\n[INCONCLUSIVE] Case (b): No Evidence found for merge-base '{mergeBaseCommit}' or ancestors within 20 commits on {baselinesBranch}.");
-    Console.WriteLine("Reporting inconclusive assessment to GITHUB_STEP_SUMMARY. Gating permitted for ancestor fallback.");
+    // Case (b): nothing in the history window has a record, so the change cannot be attributed
+    Console.WriteLine($"::warning::Cannot attribute: no record in the history window of {HistoryWindowCommits} first-parent commits ending at the merge base.");
+    Console.WriteLine($"\n[INCONCLUSIVE] Case (b): Cannot attribute. No record on {baselinesBranch} in the history window of {HistoryWindowCommits} first-parent commits ending at merge-base '{mergeBaseCommit}'.");
+    Console.WriteLine("Reporting inconclusive assessment to GITHUB_STEP_SUMMARY. No comparison was made.");
 
     if (!string.IsNullOrEmpty(stepSummary) && File.Exists(stepSummary))
     {
@@ -216,9 +222,9 @@ if (matchedCommit == null)
         inconclusiveReport.AppendLine("\n\n## 🐕 Diffra Self-Evaluation (Dogfood)\n");
         inconclusiveReport.AppendLine("### Assessment: `inconclusive`\n");
         inconclusiveReport.AppendLine("> [!WARNING]");
-        inconclusiveReport.Append("> Case (b): No baseline Evidence found for merge-base `").Append(mergeBaseCommit).Append("` or any first-parent ancestor within 20 commits on `").Append(baselinesBranch).Append("`.\n");
+        inconclusiveReport.Append("> Cannot attribute: no record on `").Append(baselinesBranch).Append("` in the history window of ").Append(HistoryWindowCommits).Append(" first-parent commits ending at merge base `").Append(mergeBaseCommit).Append("`. No comparison was made.\n");
         inconclusiveReport.Append("> Candidate Evidence was generated for commit `").Append(commit).Append("` using pinned judge `").Append(judgeVersion).Append("`.\n");
-        inconclusiveReport.AppendLine("> Gate status: **Passed (inconclusive / no ancestor baseline)**.\n");
+        inconclusiveReport.AppendLine("> Gate status: **Passed (inconclusive / cannot attribute)**.\n");
         File.AppendAllText(stepSummary, inconclusiveReport.ToString());
     }
 
@@ -226,6 +232,11 @@ if (matchedCommit == null)
 }
 
 Console.WriteLine($"[BASELINE] Resolved baseline Evidence from commit '{matchedCommit}' (merge-base was '{mergeBaseCommit}').");
+var comparisonPointNote = DescribeComparisonPoint(mergeBaseCommit, matchedCommit, matchedDistance, ancestorList);
+if (comparisonPointNote.Length > 0)
+{
+    Console.WriteLine("::notice::" + comparisonPointNote.ReplaceLineEndings(" "));
+}
 
 // 4. Construct verified Baseline Reference
 Console.WriteLine("4. Building verified Baseline Reference document...");
@@ -273,7 +284,7 @@ Console.WriteLine("\n" + markdownReport);
 var summaryFile = Environment.GetEnvironmentVariable("GITHUB_STEP_SUMMARY");
 if (!string.IsNullOrEmpty(summaryFile) && File.Exists(summaryFile))
 {
-    File.AppendAllText(summaryFile, "\n\n## 🐕 Diffra Self-Evaluation (Dogfood)\n\n" + markdownReport);
+    File.AppendAllText(summaryFile, "\n\n## 🐕 Diffra Self-Evaluation (Dogfood)\n\n" + comparisonPointNote + markdownReport);
     Console.WriteLine($"Appended report summary to $GITHUB_STEP_SUMMARY ({summaryFile}).");
 }
 
@@ -284,6 +295,31 @@ if (evalExitCode != 0)
 }
 
 Console.WriteLine("\n[SUCCESS] Diffra dogfooding run passed all quality policies!");
+
+// States where the comparison point is when it is not the merge base. Returns an empty string when
+// the merge base itself has a record. The commits listed are those between the comparison point and
+// the merge base, whose changes the comparison includes.
+static string DescribeComparisonPoint(string mergeBase, string comparisonPoint, int distance, string[] firstParentAncestors)
+{
+    if (distance == 0)
+    {
+        return "";
+    }
+
+    var note = new StringBuilder();
+    note.Append("> [!NOTE]\n");
+    note.Append("> Compared with `").Append(comparisonPoint[..Math.Min(12, comparisonPoint.Length)])
+        .Append("`, ").Append(distance).Append(distance == 1 ? " commit" : " commits")
+        .Append(" before the merge base `").Append(mergeBase[..Math.Min(12, mergeBase.Length)])
+        .Append("`, because the merge base has no record. Changes from these commits are part of this comparison:\n");
+    foreach (var sha in firstParentAncestors.Take(distance))
+    {
+        note.Append("> - `").Append(sha[..Math.Min(12, sha.Length)]).Append("`\n");
+    }
+
+    note.Append('\n');
+    return note.ToString();
+}
 
 static string ReadJudgeVersion(string repoRoot)
 {

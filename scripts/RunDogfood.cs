@@ -91,9 +91,15 @@ Console.WriteLine("3. Resolving merge-base baseline Evidence...");
 var baselineEvidencePath = Path.Combine(workDir, "baseline-evidence.json");
 var baselineRefPath = Path.Combine(workDir, "baseline-reference.json");
 
-// Never trust pre-existing baseline files; always remove before resolution
-if (File.Exists(baselineEvidencePath)) File.Delete(baselineEvidencePath);
-if (File.Exists(baselineRefPath)) File.Delete(baselineRefPath);
+// Never trust pre-existing baseline files or derived outputs from an earlier run;
+// remove them before resolution so an inconclusive run cannot leave a stale report visible.
+foreach (var stalePath in new[] { baselineEvidencePath, baselineRefPath, Path.Combine(workDir, "delta.json"), Path.Combine(workDir, "assessment.json") })
+{
+    if (File.Exists(stalePath)) File.Delete(stalePath);
+}
+
+var staleBundleDir = Path.Combine(workDir, "review-bundle");
+if (Directory.Exists(staleBundleDir)) Directory.Delete(staleBundleDir, recursive: true);
 
 // Always compute merge-base against origin/main (never GITHUB_BASE_REF) so stacked PRs work
 var mergeBaseCommit = ResolveMergeBaseStrict(repoRoot);

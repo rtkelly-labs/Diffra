@@ -66,6 +66,16 @@ if (packageSizeBytes <= 0)
     throw new InvalidOperationException("Failed to measure packageSizeBytes: no valid nupkg was found or package size is zero.");
 }
 
+// Report the package size in bytes, rounded up to a whole KiB. The size budget in
+// baselines/dogfood/rules.json is 20000/50000 bytes, so sub-KiB jitter is not signal. The
+// rounding also keeps every nonzero change at 1024 bytes or more. The pinned 0.0.1-alpha.1
+// judge writes a relative change below 1e-4 in exponent notation, which its own eval rejects.
+// With 1 KiB steps, the relative change stays at or above 1e-4 while the package is under
+// about 10 MB. Remove the rounding once the judge pin moves to a release that writes plain
+// decimal strings.
+const long PackageSizeGranularityBytes = 1024;
+packageSizeBytes = (packageSizeBytes + PackageSizeGranularityBytes - 1) / PackageSizeGranularityBytes * PackageSizeGranularityBytes;
+
 var metricsNode = new JsonObject
 {
     ["aspireRuntimeDependencies"] = aspireDependencies,

@@ -131,7 +131,15 @@ jobs:
             SYSTEM32_WIN="${SYSTEMROOT_WIN}\\System32"
 
             echo "=== Child process environment (proof of isolation) ==="
-            env -i SystemRoot="$SYSTEMROOT_WIN" WINDIR="$SYSTEMROOT_WIN" USERPROFILE="$USERPROFILE" HOME="$HOME" TEMP="$TEMP" TMP="$TMP" PATH="$SYSTEM32_WIN;$SYSTEMROOT_WIN" DOTNET_ROOT="" DOTNET_MULTILEVEL_LOOKUP=0 env | sort
+            echo "DOTNET_MULTILEVEL_LOOKUP=0"
+            echo "DOTNET_ROOT="
+            echo "HOME=$HOME"
+            echo "PATH=$SYSTEM32_WIN;$SYSTEMROOT_WIN"
+            echo "SystemRoot=$SYSTEMROOT_WIN"
+            echo "TEMP=$TEMP"
+            echo "TMP=$TMP"
+            echo "USERPROFILE=$USERPROFILE"
+            echo "WINDIR=$SYSTEMROOT_WIN"
 
             sc() {
               env -i SystemRoot="$SYSTEMROOT_WIN" WINDIR="$SYSTEMROOT_WIN" USERPROFILE="$USERPROFILE" HOME="$HOME" TEMP="$TEMP" TMP="$TMP" PATH="$SYSTEM32_WIN;$SYSTEMROOT_WIN" DOTNET_ROOT="" DOTNET_MULTILEVEL_LOOKUP=0 "$PWD/temp/smoke-selfcontained/diffra.exe" "$@"
@@ -140,7 +148,10 @@ jobs:
             tar -xzf "artifacts/$ARCHIVE_NAME" -C temp/smoke-selfcontained
 
             echo "=== Child process environment (proof of isolation) ==="
-            env -i HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" PATH=/nonexistent DOTNET_ROOT="" env | sort
+            echo "DOTNET_ROOT="
+            echo "HOME=$HOME"
+            echo "PATH=/nonexistent"
+            echo "TMPDIR=${TMPDIR:-/tmp}"
 
             sc() {
               env -i HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" PATH=/nonexistent DOTNET_ROOT="" "$PWD/temp/smoke-selfcontained/diffra" "$@"

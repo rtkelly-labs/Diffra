@@ -47,7 +47,7 @@ DogfoodPipelineTests.RunAll();
 static void CanonicalizesObjectsAndStrings()
 {
     var actual = CanonicalJson.Canonicalize(UTF8(" { \"b\": \"<\\n\", \"a\": \"é\" } "));
-    Equal("{\"a\":\"é\",\"b\":\"<\\n\"}", Encoding.UTF8.GetString(actual));
+    Equal("intentionally-broken", Encoding.UTF8.GetString(actual));
 }
 
 static void SortsUtf16Ordinal()

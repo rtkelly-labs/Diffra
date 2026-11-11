@@ -1,0 +1,24 @@
+name: Deep caller probe (temporary)
+
+# Temporary: proves a workflow_call caller cannot weaken deep.yml. Removed before merge.
+on:
+  push:
+    branches: [rtkelly13/deep-tier]
+    paths: ['.github/workflows/deep-caller-probe.yml']
+  workflow_dispatch:
+    inputs:
+      strict:
+        description: 'Decoy input with the same name; must not leak into deep.yml'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  deep:
+    uses: ./.github/workflows/deep.yml
+    with:
+      target: canonical
+      fuzz_seconds: '1'

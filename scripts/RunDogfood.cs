@@ -47,7 +47,32 @@ RunProcess("dotnet", "diffra", "collect",
 
 if (args.Contains("--collect-only"))
 {
-    Console.WriteLine("[COLLECT] Candidate evidence collection complete (--collect-only).");
+    if (!File.Exists(candidateEvidence) || new FileInfo(candidateEvidence).Length == 0)
+    {
+        Console.Error.WriteLine($"[FAIL] Candidate evidence file was not created or is empty: {candidateEvidence}");
+        Environment.Exit(1);
+        return;
+    }
+
+    try
+    {
+        using var collectDoc = JsonDocument.Parse(File.ReadAllBytes(candidateEvidence));
+        var collectRoot = collectDoc.RootElement;
+        if (!collectRoot.TryGetProperty("id", out _) ||
+            !collectRoot.TryGetProperty("subject", out var s) || !s.TryGetProperty("commit", out _) ||
+            !collectRoot.TryGetProperty("payload", out _))
+        {
+            throw new JsonException("Candidate evidence document is missing required schema fields.");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"[FAIL] Malformed candidate evidence document: {ex.Message}");
+        Environment.Exit(1);
+        return;
+    }
+
+    Console.WriteLine("[COLLECT] Candidate evidence collection complete and verified (--collect-only).");
     return;
 }
 
@@ -64,14 +89,14 @@ if (File.Exists(baselineRefPath)) File.Delete(baselineRefPath);
 var mergeBaseCommit = ResolveMergeBaseStrict(repoRoot);
 Console.WriteLine($"Resolved merge-base against origin/main: {mergeBaseCommit}");
 
-var baselinesRemote = Environment.GetEnvironmentVariable("DIFFRA_BASELINES_REMOTE");
-if (string.IsNullOrWhiteSpace(baselinesRemote)) baselinesRemote = "origin";
+var baselinesBranch = Environment.GetEnvironmentVariable("DIFFRA_BASELINES_BRANCH");
+if (string.IsNullOrWhiteSpace(baselinesBranch)) baselinesBranch = "diffra-baselines";
 
-// Check whether diffra-baselines branch exists on remote
-var (lsRemoteExit, lsRemoteOut, lsRemoteErr) = RunProcessAllowExitCodeWithOutput("git", "ls-remote", "--heads", baselinesRemote, "diffra-baselines");
+// Check whether baseline branch exists on origin
+var (lsRemoteExit, lsRemoteOut, lsRemoteErr) = RunProcessAllowExitCodeWithOutput("git", "ls-remote", "--heads", "origin", baselinesBranch);
 if (lsRemoteExit != 0)
 {
-    Console.Error.WriteLine($"[FAIL] Network or git error querying remote diffra-baselines branch (exit code {lsRemoteExit}): {lsRemoteErr}");
+    Console.Error.WriteLine($"[FAIL] Network or git error querying remote '{baselinesBranch}' branch (exit code {lsRemoteExit}): {lsRemoteErr}");
     Environment.Exit(lsRemoteExit);
     return;
 }
@@ -81,7 +106,7 @@ var stepSummary = Environment.GetEnvironmentVariable("GITHUB_STEP_SUMMARY");
 if (string.IsNullOrWhiteSpace(lsRemoteOut))
 {
     // Case (a): diffra-baselines branch does not exist yet (bootstrap)
-    Console.WriteLine("\n[INCONCLUSIVE] Case (a): diffra-baselines branch does not exist yet (bootstrap).");
+    Console.WriteLine($"\n[INCONCLUSIVE] Case (a): '{baselinesBranch}' branch does not exist yet on remote (bootstrap).");
     Console.WriteLine("Reporting inconclusive assessment to GITHUB_STEP_SUMMARY. Gating permitted for bootstrap run.");
 
     if (!string.IsNullOrEmpty(stepSummary) && File.Exists(stepSummary))
@@ -90,7 +115,7 @@ if (string.IsNullOrWhiteSpace(lsRemoteOut))
         inconclusiveReport.AppendLine("\n\n## 🐕 Diffra Self-Evaluation (Dogfood)\n");
         inconclusiveReport.AppendLine("### Assessment: `inconclusive`\n");
         inconclusiveReport.AppendLine("> [!NOTE]");
-        inconclusiveReport.AppendLine("> Case (a): `diffra-baselines` branch does not exist yet on remote (bootstrap).");
+        inconclusiveReport.Append("> Case (a): `").Append(baselinesBranch).Append("` branch does not exist yet on remote (bootstrap).\n");
         inconclusiveReport.Append("> Candidate Evidence was generated for commit `").Append(commit).Append("` using pinned judge `").Append(judgeVersion).Append("`.\n");
         inconclusiveReport.AppendLine("> Gate status: **Passed (inconclusive / bootstrap)**.\n");
         File.AppendAllText(stepSummary, inconclusiveReport.ToString());
@@ -100,10 +125,10 @@ if (string.IsNullOrWhiteSpace(lsRemoteOut))
 }
 
 // Branch exists on remote: fetch it fresh
-var fetchExit = RunProcessAllowExitCode("git", "fetch", baselinesRemote, "+refs/heads/diffra-baselines:refs/remotes/origin/diffra-baselines");
+var fetchExit = RunProcessAllowExitCode("git", "fetch", "origin", $"+refs/heads/{baselinesBranch}:refs/remotes/origin/{baselinesBranch}");
 if (fetchExit != 0)
 {
-    Console.Error.WriteLine($"[FAIL] Failed to fetch origin/diffra-baselines (exit code {fetchExit}).");
+    Console.Error.WriteLine($"[FAIL] Failed to fetch origin/{baselinesBranch} (exit code {fetchExit}).");
     Environment.Exit(fetchExit);
     return;
 }
@@ -115,12 +140,51 @@ var ancestorList = CaptureOutput("git", "rev-list", "--first-parent", "-n", "20"
 string? matchedCommit = null;
 foreach (var sha in ancestorList)
 {
-    var (showExit, showOut, _) = RunProcessAllowExitCodeWithOutput("git", "show", $"origin/diffra-baselines:evidence/{sha}.json");
-    if (showExit == 0 && !string.IsNullOrWhiteSpace(showOut))
+    var (showExit, showOut, showErr) = RunProcessAllowExitCodeWithOutput("git", "show", $"origin/{baselinesBranch}:evidence/{sha}.json");
+    if (showExit == 0)
     {
+        if (string.IsNullOrWhiteSpace(showOut))
+        {
+            Console.Error.WriteLine($"[FAIL] Baseline Evidence document for commit '{sha}' at 'origin/{baselinesBranch}:evidence/{sha}.json' is empty.");
+            Environment.Exit(1);
+            return;
+        }
+
+        try
+        {
+            using var parsedDoc = JsonDocument.Parse(showOut);
+            var root = parsedDoc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("id", out var idElem) || idElem.ValueKind != JsonValueKind.String ||
+                !root.TryGetProperty("subject", out var subjElem) || subjElem.ValueKind != JsonValueKind.Object ||
+                !subjElem.TryGetProperty("commit", out var commitElem) || commitElem.ValueKind != JsonValueKind.String)
+            {
+                throw new JsonException("Baseline evidence document is missing required schema fields.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[FAIL] Malformed baseline Evidence document at 'origin/{baselinesBranch}:evidence/{sha}.json': {ex.Message}");
+            Environment.Exit(1);
+            return;
+        }
+
         File.WriteAllText(baselineEvidencePath, showOut);
         matchedCommit = sha;
         break;
+    }
+    else
+    {
+        // Only "path does not exist at that commit" counts as missing
+        bool isNotFound = showErr.Contains("does not exist in", StringComparison.OrdinalIgnoreCase) ||
+                          showErr.Contains("exists on disk, but not in", StringComparison.OrdinalIgnoreCase);
+
+        if (!isNotFound)
+        {
+            Console.Error.WriteLine($"[FAIL] Error reading 'origin/{baselinesBranch}:evidence/{sha}.json' (exit {showExit}): {showErr.Trim()}");
+            Environment.Exit(showExit != 0 ? showExit : 1);
+            return;
+        }
     }
 }
 
@@ -128,7 +192,7 @@ if (matchedCommit == null)
 {
     // Case (b): no Evidence exists for merge-base or any first-parent ancestor within 20 commits
     Console.WriteLine("::warning::No baseline Evidence found for merge-base or any first-parent ancestor within 20 commits.");
-    Console.WriteLine($"\n[INCONCLUSIVE] Case (b): No Evidence found for merge-base '{mergeBaseCommit}' or ancestors within 20 commits on diffra-baselines.");
+    Console.WriteLine($"\n[INCONCLUSIVE] Case (b): No Evidence found for merge-base '{mergeBaseCommit}' or ancestors within 20 commits on {baselinesBranch}.");
     Console.WriteLine("Reporting inconclusive assessment to GITHUB_STEP_SUMMARY. Gating permitted for ancestor fallback.");
 
     if (!string.IsNullOrEmpty(stepSummary) && File.Exists(stepSummary))
@@ -137,7 +201,7 @@ if (matchedCommit == null)
         inconclusiveReport.AppendLine("\n\n## 🐕 Diffra Self-Evaluation (Dogfood)\n");
         inconclusiveReport.AppendLine("### Assessment: `inconclusive`\n");
         inconclusiveReport.AppendLine("> [!WARNING]");
-        inconclusiveReport.Append("> Case (b): No baseline Evidence found for merge-base `").Append(mergeBaseCommit).Append("` or any first-parent ancestor within 20 commits on `diffra-baselines`.\n");
+        inconclusiveReport.Append("> Case (b): No baseline Evidence found for merge-base `").Append(mergeBaseCommit).Append("` or any first-parent ancestor within 20 commits on `").Append(baselinesBranch).Append("`.\n");
         inconclusiveReport.Append("> Candidate Evidence was generated for commit `").Append(commit).Append("` using pinned judge `").Append(judgeVersion).Append("`.\n");
         inconclusiveReport.AppendLine("> Gate status: **Passed (inconclusive / no ancestor baseline)**.\n");
         File.AppendAllText(stepSummary, inconclusiveReport.ToString());
@@ -147,27 +211,6 @@ if (matchedCommit == null)
 }
 
 Console.WriteLine($"[BASELINE] Resolved baseline Evidence from commit '{matchedCommit}' (merge-base was '{mergeBaseCommit}').");
-
-// Validate baseline evidence JSON
-try
-{
-    var evidenceRawBytes = File.ReadAllBytes(baselineEvidencePath);
-    using var parsedDoc = JsonDocument.Parse(evidenceRawBytes);
-    var root = parsedDoc.RootElement;
-    if (root.ValueKind != JsonValueKind.Object ||
-        !root.TryGetProperty("id", out var idElem) || idElem.ValueKind != JsonValueKind.String ||
-        !root.TryGetProperty("subject", out var subjElem) || subjElem.ValueKind != JsonValueKind.Object ||
-        !subjElem.TryGetProperty("commit", out var commitElem) || commitElem.ValueKind != JsonValueKind.String)
-    {
-        throw new JsonException("Baseline evidence document is missing required schema fields.");
-    }
-}
-catch (Exception ex)
-{
-    Console.Error.WriteLine($"[FAIL] Malformed baseline Evidence document at '{baselineEvidencePath}': {ex.Message}");
-    Environment.Exit(1);
-    return;
-}
 
 // 4. Construct verified Baseline Reference
 Console.WriteLine("4. Building verified Baseline Reference document...");

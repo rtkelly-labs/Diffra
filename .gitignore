@@ -2,6 +2,7 @@
 TODO.md
 /temp/
 /.temp/
+/.tools-cache/
 /dogfood-run/
 dogfood-metrics.json
 

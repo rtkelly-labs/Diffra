@@ -21,25 +21,18 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           global-json-file: global.json
 
-      - name: Download released Diffra.Cli 0.0.1-alpha.1
+      - name: Install pinned Diffra judge
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p temp/pinned-tool
-          gh release download v0.0.1-alpha.1 -R rtkelly-labs/Diffra \
-            --pattern "Diffra.Cli.0.0.1-alpha.1.nupkg" \
-            --pattern "SHA256SUMS" \
-            --dir temp/pinned-tool
-          cd temp/pinned-tool
-          grep "Diffra.Cli.0.0.1-alpha.1.nupkg" SHA256SUMS | sha256sum -c -
-          cd ../..
-          dotnet tool install Diffra.Cli --add-source temp/pinned-tool --tool-path temp/pinned-bin --version 0.0.1-alpha.1
+        run: dotnet run scripts/InstallJudge.cs -- --tool-path temp/pinned-bin
 
       - name: Build solution
         run: dotnet build Diffra.slnx --configuration Release

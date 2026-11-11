@@ -63,7 +63,7 @@ All previous milestones are stacked, reviewed, tested, and tracked on GitHub:
 
 ### Self-Dogfooding & Scripts (`scripts/`, `baselines/dogfood/`)
 - [`scripts/DogfoodMetrics.cs`](../../scripts/DogfoodMetrics.cs): Collects architectural facts (zero Aspire deps, 0 compiler warnings, schema counts, source file counts).
-- [`scripts/InitializeDogfoodBaseline.cs`](../../scripts/InitializeDogfoodBaseline.cs): Re-initializes baseline files in `baselines/dogfood/`.
+- Baseline documents are recorded dynamically to `diffra-baselines` by CI on merges to `main` rather than static fixture files.
 - [`scripts/RunDogfood.cs`](../../scripts/RunDogfood.cs): Executes candidate collection, merge-base diff, quality evaluation, presentation bundle generation, and `$GITHUB_STEP_SUMMARY` reporting.
 
 ### CI & Safety Tooling (`.github/workflows/`)

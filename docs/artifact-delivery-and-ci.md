@@ -217,9 +217,11 @@ unintended changes to metrics or policies.
 - **Pinned trusted judge:** Diffra never allows a candidate pull request to act as
   its own judge. Instead, self-evaluation runs an immutable, released version of
   `Diffra.Cli` pinned in the local manifest `.config/dotnet-tools.json`. In CI, the
-  runner downloads the package and `SHA256SUMS` from that GitHub Release, validates
-  checksums, and restores the tool. RunDogfood executes `dotnet diffra ...` using
-  the restored tool. Moving the judge to a newer release is a one-line manifest PR.
+  runner downloads the package from GitHub Releases, validates its SHA-256 checksum
+  against the committed digest in `.config/judge-sha256.json`, and restores the tool
+  from an isolated `nuget.config` containing `<clear/>` so `nuget.org` cannot serve
+  the package. RunDogfood executes `dotnet diffra ...` using the restored tool.
+  Moving the judge to a newer release updates the tool manifest and the committed SHA-256.
 - **Baseline storage and authority:** Quality baselines live on an orphan branch named
   `diffra-baselines`, stored as canonical Evidence documents at `evidence/<sha>.json`.
   Only post-merge pushes to `main` have `contents: write` permissions to record new

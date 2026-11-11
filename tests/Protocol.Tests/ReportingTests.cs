@@ -44,6 +44,7 @@ public static class ReportingTests
         HtmlIsDeterministicAndEscapesEvidenceText();
         MissingAssessmentHasNoVerdict();
         JsonAndMarkdownIncludeReportData();
+        MarkdownUsesLineFeedRegardlessOfPlatform();
         MismatchedAssessmentIsRejected();
         InvalidDeltaIsRejected();
         MarkdownEscapesUntrustedText();
@@ -102,8 +103,39 @@ public static class ReportingTests
         Contains(markdown, "## Policy assessment");
         Contains(markdown, "version `2\\.1\\.0`");
         Contains(markdown, "unit\\|&lt;unsafe&gt;&amp;");
-        DoesNotContain(markdown, "\r");
-        Contains(markdown, "\n");
+    }
+
+    // Markdown reports are compared byte for byte across platforms, so lines are joined with
+    // "\n" and never with Environment.NewLine (CRLF on Windows). The exact expected text pins it.
+    private static void MarkdownUsesLineFeedRegardlessOfPlatform()
+    {
+        var deltaJson = ValidDeltaJson();
+        using var parsed = JsonDocument.Parse(deltaJson);
+        var deltaId = parsed.RootElement.GetProperty("id").GetString()!;
+        string[] lines =
+        [
+            "# Diffra comparison report",
+            "",
+            $"- Delta ID: `{deltaId}`",
+            "- Status: `changed`",
+            "- Baseline reference ID: `sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb`",
+            "- Baseline evidence ID: `sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee`",
+            "- Candidate evidence ID: `sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc`",
+            "- Comparator: `diffra\\.numeric` version `1\\.0\\.0`",
+            "",
+            "## Changes",
+            "",
+            "| Path | Kind | Value | Unit |",
+            "| --- | --- | --- | --- |",
+            "| `/metrics/&lt;script&gt;alert\\(1\\)&lt;/script&gt;` | `modified` | `\\{\"absolute\":\"1\\.25\",\"after\":\"2\\.5\",\"before\":\"1\\.25\",\"relative\":\"1\"\\}` | unit\\|&lt;unsafe&gt;&amp; |",
+            "",
+            "## Policy assessment",
+            "",
+            "No policy verdict is available. No Assessment document was supplied.",
+        ];
+        var expected = string.Join("\n", lines) + "\n";
+        var markdown = ReportRenderer.Render(Bytes(deltaJson), null, ReportFormat.Markdown);
+        Equal(expected, markdown, "Markdown report must be joined with LF only.");
     }
 
     private static void MismatchedAssessmentIsRejected()

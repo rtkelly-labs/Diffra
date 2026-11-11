@@ -213,7 +213,14 @@ smoke-tests its native self-contained archive in a stripped environment without 
 Heavy work runs once on Linux (`ubuntu-latest`): full protocol unit tests, packed CLI tool
 smoke test, parallel fuzzing across all targets for a long budget, Stryker mutation testing
 across all Protocol source, and high-iteration property checks at 100,000 iterations.
-All results aggregate into a machine-readable `deep-summary.json` artifact.
+All results aggregate into a machine-readable `deep-summary.json` artifact, whose top-level
+`passed` field is the verdict.
+
+Nightly, release (`workflow_call`) and default manual runs are strict: every fuzz target runs
+for at least the strict floor (`STRICT_FUZZ_FLOOR_SECONDS`, 1800 s per target), and the summary
+fails if any target or any of the budget is missing. Only a manual dispatch with `strict`
+unticked may run a single target or a shorter budget. A caller cannot pass `strict`, because it
+is not a `workflow_call` input.
 
 ## Acceptance checks
 

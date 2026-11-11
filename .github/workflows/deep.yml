@@ -5,33 +5,30 @@ on:
     - cron: '0 2 * * *'
   workflow_dispatch:
     inputs:
-      fuzz_seconds:
-        description: 'Fuzzing time per target, in seconds'
-        required: false
-        default: '1800'
-      target:
-        description: 'Fuzz target to run (or "all" for all targets)'
-        required: false
-        default: 'all'
-  workflow_call:
-    inputs:
       strict:
-        description: 'Enforce strict release gating constraints'
+        description: 'Enforce release-gate constraints (all fuzz targets, full budget). Untick only for ad hoc runs.'
         required: false
         type: boolean
         default: true
-      caller:
-        description: 'Internal caller identifier'
-        required: false
-        type: string
-        default: 'workflow_call'
       fuzz_seconds:
-        description: 'Fuzzing time per target, in seconds'
+        description: 'Fuzzing time per target, in seconds (empty means the strict floor)'
+        required: false
+        default: ''
+      target:
+        description: 'Fuzz target to run (or "all"); a single target needs strict unticked'
+        required: false
+        default: 'all'
+  # A caller can pass only the inputs declared here. Strictness is deliberately not one of
+  # them: every called run is strict, so a caller cannot weaken the release gate.
+  workflow_call:
+    inputs:
+      fuzz_seconds:
+        description: 'Fuzzing time per target, in seconds (empty means the strict floor; less is rejected)'
         required: false
         type: string
-        default: '1800'
+        default: ''
       target:
-        description: 'Fuzz target to run (or "all" for all targets)'
+        description: 'Fuzz target to run; called runs are strict, so anything but "all" is rejected'
         required: false
         type: string
         default: 'all'
@@ -46,9 +43,15 @@ on:
 permissions:
   contents: read
 
+# Only a manual dispatch with strict unticked is non-strict: `strict` is declared for
+# workflow_dispatch alone, so a schedule or a workflow_call never has it and a caller cannot
+# pass it. Inside a called workflow github.event_name is the caller's event, so it is not used.
+# Non-strict ad hoc runs share one group per ref and replace each other. Every strict run
+# (nightly, strict dispatch, workflow_call) gets a group unique to its run_id and is never
+# cancelled, so no other run can cancel it or make it wait.
 concurrency:
-  group: ${{ inputs.caller == 'workflow_call' && format('deep-call-{0}', github.run_id) || format('deep-{0}', github.ref) }}
-  cancel-in-progress: ${{ inputs.caller != 'workflow_call' && !startsWith(github.ref, 'refs/tags/') }}
+  group: ${{ format('{0}', inputs.strict) == 'false' && format('deep-adhoc-{0}', github.ref) || format('deep-strict-{0}', github.run_id) }}
+  cancel-in-progress: ${{ format('{0}', inputs.strict) == 'false' }}
 
 defaults:
   run:
@@ -58,12 +61,84 @@ env:
   SHARPFUZZ_VERSION: 2.3.0
   LIBFUZZER_DOTNET_URL: https://github.com/Metalnem/libfuzzer-dotnet/releases/download/v2025.05.02.0904/libfuzzer-dotnet-ubuntu
   LIBFUZZER_DOTNET_SHA256: c2c2a90d94c409a4af339a0d4f244e0442c5a5d249be0f1252ba07871f285958
+  # Single sources of truth, read by the workflow steps and by scripts/DeepSummary.cs.
   MUTATION_THRESHOLD: "57"
+  COMPONENT_MUTATION_FLOOR: "80"
+  STRICT_FUZZ_FLOOR_SECONDS: "1800"
+  ALL_FUZZ_TARGETS: "canonical evidence document delivery-index payloads line-ranges bundle bundle-zip"
 
 jobs:
+  # 0. Resolve and validate the run parameters once. Every other job needs this one, so a
+  #    rejected run stops here before any runner time is spent.
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      strict: ${{ steps.resolve.outputs.strict }}
+      fuzz_seconds: ${{ steps.resolve.outputs.fuzz_seconds }}
+      target: ${{ steps.resolve.outputs.target }}
+      matrix: ${{ steps.resolve.outputs.matrix }}
+    steps:
+      - name: Resolve strictness, fuzz budget and fuzz targets
+        id: resolve
+        env:
+          # Empty for a schedule or a workflow_call; only a dispatch can set it.
+          STRICT_INPUT: ${{ format('{0}', inputs.strict) }}
+          TARGET_INPUT: ${{ inputs.target }}
+          FUZZ_SECONDS_INPUT: ${{ inputs.fuzz_seconds }}
+        run: |
+          # Anything but an explicit false is strict.
+          if [ "$STRICT_INPUT" = "false" ]; then strict=false; else strict=true; fi
+
+          fuzz_seconds="${FUZZ_SECONDS_INPUT:-$STRICT_FUZZ_FLOOR_SECONDS}"
+          if ! [[ "$fuzz_seconds" =~ ^[0-9]{1,6}$ ]]; then
+            echo "::error::Invalid fuzz_seconds value: '$fuzz_seconds'. Must be 1 to 6 digits."
+            exit 1
+          fi
+          fuzz_seconds=$((10#$fuzz_seconds))
+          if [ "$fuzz_seconds" -le 0 ]; then
+            echo "::error::fuzz_seconds must be positive (got $fuzz_seconds)."
+            exit 1
+          fi
+
+          target="${TARGET_INPUT:-all}"
+          if [ "$target" != "all" ] && { ! [[ "$target" =~ ^[a-z-]+$ ]] || ! [[ " $ALL_FUZZ_TARGETS " == *" $target "* ]]; }; then
+            echo "::error::Unknown fuzz target '$target'. Expected 'all' or one of: $ALL_FUZZ_TARGETS"
+            exit 1
+          fi
+
+          echo "Resolved: strict=$strict (strict input='${STRICT_INPUT}'), target=$target, fuzz_seconds=$fuzz_seconds, strict floor=${STRICT_FUZZ_FLOOR_SECONDS}s"
+
+          if [ "$strict" = "true" ]; then
+            if [ "$target" != "all" ]; then
+              echo "::error::Strict mode requires all fuzz targets (got target='$target')."
+              exit 1
+            fi
+            if [ "$fuzz_seconds" -lt "$STRICT_FUZZ_FLOOR_SECONDS" ]; then
+              echo "::error::Strict mode requires a fuzz budget of at least ${STRICT_FUZZ_FLOOR_SECONDS}s (got ${fuzz_seconds}s)."
+              exit 1
+            fi
+          fi
+
+          if [ "$target" = "all" ]; then
+            targets_json=$(printf '"%s",' $ALL_FUZZ_TARGETS)
+            matrix="{\"target\":[${targets_json%,}]}"
+          else
+            matrix="{\"target\":[\"$target\"]}"
+          fi
+
+          {
+            echo "strict=$strict"
+            echo "fuzz_seconds=$fuzz_seconds"
+            echo "target=$target"
+            echo "matrix=$matrix"
+          } >> "$GITHUB_OUTPUT"
+
   # 1. Light platform matrix: native self-contained archive smoke test across five platforms
   platform:
     name: platform (${{ matrix.platform }})
+    needs: validate
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
@@ -104,13 +179,15 @@ jobs:
 
       - name: Publish self-contained single-file archive
         shell: bash
+        env:
+          RID: ${{ matrix.rid }}
         run: |
-          dist_dir="dist/${{ matrix.rid }}"
+          dist_dir="dist/$RID"
           mkdir -p "$dist_dir" artifacts
 
           dotnet publish src/Cli/Diffra.Cli.csproj \
             --configuration Release \
-            -r "${{ matrix.rid }}" \
+            -r "$RID" \
             --self-contained true \
             -p:PublishSingleFile=true \
             -p:IncludeNativeLibrariesForSelfExtract=true \
@@ -120,14 +197,14 @@ jobs:
 
           cp LICENSE README.md "$dist_dir/"
 
-          if [ "${{ matrix.rid }}" = "win-x64" ]; then
+          if [ "$RID" = "win-x64" ]; then
             cp "$dist_dir/Diffra.Cli.exe" "$dist_dir/diffra.exe"
-            archive_name="diffra-${DIFFRA_VERSION}-${{ matrix.rid }}.zip"
+            archive_name="diffra-${DIFFRA_VERSION}-${RID}.zip"
             powershell -NoProfile -Command "Compress-Archive -Path '$dist_dir/diffra.exe', '$dist_dir/LICENSE', '$dist_dir/README.md' -DestinationPath 'artifacts/${archive_name}'"
           else
             cp "$dist_dir/Diffra.Cli" "$dist_dir/diffra"
             chmod +x "$dist_dir/diffra"
-            archive_name="diffra-${DIFFRA_VERSION}-${{ matrix.rid }}.tar.gz"
+            archive_name="diffra-${DIFFRA_VERSION}-${RID}.tar.gz"
             tar -czf "artifacts/${archive_name}" -C "$dist_dir" diffra LICENSE README.md
           fi
           echo "ARCHIVE_NAME=$archive_name" >> "$GITHUB_ENV"
@@ -136,11 +213,14 @@ jobs:
 
       - name: Smoke test self-contained archive without .NET on PATH
         shell: bash
+        env:
+          RID: ${{ matrix.rid }}
+          PLATFORM: ${{ matrix.platform }}
         run: |
           mkdir -p temp/smoke-selfcontained
           smoke_status="failure"
 
-          if [ "${{ matrix.rid }}" = "win-x64" ]; then
+          if [ "$RID" = "win-x64" ]; then
             powershell -NoProfile -Command "Expand-Archive -Path 'artifacts/$ARCHIVE_NAME' -DestinationPath 'temp/smoke-selfcontained'"
             SYSTEMROOT_WIN="${SYSTEMROOT:-C:\\Windows}"
             SYSTEM32_WIN="${SYSTEMROOT_WIN}\\System32"
@@ -206,15 +286,17 @@ jobs:
 
           echo "SMOKE_STATUS=$smoke_status" >> "$GITHUB_ENV"
           if [ "$smoke_status" != "success" ]; then
-            echo "::error::Native self-contained archive smoke test failed for ${{ matrix.platform }}"
+            echo "::error::Native self-contained archive smoke test failed for $PLATFORM"
             exit 1
           fi
 
       # Run regression corpus against extracted native self-contained archive
       # TODO(#114): Switch to quick mode (--quick) once PR #114 lands on main.
       - name: Run regression corpus against native self-contained archive
+        env:
+          RID: ${{ matrix.rid }}
         run: |
-          if [ "${{ matrix.rid }}" = "win-x64" ]; then
+          if [ "$RID" = "win-x64" ]; then
             archive_bin="$PWD/temp/smoke-selfcontained/diffra.exe"
           else
             archive_bin="$PWD/temp/smoke-selfcontained/diffra"
@@ -224,19 +306,23 @@ jobs:
       - name: Record platform metadata
         if: always()
         shell: bash
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          RUNNER_LABEL: ${{ matrix.runner }}
+          RID: ${{ matrix.rid }}
         run: |
           mkdir -p metadata
-          cat <<EOF > metadata/platform-${{ matrix.platform }}.json
+          cat <<EOF > "metadata/platform-$PLATFORM.json"
           {
-            "platform": "${{ matrix.platform }}",
-            "runner": "${{ matrix.runner }}",
-            "rid": "${{ matrix.rid }}",
+            "platform": "$PLATFORM",
+            "runner": "$RUNNER_LABEL",
+            "rid": "$RID",
             "archiveSmoke": "${SMOKE_STATUS:-failure}",
             "archiveName": "$ARCHIVE_NAME",
             "archiveSizeBytes": $ARCHIVE_SIZE
           }
           EOF
-          cat metadata/platform-${{ matrix.platform }}.json
+          cat "metadata/platform-$PLATFORM.json"
 
       - name: Upload platform metadata
         if: always()
@@ -249,6 +335,7 @@ jobs:
   # 2. Unit and packed CLI end-to-end suite (runs once on Linux)
   test:
     name: test (Protocol.Tests & CLI e2e)
+    needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -325,6 +412,9 @@ jobs:
 
       - name: Record test metadata
         if: always()
+        env:
+          UNIT_TESTS_OUTCOME: ${{ steps.unit-tests.outcome }}
+          TOOL_SMOKE_OUTCOME: ${{ steps.tool-smoke.outcome }}
         run: |
           mkdir -p metadata
           pkg_file=$(ls artifacts/package/Diffra.Cli.*.nupkg 2>/dev/null | head -1 || true)
@@ -339,7 +429,7 @@ jobs:
 
           tests_passed=0
           tests_failed=0
-          if [ "${{ steps.unit-tests.outcome }}" = "success" ]; then
+          if [ "$UNIT_TESTS_OUTCOME" = "success" ]; then
             tests_passed="${TEST_COUNT:-0}"
             tests_failed=0
           else
@@ -348,8 +438,8 @@ jobs:
 
           cat <<EOF > metadata/test-summary.json
           {
-            "unitTests": "${{ steps.unit-tests.outcome }}",
-            "toolSmoke": "${{ steps.tool-smoke.outcome }}",
+            "unitTests": "$UNIT_TESTS_OUTCOME",
+            "toolSmoke": "$TOOL_SMOKE_OUTCOME",
             "testsPassed": $tests_passed,
             "testsFailed": $tests_failed,
             "testCount": ${TEST_COUNT:-null},
@@ -367,57 +457,16 @@ jobs:
           path: metadata/test-summary.json
           if-no-files-found: error
 
-  # 3. Long-budget fuzzing across all targets (runs on Linux)
-  setup-fuzz:
-    name: setup-fuzz
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-    steps:
-      - name: Validate release call constraints and set matrix
-        id: set-matrix
-        env:
-          STRICT: ${{ inputs.strict == true || inputs.caller == 'workflow_call' }}
-          CALLER: ${{ inputs.caller }}
-          TARGET: ${{ inputs.target }}
-          FUZZ_SECONDS: ${{ inputs.fuzz_seconds || '1800' }}
-        run: |
-          if ! [[ "$FUZZ_SECONDS" =~ ^[0-9]+$ ]] || [ "$FUZZ_SECONDS" -le 0 ]; then
-            echo "::error::Invalid fuzz_seconds value: '$FUZZ_SECONDS'. Must be a positive integer."
-            exit 1
-          fi
-
-          if [ "$STRICT" = "true" ] || [ "$CALLER" = "workflow_call" ]; then
-            if [ -n "$TARGET" ] && [ "$TARGET" != "all" ]; then
-              echo "::error::Strict release-gate mode requires all fuzz targets (got target='$TARGET')"
-              exit 1
-            fi
-            if [ "$FUZZ_SECONDS" -lt 300 ]; then
-              echo "::error::Strict release-gate mode requires fuzz budget of at least 300s (got $FUZZ_SECONDS)"
-              exit 1
-            fi
-          fi
-
-          case "$TARGET" in
-            canonical|evidence|document|delivery-index|payloads|line-ranges|bundle|bundle-zip)
-              echo "matrix={\"target\":[\"$TARGET\"]}" >> "$GITHUB_OUTPUT"
-              ;;
-            *)
-              echo 'matrix={"target":["canonical","evidence","document","delivery-index","payloads","line-ranges","bundle","bundle-zip"]}' >> "$GITHUB_OUTPUT"
-              ;;
-          esac
-
   fuzz:
     name: fuzz (${{ matrix.target }})
-    needs: setup-fuzz
+    needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.setup-fuzz.outputs.matrix) }}
+      matrix: ${{ fromJson(needs.validate.outputs.matrix) }}
     env:
-      FUZZ_SECONDS: ${{ inputs.fuzz_seconds || '1800' }}
+      FUZZ_SECONDS: ${{ needs.validate.outputs.fuzz_seconds }}
       FUZZ_TARGET: ${{ matrix.target }}
       FUZZ_FINDINGS: ${{ github.workspace }}/.fuzz/findings
       FUZZ_CORPUS: ${{ github.workspace }}/.fuzz/corpus
@@ -464,6 +513,8 @@ jobs:
 
       - name: Summarize and record stats
         if: always()
+        env:
+          FUZZ_OUTCOME: ${{ steps.fuzz.outcome }}
         run: |
           execs=$(grep 'stat::number_of_executed_units:' "$RUNNER_TEMP/fuzz.log" | awk '{print $2}' | tail -1)
           [ -z "$execs" ] && execs=$(grep -E '^#[0-9]+' "$RUNNER_TEMP/fuzz.log" | tail -1 | sed -E 's/^#([0-9]+).*/\1/')
@@ -471,7 +522,11 @@ jobs:
           exec_per_sec=$(grep 'stat::average_exec_per_sec:' "$RUNNER_TEMP/fuzz.log" | awk '{print $2}' | tail -1)
           [ -z "$exec_per_sec" ] && exec_per_sec=$(grep -oE 'exec/s: [0-9]+' "$RUNNER_TEMP/fuzz.log" | tail -1 | awk '{print $2}')
 
-          findings_count=$(find "$FUZZ_FINDINGS" -type f ! -name 'observation-*' 2>/dev/null | wc -l | tr -d ' ')
+          # The harness writes a .bin reproducer and a .txt report per finding, so count the
+          # reports once each, plus any standalone libFuzzer crash/leak/timeout/oom artifacts.
+          harness_findings=$(find "$FUZZ_FINDINGS" -type f -name '*.txt' ! -name 'observation-*' 2>/dev/null | wc -l | tr -d ' ')
+          libfuzzer_findings=$(find "$FUZZ_FINDINGS" -type f -name 'libfuzzer-*' 2>/dev/null | wc -l | tr -d ' ')
+          findings_count=$((harness_findings + libfuzzer_findings))
 
           if [ -z "$execs" ] || [ -z "$exec_per_sec" ]; then
             echo "::error::Could not parse fuzz execution statistics from log"
@@ -485,7 +540,7 @@ jobs:
             "executions": $execs,
             "execsPerSecond": $exec_per_sec,
             "findingsCount": $findings_count,
-            "status": "${{ steps.fuzz.outcome }}"
+            "status": "$FUZZ_OUTCOME"
           }
           EOF
           cat metadata/fuzz-stats-${FUZZ_TARGET}.json
@@ -493,7 +548,7 @@ jobs:
           {
             echo "## Fuzz: $FUZZ_TARGET (${FUZZ_SECONDS}s)"
             echo
-            echo "libFuzzer outcome: ${{ steps.fuzz.outcome }}"
+            echo "libFuzzer outcome: $FUZZ_OUTCOME"
             echo "Executions: $execs ($exec_per_sec exec/s)"
             echo "Findings: $findings_count"
             echo
@@ -515,6 +570,8 @@ jobs:
           if-no-files-found: ignore
 
       - name: Fail on findings
+        env:
+          FUZZ_OUTCOME: ${{ steps.fuzz.outcome }}
         run: |
           crash_files=$(find "$FUZZ_FINDINGS" -type f \( \
             -name 'libfuzzer-crash-*' -o -name 'crash-*' -o \
@@ -522,7 +579,7 @@ jobs:
             -name 'libfuzzer-timeout-*' -o -name 'timeout-*' -o \
             -name 'libfuzzer-oom-*' -o -name 'oom-*' -o \
             -name '*.txt' \) ! -name 'observation-*' 2>/dev/null || true)
-          if [ "${{ steps.fuzz.outcome }}" != "success" ] || [ -n "$crash_files" ]; then
+          if [ "$FUZZ_OUTCOME" != "success" ] || [ -n "$crash_files" ]; then
             echo "::error::Fuzzing found issues for $FUZZ_TARGET; see the job summary and the deep-fuzz-$FUZZ_TARGET artifact."
             exit 1
           fi
@@ -530,6 +587,7 @@ jobs:
   # 4. Mutation testing across all of Protocol (runs on Linux)
   mutation:
     name: mutation (all Protocol)
+    needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -581,8 +639,8 @@ jobs:
           echo "Comparison.cs mutation score: $comp_score %"
           echo "Assessment.cs mutation score: $assess_score %"
 
-          awk -v s="$comp_score" 'BEGIN { if (s < 80) { print "::error::Comparison.cs score " s "% is below 80%"; exit 1 } }'
-          awk -v s="$assess_score" 'BEGIN { if (s < 80) { print "::error::Assessment.cs score " s "% is below 80%"; exit 1 } }'
+          awk -v s="$comp_score" -v f="$COMPONENT_MUTATION_FLOOR" 'BEGIN { if (s == "" || s + 0 < f + 0) { print "::error::Comparison.cs score " s "% is below " f "%"; exit 1 } }'
+          awk -v s="$assess_score" -v f="$COMPONENT_MUTATION_FLOOR" 'BEGIN { if (s == "" || s + 0 < f + 0) { print "::error::Assessment.cs score " s "% is below " f "%"; exit 1 } }'
 
       - name: Summarise
         if: always()
@@ -620,6 +678,7 @@ jobs:
   # 5. High-iteration property runs (runs on Linux)
   properties:
     name: properties (100k iterations)
+    needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -640,6 +699,8 @@ jobs:
 
       - name: Record properties metadata
         if: always()
+        env:
+          PROPERTIES_OUTCOME: ${{ steps.properties-run.outcome }}
         run: |
           mkdir -p metadata
           iterations=$(grep -oE 'Iterations per property: [0-9]+' temp/properties.log 2>/dev/null | awk '{print $NF}' || true)
@@ -654,7 +715,7 @@ jobs:
 
           cat <<EOF > metadata/properties-summary.json
           {
-            "status": "${{ steps.properties-run.outcome }}",
+            "status": "$PROPERTIES_OUTCOME",
             "iterations": $iterations,
             "propertiesChecked": $checked,
             "propertiesPassed": $passed,
@@ -675,7 +736,7 @@ jobs:
   deep:
     name: deep
     if: always()
-    needs: [platform, test, fuzz, mutation, properties]
+    needs: [validate, platform, test, fuzz, mutation, properties]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -703,10 +764,10 @@ jobs:
           GITHUB_REF: ${{ github.ref }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
-          FUZZ_BUDGET_SECONDS: ${{ inputs.fuzz_seconds || '1800' }}
-          FUZZ_TARGET: ${{ inputs.target || 'all' }}
-          STRICT: ${{ inputs.strict == true || inputs.caller == 'workflow_call' }}
-          MUTATION_THRESHOLD: ${{ env.MUTATION_THRESHOLD }}
+          # Empty if validate failed; DeepSummary then treats the run as strict and fails it.
+          FUZZ_BUDGET_SECONDS: ${{ needs.validate.outputs.fuzz_seconds }}
+          FUZZ_TARGET: ${{ needs.validate.outputs.target }}
+          STRICT: ${{ needs.validate.outputs.strict }}
           JOB_RESULTS_JSON: ${{ toJson(needs) }}
         run: dotnet run scripts/DeepSummary.cs -- artifacts-summary deep-summary.json
 

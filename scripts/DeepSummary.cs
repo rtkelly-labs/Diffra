@@ -39,14 +39,22 @@ if (!fuzzBudgetSeconds.HasValue)
     errors.Add("Missing or invalid FUZZ_BUDGET_SECONDS environment variable");
 }
 
+// Anything but an explicit "false" is strict, so a missing value (for example when the
+// validate job failed) can never relax the checks.
 var strictModeStr = Environment.GetEnvironmentVariable("STRICT");
-bool strictMode = string.Equals(strictModeStr, "true", StringComparison.OrdinalIgnoreCase);
-if (strictMode)
+bool strictMode = !string.Equals(strictModeStr, "false", StringComparison.Ordinal);
+
+// The strict fuzz floor is defined once, in deep.yml's workflow env.
+var strictFloorStr = Environment.GetEnvironmentVariable("STRICT_FUZZ_FLOOR_SECONDS");
+int? strictFuzzFloorSeconds = int.TryParse(strictFloorStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedFloor) ? parsedFloor : null;
+if (!strictFuzzFloorSeconds.HasValue)
 {
-    if (!fuzzBudgetSeconds.HasValue || fuzzBudgetSeconds.Value < 1800)
-    {
-        errors.Add(string.Create(CultureInfo.InvariantCulture, $"Strict mode requires full fuzz budget (at least 1800s, got {fuzzBudgetSeconds?.ToString(CultureInfo.InvariantCulture) ?? "null"})"));
-    }
+    errors.Add("Missing or invalid STRICT_FUZZ_FLOOR_SECONDS environment variable");
+}
+
+if (strictMode && strictFuzzFloorSeconds.HasValue && (!fuzzBudgetSeconds.HasValue || fuzzBudgetSeconds.Value < strictFuzzFloorSeconds.Value))
+{
+    errors.Add(string.Create(CultureInfo.InvariantCulture, $"Strict mode requires the full fuzz budget (at least {strictFuzzFloorSeconds.Value}s, got {fuzzBudgetSeconds?.ToString(CultureInfo.InvariantCulture) ?? "null"})"));
 }
 
 var mutationThresholdStr = Environment.GetEnvironmentVariable("MUTATION_THRESHOLD");
@@ -54,6 +62,20 @@ int? mutationThreshold = int.TryParse(mutationThresholdStr, NumberStyles.Integer
 if (!mutationThreshold.HasValue)
 {
     errors.Add("Missing or invalid MUTATION_THRESHOLD environment variable");
+}
+
+var componentFloorStr = Environment.GetEnvironmentVariable("COMPONENT_MUTATION_FLOOR");
+int? componentMutationFloor = int.TryParse(componentFloorStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedComponentFloor) ? parsedComponentFloor : null;
+if (!componentMutationFloor.HasValue)
+{
+    errors.Add("Missing or invalid COMPONENT_MUTATION_FLOOR environment variable");
+}
+
+var allFuzzTargetsStr = Environment.GetEnvironmentVariable("ALL_FUZZ_TARGETS");
+string[] allFuzzTargets = (allFuzzTargetsStr ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+if (allFuzzTargets.Length == 0)
+{
+    errors.Add("Missing or empty ALL_FUZZ_TARGETS environment variable");
 }
 
 // Per-job results from needs object (strict: failure to parse is an error)
@@ -74,7 +96,7 @@ else
             jobResults[job.Name] = result;
         }
 
-        string[] expectedJobs = ["platform", "test", "fuzz", "mutation", "properties"];
+        string[] expectedJobs = ["validate", "platform", "test", "fuzz", "mutation", "properties"];
         foreach (var ej in expectedJobs)
         {
             if (!jobResults.ContainsKey(ej))
@@ -359,7 +381,8 @@ foreach (var file in Directory.GetFiles(artifactsDir, "*.json", SearchOption.All
                     int fTotal = fKilled + fSurvived + fTimeout + fNoCoverage;
                     if (fTotal > 0)
                     {
-                        var fScore = Math.Round((double)(fKilled + fTimeout) / fTotal * 100.0, 2);
+                        // Unrounded, so the floor check matches the workflow's own gate exactly.
+                        var fScore = (double)(fKilled + fTimeout) / fTotal * 100.0;
                         if (path.EndsWith("Comparison.cs", StringComparison.OrdinalIgnoreCase))
                         {
                             comparisonScore = fScore;
@@ -426,8 +449,17 @@ else if (mutationThreshold.HasValue && mutationScore.Value < mutationThreshold.V
     errors.Add(string.Create(CultureInfo.InvariantCulture, $"mutationScore {mutationScore.Value:F2}% is below threshold {mutationThreshold.Value}%"));
 }
 
-if (!comparisonScore.HasValue) errors.Add("Missing comparisonScore from mutation-report");
-if (!assessmentScore.HasValue) errors.Add("Missing assessmentScore from mutation-report");
+foreach (var (component, score) in new[] { ("Comparison.cs", comparisonScore), ("Assessment.cs", assessmentScore) })
+{
+    if (!score.HasValue)
+    {
+        errors.Add($"Missing {component} mutation score from mutation-report");
+    }
+    else if (componentMutationFloor.HasValue && score.Value < componentMutationFloor.Value)
+    {
+        errors.Add(string.Create(CultureInfo.InvariantCulture, $"{component} mutation score {score.Value:F2}% is below the {componentMutationFloor.Value}% floor"));
+    }
+}
 
 // Validate property checks: propertiesFailed must be 0 and propertiesChecked > 0
 if (string.IsNullOrEmpty(propertiesStatus)) errors.Add("Missing propertiesStatus from properties-summary");
@@ -445,9 +477,13 @@ if (!propertiesFailed.HasValue || propertiesFailed.Value != 0)
     errors.Add(string.Create(CultureInfo.InvariantCulture, $"propertiesFailed must be 0 (got {propertiesFailed?.ToString(CultureInfo.InvariantCulture) ?? "null"})"));
 }
 
-// Validate fuzz targets: require all expected targets (strict mode requires all 8)
+// Validate fuzz targets: strict mode requires every target; otherwise the selected one.
 var expectedTarget = Environment.GetEnvironmentVariable("FUZZ_TARGET");
-string[] allFuzzTargets = ["canonical", "evidence", "document", "delivery-index", "payloads", "line-ranges", "bundle", "bundle-zip"];
+if (strictMode && expectedTarget != "all")
+{
+    errors.Add($"Strict mode requires all fuzz targets (got FUZZ_TARGET='{expectedTarget ?? "null"}')");
+}
+
 string[] requiredTargets = (strictMode || string.IsNullOrEmpty(expectedTarget) || expectedTarget == "all")
     ? allFuzzTargets
     : [expectedTarget];
@@ -463,24 +499,25 @@ foreach (var reqTarget in requiredTargets)
 var passed = errors.Count == 0;
 var summary = new JsonObject
 {
-    ["status"] = passed ? "pass" : "fail",
-    ["result"] = passed ? "success" : "failure",
     ["passed"] = passed,
+    ["strict"] = strictMode,
     ["schemaVersion"] = schemaVersion,
     ["commit"] = commitSha,
     ["ref"] = gitRef,
     ["runId"] = runId,
     ["runAttempt"] = runAttempt,
     ["fuzzBudgetSeconds"] = fuzzBudgetSeconds,
+    ["strictFuzzFloorSeconds"] = strictFuzzFloorSeconds,
     ["mutationThreshold"] = mutationThreshold,
+    ["componentMutationFloor"] = componentMutationFloor,
     ["testCount"] = testCount,
     ["testsPassed"] = testsPassed,
     ["testsFailed"] = testsFailed,
     ["unitTestsStatus"] = unitTestsStatus,
     ["toolSmokeStatus"] = toolSmokeStatus,
     ["mutationScore"] = mutationScore,
-    ["comparisonMutationScore"] = comparisonScore,
-    ["assessmentMutationScore"] = assessmentScore,
+    ["comparisonMutationScore"] = comparisonScore.HasValue ? Math.Round(comparisonScore.Value, 2) : null,
+    ["assessmentMutationScore"] = assessmentScore.HasValue ? Math.Round(assessmentScore.Value, 2) : null,
     ["fuzz"] = new JsonObject
     {
         ["totalExecutions"] = totalFuzzExecutions,
@@ -520,7 +557,7 @@ if (!string.IsNullOrEmpty(stepSummaryPath))
     using var writer = File.AppendText(stepSummaryPath);
     writer.WriteLine("## Deep Test Tier Summary");
     writer.WriteLine();
-    writer.WriteLine($"- **Status:** {(passed ? "PASS" : "FAIL")}");
+    writer.WriteLine($"- **Status:** {(passed ? "PASS" : "FAIL")} ({(strictMode ? "strict" : "non-strict")})");
     writer.WriteLine($"- **Schema Version:** {schemaVersion ?? "null"}");
     writer.WriteLine($"- **Commit:** {commitSha ?? "n/a"}");
     writer.WriteLine($"- **Test Count:** {testCount?.ToString(CultureInfo.InvariantCulture) ?? "null"} ({testsPassed?.ToString(CultureInfo.InvariantCulture) ?? "null"} passed, {testsFailed?.ToString(CultureInfo.InvariantCulture) ?? "null"} failed)");

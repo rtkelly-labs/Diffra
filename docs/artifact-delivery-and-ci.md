@@ -22,9 +22,9 @@ evidence.
 
 The [protocol manifest](../schemas/manifest-v1.schema.json) lists semantic
 artifacts and Evidence IDs. Each artifact has a stable ID, SHA-256 digest, media
-type, byte length, and safe relative path. Evidence, Delta, Assessment, and
-Baseline Reference documents retain their own identities. Materializing or rendering a
-report does not change those identities.
+type, byte length, and safe relative path. Evidence, Delta and Assessment
+documents retain their own identities. Materializing or rendering a report does
+not change those identities.
 
 Add a separate, versioned delivery index for transport. It maps each required
 document or artifact digest to a source such as a GitHub Release asset ID, or a
@@ -86,8 +86,7 @@ review-bundle/
   inventory.json
   documents/
     manifest.json
-    baseline-reference.json
-    baseline-evidence.json
+    comparison-evidence.json
     candidate-evidence.json
     delta.json
     assessment.json
@@ -126,7 +125,7 @@ Policy so the report loads its own files and makes no remote requests. Do not
 make remote binding an accidental consequence of `ASPNETCORE_URLS`; an explicit
 opt-in and warning are required for non-loopback access.
 
-The host does not calculate trust, download files, or mutate documents during a
+The host does not compare or evaluate records, download files, or mutate documents during a
 request. `present fetch` completes verification first. An offline test should
 open the site, inspect an image, and download a binary without network access.
 
@@ -171,9 +170,10 @@ package version. Global installation remains available for interactive use.
 ## CI and release flow
 
 An adopter's pull request workflow runs its native build and tests, produces
-Evidence and artifacts, compares with the record at the comparison point on the
-main branch, evaluates policy, and uploads a temporary review bundle. It uses
-read-only repository permissions and cannot write to the shared record store. Required
+Evidence and artifacts, compares with the record at its comparison point on the
+target branch, evaluates the rules, and uploads a temporary review bundle. It
+uses read-only repository permissions, so it cannot change the records stored
+for target-branch commits. Required
 native gates remain required. A neutral or incomplete Diffra result must not
 turn a failed native gate green.
 
@@ -229,7 +229,8 @@ inputs leak into the called workflow.
 
 ### How Diffra gates itself
 
-Diffra self-evaluates every pull request against trusted quality budgets to prevent
+Diffra self-evaluates every pull request against the quality budgets in
+`baselines/dogfood/rules.json`, read from the pull request's own checkout, to prevent
 unintended changes to metrics or policies.
 
 - **Pinned trusted judge:** Diffra never allows a candidate pull request to act as
@@ -245,8 +246,8 @@ unintended changes to metrics or policies.
   Only post-merge pushes to `main` have `contents: write` permissions to record new
   baselines for verified commits. Pull request jobs run with read-only access
   (`contents: read`), fetch the Evidence for their merge-base commit, synthesize a
-  verified Baseline Reference, and evaluate the Delta. If no baseline exists for the
-  merge-base (such as in new repositories or bootstrap runs), the gate reports the
+  Baseline reference that the script issues itself (nothing verifies it), and
+  evaluate the Delta. If no baseline exists for the merge-base (such as in new repositories or bootstrap runs), the gate reports the
   assessment outcome as `inconclusive` in the step summary without failing the build.
 
 ### Releasing Diffra

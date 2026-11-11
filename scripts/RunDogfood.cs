@@ -212,8 +212,8 @@ foreach (var sha in ancestorList)
 if (matchedCommit == null)
 {
     // Case (b): nothing in the history window has a record, so the change cannot be attributed
-    Console.WriteLine($"::warning::Cannot attribute: no record for the merge base or the {HistoryWindowCommits} first-parent commits in the history window.");
-    Console.WriteLine($"\n[INCONCLUSIVE] Case (b): Cannot attribute. No record for merge-base '{mergeBaseCommit}' or the {HistoryWindowCommits} commits in the history window on {baselinesBranch}.");
+    Console.WriteLine($"::warning::Cannot attribute: no record in the history window of {HistoryWindowCommits} first-parent commits ending at the merge base.");
+    Console.WriteLine($"\n[INCONCLUSIVE] Case (b): Cannot attribute. No record on {baselinesBranch} in the history window of {HistoryWindowCommits} first-parent commits ending at merge-base '{mergeBaseCommit}'.");
     Console.WriteLine("Reporting inconclusive assessment to GITHUB_STEP_SUMMARY. No comparison was made.");
 
     if (!string.IsNullOrEmpty(stepSummary) && File.Exists(stepSummary))
@@ -222,7 +222,7 @@ if (matchedCommit == null)
         inconclusiveReport.AppendLine("\n\n## 🐕 Diffra Self-Evaluation (Dogfood)\n");
         inconclusiveReport.AppendLine("### Assessment: `inconclusive`\n");
         inconclusiveReport.AppendLine("> [!WARNING]");
-        inconclusiveReport.Append("> Cannot attribute: no record for merge base `").Append(mergeBaseCommit).Append("` or the ").Append(HistoryWindowCommits).Append(" first-parent commits in the history window on `").Append(baselinesBranch).Append("`. No comparison was made.\n");
+        inconclusiveReport.Append("> Cannot attribute: no record on `").Append(baselinesBranch).Append("` in the history window of ").Append(HistoryWindowCommits).Append(" first-parent commits ending at merge base `").Append(mergeBaseCommit).Append("`. No comparison was made.\n");
         inconclusiveReport.Append("> Candidate Evidence was generated for commit `").Append(commit).Append("` using pinned judge `").Append(judgeVersion).Append("`.\n");
         inconclusiveReport.AppendLine("> Gate status: **Passed (inconclusive / cannot attribute)**.\n");
         File.AppendAllText(stepSummary, inconclusiveReport.ToString());

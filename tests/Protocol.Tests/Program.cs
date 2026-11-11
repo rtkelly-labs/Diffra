@@ -41,6 +41,7 @@ CoverageTests.RunAll();
 TimeSeriesGraphTests.RunAll();
 CloudEventsTests.RunAll();
 GraphTests.RunAll();
+PackageReferenceTests.RunAll();
 ExternalCommandAdapterTests.RunAll();
 BaselineTrustTests.RunAll();
 DogfoodPipelineTests.RunAll();

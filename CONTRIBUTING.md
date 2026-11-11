@@ -24,7 +24,9 @@ dotnet run scripts/RunDogfood.cs
 
 Keep the core independent of adopter-specific concepts and external runtime frameworks. Use the
 existing BCL-first approach for the foundation; propose dependencies where they solve a specific,
-documented need.
+documented need. Package references are limited and each one is reviewed: a new package or
+framework reference goes into `.config/package-references.json` with its reason, in the same
+pull request, or the protocol tests fail.
 
 ---
 

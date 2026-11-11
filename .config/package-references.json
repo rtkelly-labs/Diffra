@@ -1,0 +1,41 @@
+{
+  "about": "Every package and framework reference in this repository, each one reviewed. A reference that is not listed here fails the protocol tests, and so does an entry here that no project uses. Add an entry, with the reason, in the same pull request that adds the reference. See docs/adr/0009-dependencies-and-extensions.md.",
+  "references": [
+    {
+      "project": "src/Cli/Diffra.Cli.csproj",
+      "kind": "FrameworkReference",
+      "name": "Microsoft.AspNetCore.App",
+      "reason": "The web server behind `present`. The plan moves it out of the CI build into a local build."
+    },
+    {
+      "project": "tests/Protocol.Fuzz/Protocol.Fuzz.csproj",
+      "kind": "PackageReference",
+      "name": "SharpFuzz",
+      "reason": "Fuzzing harness for the canonical encoder and parsers. Test-only."
+    },
+    {
+      "project": "tests/Protocol.Properties/Protocol.Properties.csproj",
+      "kind": "PackageReference",
+      "name": "CsCheck",
+      "reason": "Property-based tests. Test-only."
+    },
+    {
+      "project": "tests/Protocol.Tests.Stryker/Protocol.Tests.Stryker.csproj",
+      "kind": "PackageReference",
+      "name": "Microsoft.NET.Test.Sdk",
+      "reason": "Test host that mutation testing needs. Test-only."
+    },
+    {
+      "project": "tests/Protocol.Tests.Stryker/Protocol.Tests.Stryker.csproj",
+      "kind": "PackageReference",
+      "name": "xunit",
+      "reason": "Test framework that mutation testing needs. Test-only."
+    },
+    {
+      "project": "tests/Protocol.Tests.Stryker/Protocol.Tests.Stryker.csproj",
+      "kind": "PackageReference",
+      "name": "xunit.runner.visualstudio",
+      "reason": "Test adapter that mutation testing needs. Test-only."
+    }
+  ]
+}

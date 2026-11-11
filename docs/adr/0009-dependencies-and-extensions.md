@@ -34,6 +34,9 @@ code-first builder and a graph executor, which the root project file replaces.
 ## Current code
 
 No project under `src/` has a package reference; the CLI has one framework reference, to
-ASP.NET Core, for `present`. The graph data model and validator live in
+ASP.NET Core, for `present`. Every package and framework reference in the repository, including
+those in test projects and script directives, is listed with a reason in
+`.config/package-references.json`. The protocol tests fail on a reference that is not listed
+and on a listed entry that no project uses, so adding a reference means editing that list. The graph data model and validator live in
 `src/Graph/`, outside the protocol library, and nothing outside the tests calls them yet. They
 still describe the earlier composition graph and have not been reworked for the CI job graph.

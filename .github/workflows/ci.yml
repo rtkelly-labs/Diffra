@@ -397,7 +397,8 @@ jobs:
   # that start after it are shown as not finished.
   ci-timing:
     name: ci-timing
-    if: always()
+    # Not on a cancelled run, which nobody needs timed; still on a failed or skipped job.
+    if: ${{ !cancelled() }}
     needs: [lint, compile, schema-fixtures, jcs-differential, properties, regression-corpus, dogfood, compile-harnesses, build]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -421,8 +422,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >-
           dotnet run scripts/CiTiming.cs --
-          --repo "${{ github.repository }}" --run "${{ github.run_id }}" --attempt "${{ github.run_attempt }}"
-          --exclude-job ci-timing --summary "$GITHUB_STEP_SUMMARY"
+          --repo "$GITHUB_REPOSITORY" --run "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT"
+          --exclude-job ci-timing --workflow-file .github/workflows/ci.yml --summary "$GITHUB_STEP_SUMMARY"
 
   record-baseline-collect:
     name: record-baseline-collect

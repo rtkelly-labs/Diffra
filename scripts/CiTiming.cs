@@ -13,16 +13,20 @@
 //
 // Usage:
 //   dotnet run scripts/CiTiming.cs -- --repo <owner/name> --run <id> [--attempt <n>]
-//     [--exclude-job <name>] [--summary <file>] [--payload <file>] [--save <dir>] [--watch <seconds>]
+//     [--exclude-job <name>] [--workflow-file <path>] [--summary <file>] [--payload <file>] [--save <dir>]
+//     [--watch <seconds>]
 //   dotnet run scripts/CiTiming.cs -- --input <dir> [--summary <file>] [--payload <file>]
 //
 // --input reads run.json, jobs.json and workflow.yml from a directory, as written by --save, so a
 // run can be rendered offline. --watch re-reads the run at the given interval and prints a short
-// table until the run completes. GitHub is read through the gh CLI, which uses GH_TOKEN in CI.
+// table until the run completes. --workflow-file reads the job graph from a local file, which in CI
+// is the checkout of the workflow that ran; otherwise it is read at the run's commit. GitHub is read
+// through the gh CLI, which uses GH_TOKEN in CI.
 
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using YamlDotNet.RepresentationModel;
@@ -30,24 +34,24 @@ using YamlDotNet.RepresentationModel;
 var options = ParseArguments(args);
 if (options is null)
 {
-    Console.Error.WriteLine("Usage: CiTiming.cs --repo <owner/name> --run <id> [--attempt <n>] [--exclude-job <name>] [--summary <file>] [--payload <file>] [--save <dir>] [--watch <seconds>] | --input <dir>");
+    Console.Error.WriteLine("Usage: CiTiming.cs --repo <owner/name> --run <id> [--attempt <n>] [--exclude-job <name>] [--workflow-file <path>] [--summary <file>] [--payload <file>] [--save <dir>] [--watch <seconds>] | --input <dir>");
     return 2;
 }
 
 while (true)
 {
-    RunSnapshot snapshot;
+    Report report;
     try
     {
-        snapshot = options.Input is { } input ? ReadSaved(input) : Fetch(options);
+        var snapshot = options.Input is { } input ? ReadSaved(input) : Fetch(options);
+        report = Analyse(snapshot, options.ExcludeJob);
     }
-    catch (Exception e) when (e is InvalidOperationException or JsonException or IOException)
+    catch (Exception e) when (e is not OutOfMemoryException)
     {
         Console.Error.WriteLine($"CI timing could not read the run: {e.Message}");
         return 1;
     }
 
-    var report = Analyse(snapshot, options.ExcludeJob);
     if (options.Watch is { } interval)
     {
         Console.WriteLine(RenderConsole(report));
@@ -93,18 +97,30 @@ static Options? ParseArguments(string[] args)
         values[args[i][2..]] = args[++i];
     }
 
-    int? watch = values.TryGetValue("watch", out var w) && int.TryParse(w, CultureInfo.InvariantCulture, out var seconds) && seconds > 0 ? seconds : null;
-    if (values.TryGetValue("input", out var inputDir))
+    int? watch = null;
+    if (values.TryGetValue("watch", out var w))
     {
-        return new Options(null, null, null, values.GetValueOrDefault("exclude-job"), values.GetValueOrDefault("summary"), values.GetValueOrDefault("payload"), null, null, inputDir);
+        if (!int.TryParse(w, CultureInfo.InvariantCulture, out var seconds) || seconds <= 0)
+        {
+            return null;
+        }
+
+        watch = seconds;
     }
 
-    if (!values.TryGetValue("repo", out var repo) || !values.TryGetValue("run", out var run) || !long.TryParse(run, CultureInfo.InvariantCulture, out _))
+    var workflowFile = values.GetValueOrDefault("workflow-file");
+    if (values.TryGetValue("input", out var inputDir))
+    {
+        return new Options(null, null, null, values.GetValueOrDefault("exclude-job"), workflowFile, values.GetValueOrDefault("summary"), values.GetValueOrDefault("payload"), null, null, inputDir);
+    }
+
+    if (!values.TryGetValue("repo", out var repo) || !values.TryGetValue("run", out var run) || !long.TryParse(run, CultureInfo.InvariantCulture, out _)
+        || (values.TryGetValue("attempt", out var attempt) && !int.TryParse(attempt, CultureInfo.InvariantCulture, out _)))
     {
         return null;
     }
 
-    return new Options(repo, run, values.GetValueOrDefault("attempt"), values.GetValueOrDefault("exclude-job"), values.GetValueOrDefault("summary"), values.GetValueOrDefault("payload"), values.GetValueOrDefault("save"), watch, null);
+    return new Options(repo, run, values.GetValueOrDefault("attempt"), values.GetValueOrDefault("exclude-job"), workflowFile, values.GetValueOrDefault("summary"), values.GetValueOrDefault("payload"), values.GetValueOrDefault("save"), watch, null);
 }
 
 static RunSnapshot Fetch(Options options)
@@ -120,10 +136,11 @@ static RunSnapshot Fetch(Options options)
     string workflow;
     try
     {
-        workflow = Gh("api", "-H", "Accept: application/vnd.github.raw", $"repos/{options.Repo}/contents/{run["path"]!.GetValue<string>()}?ref={run["head_sha"]!.GetValue<string>()}");
+        workflow = options.WorkflowFile is { } local ? File.ReadAllText(local) : Gh("api", "-H", "Accept: application/vnd.github.raw", $"repos/{options.Repo}/contents/{run["path"]!.GetValue<string>()}?ref={run["head_sha"]!.GetValue<string>()}");
     }
-    catch (InvalidOperationException)
+    catch (Exception e) when (e is InvalidOperationException or IOException)
     {
+        Console.Error.WriteLine($"CI timing could not read the workflow file: {e.Message}");
         workflow = string.Empty;
     }
 
@@ -224,56 +241,73 @@ static List<WorkflowJob> ReadWorkflowJobs(string workflow)
 static Report Analyse(RunSnapshot snapshot, string? excludeJob)
 {
     var run = snapshot.Run;
-    var runCreated = Time(run["created_at"]?.GetValue<string>())!.Value;
+    // A re-run keeps the run's creation time, so the latest attempt is measured from its own start.
+    var runCreated = Time(run["run_started_at"]?.GetValue<string>()) ?? Time(run["created_at"]?.GetValue<string>())!.Value;
     var runComplete = run["status"]?.GetValue<string>() == "completed";
+    var runAttempt = run["run_attempt"]?.GetValue<int>() ?? 1;
     var workflowJobs = ReadWorkflowJobs(snapshot.Workflow);
     var nodes = workflowJobs.Select(j => new Node(j.Key, j.Name, j.Needs.Where(need => workflowJobs.Any(w => w.Key == need)).ToList())).ToList();
 
-    // Match each job the API reports to a workflow job: by its exact name, or by the name a matrix
-    // leg (" (...)") or a called workflow (" / ...") adds to it. Names built from expressions match
-    // on their literal start. A job that matches nothing is shown on its own.
+    // Match each job the API reports to a workflow job, most specific first: its exact name or key,
+    // then the name a matrix leg (" (...)") or a called workflow (" / ...") adds to it, then a name
+    // built from expressions, read as a pattern with each expression matching anything. A job that
+    // matches nothing is shown on its own.
     foreach (var element in snapshot.Jobs)
     {
         var job = element!;
+        var created = Time(job["created_at"]?.GetValue<string>());
+        // A job that a partial re-run did not repeat is reported again with its earlier attempt
+        // number and times. It is shown but not measured.
+        var carried = (job["run_attempt"]?.GetValue<int>() ?? runAttempt) < runAttempt;
         var instance = new JobInstance(
-            job["name"]!.GetValue<string>(),
+            job["name"]?.GetValue<string>() ?? "(unnamed job)",
             job["status"]!.GetValue<string>(),
             job["conclusion"]?.GetValue<string>(),
-            Time(job["created_at"]?.GetValue<string>()),
+            created,
             Time(job["started_at"]?.GetValue<string>()),
             Time(job["completed_at"]?.GetValue<string>()),
-            job["steps"] is JsonArray steps && steps.Count > 0 && steps.All(s => s!["status"]?.GetValue<string>() == "completed"));
-        var node = nodes.FirstOrDefault(n => Matches(n.Name, instance.Name)) ?? nodes.FirstOrDefault(n => Matches(n.Key, instance.Name));
+            job["steps"] is JsonArray steps && steps.Count > 0 && steps.All(s => s!["status"]?.GetValue<string>() == "completed"),
+            !string.IsNullOrEmpty(job["runner_name"]?.GetValue<string>()),
+            carried);
+        var node = Match(nodes, instance.Name);
         if (node is null)
         {
-            node = new Node(instance.Name, instance.Name, []);
-            nodes.Add(node);
+            node = nodes.FirstOrDefault(n => n.Key == instance.Name);
+            if (node is null)
+            {
+                node = new Node(instance.Name, instance.Name, []);
+                nodes.Add(node);
+            }
         }
 
         node.Instances.Add(instance);
     }
 
     var asOf = runComplete
-        ? nodes.SelectMany(n => n.Instances).Select(i => i.Completed).Where(t => t is not null).DefaultIfEmpty(snapshot.ReadAt).Max()!.Value
+        ? nodes.SelectMany(n => n.Instances).Where(i => !i.Carried).Select(i => i.Completed).Where(t => t is not null).DefaultIfEmpty(snapshot.ReadAt).Max()!.Value
         : snapshot.ReadAt;
     foreach (var node in nodes)
     {
         node.Excluded = excludeJob is not null && (node.Key == excludeJob || node.Name == excludeJob);
+        node.DidNotRun = runComplete && node.Instances.Count == 0;
     }
 
+    // Once the run is complete, a declared job with no reported job did not run, so it does not keep
+    // the figures open.
     var measured = nodes.Where(n => !n.Excluded).ToList();
-    var lastFinish = measured.SelectMany(n => n.Instances).Select(i => i.Completed).Where(t => t is not null).Max();
-    var allFinished = measured.All(n => n.Instances.Count > 0 && n.Instances.All(i => i.Status == "completed"));
-    var wait = (allFinished && lastFinish is not null ? lastFinish.Value : asOf) - runCreated;
-    var firstJobCreated = nodes.SelectMany(n => n.Instances).Select(i => i.Created).Where(t => t is not null).Min();
-    var dispatch = firstJobCreated is null ? asOf - runCreated : firstJobCreated.Value - runCreated;
-    var queue = measured.SelectMany(n => n.Instances).Sum(i => i.Queue(asOf).TotalSeconds);
+    var current = measured.SelectMany(n => n.Instances).Where(i => !i.Carried).ToList();
+    var lastFinish = current.Select(i => i.Completed).Where(t => t is not null).Max();
+    var allFinished = measured.All(n => n.DidNotRun || (n.Instances.Count > 0 && n.Instances.All(i => i.Status == "completed")));
+    var wait = Positive((allFinished && lastFinish is not null ? lastFinish.Value : asOf) - runCreated);
+    var firstJobCreated = current.Select(i => i.Created).Where(t => t is not null).Min();
+    var dispatch = Positive(firstJobCreated is null ? asOf - runCreated : firstJobCreated.Value - runCreated);
+    var queue = current.Sum(i => i.Queue(asOf).TotalSeconds);
     var path = LongestPath(measured, asOf);
 
     return new Report(
         run["name"]?.GetValue<string>() ?? "workflow",
-        run["run_attempt"]?.GetValue<int>() ?? 1,
-        runComplete && allFinished,
+        runAttempt,
+        runComplete || allFinished,
         allFinished,
         asOf,
         wait,
@@ -284,21 +318,44 @@ static Report Analyse(RunSnapshot snapshot, string? excludeJob)
         workflowJobs.Count > 0);
 }
 
-static bool Matches(string declared, string reported)
+static Node? Match(List<Node> nodes, string reported)
 {
-    var literal = declared.Contains("${{", StringComparison.Ordinal) ? declared[..declared.IndexOf("${{", StringComparison.Ordinal)] : declared;
-    if (literal.Length == 0)
-    {
-        return false;
-    }
+    static bool Suffixed(string declared, string reported) =>
+        reported.StartsWith(declared + " (", StringComparison.Ordinal) || reported.StartsWith(declared + " / ", StringComparison.Ordinal);
 
-    return declared == literal
-        ? reported == declared || reported.StartsWith(declared + " (", StringComparison.Ordinal) || reported.StartsWith(declared + " / ", StringComparison.Ordinal)
-        : reported.StartsWith(literal, StringComparison.Ordinal);
+    return nodes.FirstOrDefault(n => n.Name == reported)
+        ?? nodes.FirstOrDefault(n => n.Key == reported && !n.Name.Contains("${{", StringComparison.Ordinal))
+        ?? nodes.FirstOrDefault(n => !n.Name.Contains("${{", StringComparison.Ordinal) && Suffixed(n.Name, reported))
+        ?? nodes.Where(n => n.Name.Contains("${{", StringComparison.Ordinal) && NamePattern(n.Name).IsMatch(reported))
+            .OrderByDescending(n => Regex.Replace(n.Name, @"\$\{\{.*?\}\}", string.Empty).Length)
+            .FirstOrDefault();
 }
 
-// The longest chain of execution time through the job graph. A job's weight is the span from its
-// first leg starting to its last leg finishing, so a matrix counts once. A job still running counts
+static Regex NamePattern(string declared)
+{
+    var pattern = new StringBuilder("^");
+    var rest = declared;
+    while (rest.IndexOf("${{", StringComparison.Ordinal) is var open and >= 0)
+    {
+        var close = rest.IndexOf("}}", open, StringComparison.Ordinal);
+        if (close < 0)
+        {
+            break;
+        }
+
+        pattern.Append(Regex.Escape(rest[..open])).Append(".*");
+        rest = rest[(close + 2)..];
+    }
+
+    // A matrix leg or called workflow can add to an expression name too.
+    pattern.Append(Regex.Escape(rest)).Append(@"(?:\s\(.*\)|\s/\s.*)?$");
+    return new Regex(pattern.ToString(), RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+}
+
+static TimeSpan Positive(TimeSpan span) => span < TimeSpan.Zero ? TimeSpan.Zero : span;
+
+// The longest chain of execution time through the job graph. A job's weight is the time at least
+// one of its legs was running, so a matrix counts once and a leg waiting for a runner adds nothing. A job still running counts
 // up to the moment of reading. A cycle, which GitHub would reject, leaves no path.
 static PathResult LongestPath(List<Node> nodes, DateTimeOffset asOf)
 {
@@ -332,7 +389,7 @@ static PathResult LongestPath(List<Node> nodes, DateTimeOffset asOf)
                 return null;
             }
 
-            if (parentResult.Value.Total > result.Total || (parentResult.Value.Total == result.Total && result.Previous is null))
+            if (parentResult.Value.Total > result.Total)
             {
                 result = (parentResult.Value.Total, need);
             }
@@ -357,7 +414,7 @@ static PathResult LongestPath(List<Node> nodes, DateTimeOffset asOf)
         return new PathResult(TimeSpan.Zero, []);
     }
 
-    var end = best.OrderByDescending(p => p.Value.Total).ThenBy(p => nodes.FindIndex(n => n.Key == p.Key)).First();
+    var end = best.OrderByDescending(p => p.Value.Total).ThenByDescending(p => byKey[p.Key].Execution(asOf) > TimeSpan.Zero).ThenBy(p => nodes.FindIndex(n => n.Key == p.Key)).First();
     var chain = new List<string>();
     for (string? key = end.Key; key is not null; key = best[key].Previous)
     {
@@ -372,7 +429,7 @@ static string RenderMarkdown(Report report)
 {
     var b = new StringBuilder();
     b.Append("## CI timing\n\n");
-    b.Append(report.Complete
+    b.Append(report.JobsFinished
         ? $"Run `{Escape(report.Name)}`, attempt {report.Attempt}. Every job has finished.\n\n"
         : $"Run `{Escape(report.Name)}`, attempt {report.Attempt}, read at {report.AsOf:HH:mm:ss} UTC while it was still going. Figures run up to that moment, and a job still running is counted so far.\n\n");
     if (report.Attempt > 1)
@@ -382,8 +439,9 @@ static string RenderMarkdown(Report report)
 
     b.Append("| Figure | Time | Rule |\n| --- | --- | --- |\n");
     b.Append(CultureInfo.InvariantCulture, $"| Wait (run created to last job finished{(report.JobsFinished ? string.Empty : ", so far")}) | {Duration(report.Wait)} | none |\n");
-    b.Append(CultureInfo.InvariantCulture, $"| Queue (sum of job waits for a runner) | {Duration(report.Queue)} | none on pull requests |\n");
-    b.Append(CultureInfo.InvariantCulture, $"| Execution, longest path | {Duration(report.Path.Total)} | may be judged |\n");
+    var soFar = report.JobsFinished ? string.Empty : ", so far";
+    b.Append(CultureInfo.InvariantCulture, $"| Queue (sum of job waits for a runner{soFar}) | {Duration(report.Queue)} | none on pull requests |\n");
+    b.Append(CultureInfo.InvariantCulture, $"| Execution, longest path{soFar} | {Duration(report.Path.Total)} | may be judged |\n");
     b.Append(CultureInfo.InvariantCulture, $"| Dispatch (run created to first job) | {Duration(report.Dispatch)} | none |\n\n");
     if (report.Path.Jobs.Count > 0)
     {
@@ -399,8 +457,9 @@ static string RenderMarkdown(Report report)
     var ids = report.Nodes.Select((n, i) => (n, Id: $"j{i}")).ToDictionary(p => p.n.Key, p => p.Id, StringComparer.Ordinal);
     foreach (var node in report.Nodes)
     {
-        var label = node.State == "skipped" ? $"{node.Name}<br/>skipped" : node.Instances.Count == 0
-            ? $"{node.Name}<br/>not started"
+        var label = node.DidNotRun ? $"{node.Name}<br/>did not run"
+            : node.State == "skipped" ? $"{node.Name}<br/>skipped"
+            : node.Instances.Count == 0 ? $"{node.Name}<br/>not started"
             : $"{node.Name}<br/>{Duration(node.Execution(report.AsOf))}";
         b.Append("  ").Append(ids[node.Key]).Append("[\"").Append(MermaidText(label)).Append("\"]:::").Append(node.State).Append('\n');
     }
@@ -431,13 +490,13 @@ static string RenderMarkdown(Report report)
                 state += " (every step has finished)";
             }
 
-            var note = node.Excluded ? " (this job; not measured)" : string.Empty;
+            var note = node.Excluded ? " (this job; not measured)" : instance.Carried ? " (earlier attempt; not measured)" : string.Empty;
             b.Append(CultureInfo.InvariantCulture, $"| `{Escape(instance.Name)}`{note} | {state} | {Duration(instance.Queue(report.AsOf))} | {Duration(instance.Execution(report.AsOf))} |\n");
         }
 
         if (node.Instances.Count == 0)
         {
-            b.Append(CultureInfo.InvariantCulture, $"| `{Escape(node.Name)}` | not started | | |\n");
+            b.Append(CultureInfo.InvariantCulture, $"| `{Escape(node.Name)}` | {(node.DidNotRun ? "did not run" : "not started")} | | |\n");
         }
     }
 
@@ -451,7 +510,7 @@ static string RenderConsole(Report report)
     b.Append(CultureInfo.InvariantCulture, $"[{report.AsOf:HH:mm:ss}] {report.Name} attempt {report.Attempt}: wait {Duration(report.Wait)}, queue {Duration(report.Queue)}, longest path {Duration(report.Path.Total)}, dispatch {Duration(report.Dispatch)}{(report.Complete ? ", complete" : string.Empty)}\n");
     foreach (var node in report.Nodes)
     {
-        var state = node.Instances.Count == 0 ? "not started" : node.State;
+        var state = node.DidNotRun ? "did not run" : node.Instances.Count == 0 ? "not started" : node.State;
         var flag = node.Instances.Any(i => i.Status == "in_progress" && i.StepsDone) ? "  every step finished but the job is still in progress" : string.Empty;
         b.Append(CultureInfo.InvariantCulture, $"  {node.Name,-28} {state,-10} queue {Duration(node.Instances.Select(i => i.Queue(report.AsOf)).DefaultIfEmpty().Max()),8}  execution {Duration(node.Execution(report.AsOf)),8}{flag}\n");
     }
@@ -468,7 +527,7 @@ static JsonObject RenderPayload(Report report)
     {
         jobs[node.Key] = new JsonObject
         {
-            ["queueSeconds"] = (long)node.Instances.Sum(i => i.Queue(report.AsOf).TotalSeconds),
+            ["queueSeconds"] = (long)node.Instances.Where(i => !i.Carried).Sum(i => i.Queue(report.AsOf).TotalSeconds),
             ["executionSeconds"] = (long)node.Execution(report.AsOf).TotalSeconds,
         };
     }
@@ -509,24 +568,51 @@ static string Duration(TimeSpan span)
         : $"{seconds}s";
 }
 
-static string Escape(string text) => text.Replace('`', '\'').Replace("|", "\\|", StringComparison.Ordinal).Replace('\n', ' ');
+static string Escape(string text) =>
+    text.Replace('`', '\'').Replace("|", "\\|", StringComparison.Ordinal).Replace('\r', ' ').Replace('\n', ' ');
 
-static string MermaidText(string text) => text.Replace("\"", "#quot;", StringComparison.Ordinal);
+static string MermaidText(string text) =>
+    text.Replace("\"", "#quot;", StringComparison.Ordinal).Replace('`', '\'').Replace('\r', ' ').Replace('\n', ' ');
 
-sealed record Options(string? Repo, string? Run, string? Attempt, string? ExcludeJob, string? Summary, string? Payload, string? Save, int? Watch, string? Input);
+sealed record Options(string? Repo, string? Run, string? Attempt, string? ExcludeJob, string? WorkflowFile, string? Summary, string? Payload, string? Save, int? Watch, string? Input);
 
 sealed record RunSnapshot(JsonNode Run, JsonArray Jobs, string Workflow, DateTimeOffset ReadAt);
 
 sealed record WorkflowJob(string Key, string Name, List<string> Needs);
 
-sealed record JobInstance(string Name, string Status, string? Conclusion, DateTimeOffset? Created, DateTimeOffset? Started, DateTimeOffset? Completed, bool StepsDone)
+sealed record JobInstance(
+    string Name, string Status, string? Conclusion, DateTimeOffset? Created, DateTimeOffset? Started,
+    DateTimeOffset? Completed, bool StepsDone, bool HadRunner, bool Carried)
 {
-    // GitHub reports a skipped job with equal start and finish times; it never waited or ran.
-    public TimeSpan Queue(DateTimeOffset asOf) =>
-        Conclusion == "skipped" || Created is null ? TimeSpan.Zero : (Started ?? asOf) - Created.Value;
+    // GitHub gives a start time to a job that is still queued, and to one cancelled before a runner
+    // took it, so a job counts as running only once a runner has it. Spans never go below zero:
+    // GitHub can report a finish a moment before the start.
+    public bool Ran => !Carried && Conclusion != "skipped" && Started is not null
+        && (Status == "in_progress" || (Status == "completed" && HadRunner));
 
-    public TimeSpan Execution(DateTimeOffset asOf) =>
-        Started is null || Conclusion == "skipped" ? TimeSpan.Zero : (Completed ?? asOf) - Started.Value;
+    public TimeSpan Queue(DateTimeOffset asOf)
+    {
+        if (Carried || Conclusion == "skipped" || Created is null)
+        {
+            return TimeSpan.Zero;
+        }
+
+        var end = Ran ? Started!.Value : Completed ?? asOf;
+        return end < Created.Value ? TimeSpan.Zero : end - Created.Value;
+    }
+
+    public (DateTimeOffset Start, DateTimeOffset End)? Running(DateTimeOffset asOf)
+    {
+        if (!Ran)
+        {
+            return null;
+        }
+
+        var end = Completed ?? asOf;
+        return (Started!.Value, end < Started.Value ? Started.Value : end);
+    }
+
+    public TimeSpan Execution(DateTimeOffset asOf) => Running(asOf) is { } span ? span.End - span.Start : TimeSpan.Zero;
 }
 
 sealed class Node(string key, string name, List<string> needs)
@@ -536,25 +622,32 @@ sealed class Node(string key, string name, List<string> needs)
     public List<string> Needs { get; } = needs;
     public List<JobInstance> Instances { get; } = [];
     public bool Excluded { get; set; }
+    public bool DidNotRun { get; set; }
 
+    // The union of the legs' running time.
     public TimeSpan Execution(DateTimeOffset asOf)
     {
-        var started = Instances.Where(i => i.Started is not null && i.Conclusion != "skipped").ToList();
-        if (started.Count == 0)
+        var total = TimeSpan.Zero;
+        DateTimeOffset? reached = null;
+        foreach (var (start, end) in Instances.Select(i => i.Running(asOf)).OfType<(DateTimeOffset Start, DateTimeOffset End)>().OrderBy(s => s.Start))
         {
-            return TimeSpan.Zero;
+            var from = reached is { } r && r > start ? r : start;
+            if (end > from)
+            {
+                total += end - from;
+                reached = end;
+            }
         }
 
-        var end = started.Select(i => i.Completed ?? asOf).Max();
-        return end - started.Min(i => i.Started!.Value);
+        return total;
     }
 
     public string State =>
-        Instances.Count == 0 ? "waiting"
-        : Instances.Any(i => i.Conclusion is "failure" or "cancelled" or "timed_out" or "startup_failure") ? "failure"
+        Instances.Count == 0 ? DidNotRun ? "skipped" : "waiting"
+        : Instances.Where(i => !i.Carried).Any(i => i.Conclusion is "failure" or "cancelled" or "timed_out" or "startup_failure") ? "failure"
         : Instances.Any(i => i.Status == "in_progress") ? "running"
         : Instances.Any(i => i.Status != "completed") ? "waiting"
-        : Instances.All(i => i.Conclusion == "skipped") ? "skipped"
+        : Instances.All(i => i.Conclusion == "skipped" || i.Carried) ? "skipped"
         : "success";
 }
 

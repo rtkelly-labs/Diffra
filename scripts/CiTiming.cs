@@ -55,21 +55,20 @@ while (true)
     if (options.Watch is { } interval)
     {
         Console.WriteLine(RenderConsole(report));
-        if (report.Complete)
+        if (!report.Complete)
         {
-            break;
+            Thread.Sleep(TimeSpan.FromSeconds(interval));
+            continue;
         }
-
-        Thread.Sleep(TimeSpan.FromSeconds(interval));
-        continue;
     }
 
+    // A watch has already printed its table, so the Markdown goes only to a requested summary file.
     var markdown = RenderMarkdown(report);
     if (options.Summary is { } summary)
     {
         File.AppendAllText(summary, markdown);
     }
-    else
+    else if (options.Watch is null)
     {
         Console.Write(markdown);
     }

@@ -51,7 +51,9 @@ Each step is a set of small pull requests, each with tests. Smaller changes go f
 
 - Delete the graph executor and builder. Move the graph data model and validator out of the
   protocol library, for reuse in recording the CI job graph.
-- Remove the 20-commit fallback from the self-evaluation baseline search.
+- In the self-evaluation baseline search, state the distance and the commits in between when it
+  falls back to an earlier commit, and say "cannot attribute" when nothing in the window has a
+  record.
 - State and check the package-reference rule.
 
 ### 2. Settings and output
@@ -74,8 +76,9 @@ Each step is a set of small pull requests, each with tests. Smaller changes go f
 
 ### 4. Comparison and history
 
-- Compare with the record at the pull request's merge base on the target branch. Say "cannot
-  attribute" when there is none.
+- Compare with the record at the target branch tip when CI tests the merged result, otherwise at
+  the merge base. Fall back to the nearest recorded ancestor inside the history window and state
+  the distance. Say "cannot attribute" when nothing in the window has a record.
 - The history window as a setting, read and written through a pluggable storage strategy, with
   CI artifacts first. Records carry a format version; unreadable ones are skipped and counted.
 - Noise: fixed thresholds for deterministic measures; the history window for noisy ones.

@@ -253,9 +253,8 @@ take the same path, on the exact commit being released (`github.sha`: the tagged
 or the head of the dispatched ref):
 
 1. `preflight` resolves the version from `Directory.Build.props`. On a tag push it fails
-   unless the tag is `v<version>`, `tests/regression/<version>/manifest.json` exists with
-   at least one case, and `CHANGELOG.md` has a `## <version> ` section. A dry run only
-   warns when the corpus or the release notes are missing.
+   unless the tag is `v<version>` and `CHANGELOG.md` has a `## <version> ` section. A dry
+   run only warns when the release notes are missing.
 2. `deep` and `regression` call `deep.yml` and `regression.yml` as reusable workflows
    with `contents: read`. A called deep run is always strict, so a release cannot shorten
    the fuzz budget, skip a fuzz target or lower a mutation floor.
@@ -268,15 +267,23 @@ or the head of the dispatched ref):
 If either tier fails or is skipped, no GitHub Release is created. A dry run that is green
 and has no `preflight` warnings therefore means the commit is ready to release.
 
-A release PR bumps `<Version>`, adds the `CHANGELOG.md` section, and adds the frozen
-regression corpus `tests/regression/<version>/`. `generate` needs a packaged build of that
-version, which exists before the tag only as a dry-run artifact:
+A release PR bumps `<Version>` and adds the `CHANGELOG.md` section. Once it merges, tag
+the merge commit `v<version>`. The release is gated by the frozen corpora of earlier
+releases, which the regression tier replays against the candidate build.
 
-1. Dispatch `release.yml` on the release PR branch. `preflight` warns that the corpus is
-   missing.
-2. Download the `diffra-release-<version>` artifact from that run into `temp/release/`,
-   for example with `gh run download <run-id> -n diffra-release-<version> -D temp/release`.
-   Install the tool from that package only. Use a NuGet config whose sources are just that
+The release's own corpus, `tests/regression/<version>/`, is added afterwards by a separate
+PR, generated from the package the GitHub Release published. That way the provenance in
+the corpus (the package's SHA-256) is the digest of the published binary, not of a rebuild:
+
+1. Download the published package and its checksums into `temp/release/`, and check the
+   package against them:
+
+   ```sh
+   gh release download v<version> -D temp/release -p 'Diffra.Cli.*.nupkg' -p SHA256SUMS
+   (cd temp/release && sha256sum -c --ignore-missing SHA256SUMS)
+   ```
+
+2. Install the tool from that package only. Use a NuGet config whose sources are just that
    folder, and an empty package cache, so no other build of the same version can be
    installed. Save this as `temp/release-nuget.config`:
 
@@ -293,7 +300,8 @@ version, which exists before the tag only as a dry-run artifact:
    NUGET_PACKAGES="$PWD/temp/release-packages" dotnet tool install Diffra.Cli \
      --configfile temp/release-nuget.config --tool-path temp/release-bin --version <version>
    ```
-3. Run the one-command generator, passing the package digest from the artifact's
+
+3. Run the one-command generator, passing the package digest from the published
    `SHA256SUMS`; see "Adding a Corpus for a New Release" in
    [tests/regression/README.md](../tests/regression/README.md):
 
@@ -304,11 +312,8 @@ version, which exists before the tag only as a dry-run artifact:
      --expected-sha256 <digest-from-SHA256SUMS>
    ```
 
-4. Commit `tests/regression/<version>/` to the release PR. Once it merges, tag the merge
-   commit `v<version>`.
-
-The corpus records the digest of the dry-run package. The tag build packs the same
-version again, so the published package's digest may differ from the recorded one.
+4. Open a PR that commits `tests/regression/<version>/`. From then on, the corpus gates
+   every later release.
 
 ### Deep test strength as Evidence
 

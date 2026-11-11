@@ -18,7 +18,7 @@ permissions:
 # takes the same path as a tag release up to the publish job, so a green dry run means the
 # commit is ready to release.
 jobs:
-  # Cheap checks first, so a bad tag or a missing corpus fails before the deep tier starts.
+  # Cheap checks first, so a bad tag or missing release notes fail before the deep tier starts.
   preflight:
     name: preflight
     runs-on: ubuntu-latest
@@ -54,38 +54,20 @@ jobs:
           fi
           echo "Tag '$tag_name' verified against project version '$DIFFRA_VERSION'"
 
-      # A release freezes its own regression corpus and has release notes (see "Releasing
-      # Diffra" in docs/artifact-delivery-and-ci.md). A tag release fails without either; a dry
-      # run warns, so a dry run that is green and warning-free means the commit is ready.
-      - name: Require the regression corpus and release notes for this version
+      # A release has release notes (see "Releasing Diffra" in docs/artifact-delivery-and-ci.md).
+      # A tag release fails without them; a dry run warns, so a dry run that is green and
+      # warning-free means the commit is ready. The release's own regression corpus is not
+      # required here: it is generated afterwards from the published package, and the
+      # corpora of earlier releases gate this one through the regression tier.
+      - name: Require release notes for this version
         run: |
-          missing=0
-          report() {
-            missing=1
-            if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-              echo "::error::$1 The release PR must add it before the tag is pushed."
-            else
-              echo "::warning::$1 A tag release of this version fails until the release PR adds it."
-            fi
-          }
-
-          corpus="tests/regression/${DIFFRA_VERSION}/manifest.json"
-          if [ ! -f "$corpus" ]; then
-            report "No regression corpus at tests/regression/${DIFFRA_VERSION}/."
-          elif ! jq -e '(.Cases | type) == "array" and (.Cases | length) > 0' "$corpus" > /dev/null; then
-            report "The regression corpus at $corpus has no cases."
-          else
-            echo "Regression corpus found: $corpus"
-          fi
-
           if awk -v v="## ${DIFFRA_VERSION} " 'index($0, v) == 1 {found=1} END {exit !found}' CHANGELOG.md; then
             echo "Release notes found for ${DIFFRA_VERSION} in CHANGELOG.md"
-          else
-            report "No '## ${DIFFRA_VERSION} ' section in CHANGELOG.md."
-          fi
-
-          if [ "$missing" -ne 0 ] && [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "::error::No '## ${DIFFRA_VERSION} ' section in CHANGELOG.md. The release PR must add it before the tag is pushed."
             exit 1
+          else
+            echo "::warning::No '## ${DIFFRA_VERSION} ' section in CHANGELOG.md. A tag release of this version fails until the release PR adds it."
           fi
 
   # The deep tier on the commit being released. A called run is always strict: every fuzz

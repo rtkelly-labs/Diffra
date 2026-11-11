@@ -1,151 +1,112 @@
-# Diffra — Agent Implementation Plan
+# Diffra plan
 
-This file is the working handover for a **new, independent repository**. Read `VISION.md` first. Treat the examples as a design target, not a claim about current repositories. Record implementation decisions in the new repo. Do not create GitHub issues or publish packages until the repository owner authorizes those external actions.
+This file is the active implementation sequence. Read [docs/vision.md](docs/vision.md) for the
+goal, the [decision records](docs/adr/) for the design, and the [glossary](docs/glossary.md) for
+the words. Do not create GitHub issues or publish packages until the repository owner authorizes
+those external actions.
 
-## Outcome and scope
+## Goal
 
-Deliver an executable vertical slice: source identity → artifact decoder → typed observation → trusted baseline → typed comparison → policy assessment → deterministic report. Make all stages independently replaceable. Prioritize correctness and a reviewable protocol over breadth. The first adopter is Parquet.SourceGenerator, but all core packages and fixtures must be free of Parquet-specific names or assumptions.
+Find out whether Diffra is worth using across the owner's repositories by adopting it in them one
+at a time. Each adoption must be cheap to wire, fast in CI, and show findings that someone acts
+on. The work below is ordered to make the first adoption possible as early as possible.
 
-Suggested repository layout:
+## Rollout
 
-```text
-README.md
-VISION.md
-PLAN.md
-docs/protocol.md
-docs/trust-and-identity.md
-schemas/evidence-v1.schema.json
-schemas/baseline-reference-v1.schema.json
-schemas/delta-v1.schema.json
-schemas/assessment-v1.schema.json
-schemas/manifest-v1.schema.json
-src/Protocol/
-src/Hosting/
-src/Cli/
-src/Extensions.Git/
-src/Extensions.Structured/
-src/Extensions.Complexity/
-src/Reporting.Html/
-tests/Protocol.Tests/
-tests/Integration.Tests/
-examples/sample-project/
-```
+Diffra is adopted by these public repositories, in this order:
 
-Package and command names are provisional. Avoid freezing public API names before the vertical slice is evaluated.
+1. [rtkelly-labs/github-actions](https://github.com/rtkelly-labs/github-actions) (Python): one CI
+   workflow running Ruff, mypy and pytest. It proves the simple path.
+2. [rtkelly-labs/Parquet.SourceGenerator](https://github.com/rtkelly-labs/Parquet.SourceGenerator)
+   (C#): many workflow files, including benchmarks, mutation testing and fuzzing. It needs
+   collection across workflow files.
+3. [rtkelly-labs/mermaid-toolkit](https://github.com/rtkelly-labs/mermaid-toolkit) (TypeScript):
+   Vitest with coverage and benchmarks, and Biome for linting. Check what Biome can emit first.
 
-## Phase 0 — Repository and decisions
+After those three, one installation in a repository the owner does not own, judged by that team,
+tests whether the setup works for someone else. Diffra keeps running on itself throughout, but
+that does not count as rollout evidence.
 
-1. Create the repository, license, README, contribution guidance, CI build/test workflow and reproducible SDK/tool pinning. Copy these two handover files into the repository.
-2. Write short architecture decisions for: canonical JSON and hashing, schema/version compatibility, extension discovery (explicit registration initially), baseline trust, policy status vocabulary, and stable collection identity.
-3. Publish a minimal glossary and sequence example. Define threat boundaries for untrusted PR artifacts, external commands and HTML output.
+### Review triggers
 
-**Done when:** a new implementer can identify each component's responsibility, build the skeleton locally and see a CI test result. No runtime framework dependency on Aspire.
+For each adopting repository:
 
-## Phase 1 — Protocol and identity
+| Condition | Limit |
+| --- | --- |
+| Wiring | At most 60 lines: one root file, one step per job that produces data, one collecting job. No scripts and no test changes. |
+| CI overhead | At most 60 seconds added per pull request, and 15 seconds in any one job. |
+| Usefulness, over the first 10 pull requests | At least 1 finding acted on, at most 2 comments judged noise, and no regression found another way that Diffra held the data for. |
 
-1. Define versioned envelope and manifest schemas with required `typeId`, `typeVersion`, `schema`, `subject`, `producer`, `environment`, `payload`, `artifactRefs` and SHA-256 digest fields. Record exact canonicalization and digest scope. Use stable path normalization and reject traversal, duplicate logical IDs, duplicate JSON keys where relevant, oversized inputs and digest mismatch.
-2. Model artifact set → nested group → artifact plus typed observations. Groups include stable ID, parent, role, required flag, baseline role, retention and gate metadata. Keep physical representation/media type separate from evidence type and comparator.
-3. Define `Evidence<T>`, typed decoder/observation/comparator/policy interfaces, versioned type registry and explicit migration interface. Typed comparison requires matching type/version or recorded migration. Unknown evidence is retained as opaque, with no semantic pass.
-4. Define immutable Evidence, Baseline reference, Delta and Assessment documents, each with a schema and fixtures. A delta cites exact baseline and candidate identities, comparator/version and typed changes, with no policy verdict. An assessment cites the delta identity and exact rules/version, and can be recalculated without collection or comparison. Define immutable results for comparison, policy findings and provenance. Missing, invalid, incompatible and inconclusive are distinct from unchanged/pass.
-5. Specify document examples and CLI input/output contracts in `docs/protocol.md`. Include raw artifact digest versus semantic evidence identity, unknown types, and JSON/XML mapping to a shared evidence type.
-6. Build a local content-addressed store; writes verify digests and are atomic. Bundle export/import must reproduce identities after extraction.
+These numbers trigger a review; they are not gates. The owner judges repositories 1 to 3. A
+failed condition pauses the rollout at that repository until the cause is fixed.
 
-**Tests:** identical semantic payloads hash alike under the defined rules; changed meaningful field changes digest; malformed paths/manifests, duplicate IDs and altered bytes fail; version mismatch cannot silently compare; XML/JSON as formats are not hardcoded as evidence types.
+The critical path for the wiring limit is the root file, the built-in converters and the Action.
+Until all three exist, no repository can adopt Diffra within the limit.
 
-## Phase 2 — Graph host and extension boundary
+## Work sequence
 
-1. Implement explicit code-first registration for subjects, producers, baselines, comparators, policies, stores and presenters. Model declared dependencies and input/output type contracts.
-2. Validate cycles, missing inputs, duplicate IDs, incompatible types, comparator ambiguity and impossible baseline roles before executing. Execute a DAG in stable order; record status and provenance for every node. Simple sequential execution is sufficient initially.
-3. Add an external command adapter that accepts a declared type/schema and a bounded evidence bundle on stdout or disk. Capture executable/version/arguments and exit status, validate output before import and avoid shell interpolation. Permit untrusted jobs only within CI's existing isolation.
-4. Create one sample in-process extension and one external producer fixture to demonstrate cross-ecosystem composition.
+Each step is a set of small pull requests, each with tests. Smaller changes go first.
 
-**Tests:** invalid graphs fail before side effects; a downstream node reports blocked/inconclusive when an upstream node fails; external fixture and in-process fixture yielding equivalent typed values compare the same.
+### 1. Clear the earlier design
 
-## Phase 3 — Baselines, trust and comparison
+- Delete the graph executor and builder. Move the graph data model and validator out of the
+  protocol library, for reuse in recording the CI job graph.
+- Remove the 20-commit fallback from the self-evaluation baseline search.
+- State and check the package-reference rule.
 
-1. Implement exact local baseline selection and Git merge-base resolver. Record baseline role, commit, manifest digest, source store and trust status. Refuse a mutable branch label without resolving and recording its commit.
-2. Implement a structured JSON decoder and typed numeric/keyed-collection comparison as the main baseline capability; retain text comparison for explicitly byte/text-oriented evidence. JSON object order/whitespace are insignificant; arrays follow declared ordered or key-based semantics; missing/null/type changes remain distinct. Support explicit field exclusions only in a versioned schema or comparator config.
-3. Add a typed complexity model with unit, method identity, method count, total/mean, quantiles and outliers. Record scope, methodology and producer/configuration compatibility before comparison; distinguish unavailable, newly added and removed metrics from zero. Make producer methodology/version and file scope explicit. Build comparator and a policy example that can warn on outlier growth while showing normalized values.
-4. Implement candidate and verified states for local promotion. Require a clean second production run at the same head commit and digest before approval. Persist approval record tied to evidence and policy identity; invalidate if relevant identities change. No automatic promotion by a PR job.
+### 2. Settings and output
 
-**Tests:** extraction of numeric values from JSON preserves units and subject identity; +4 absolute and relative changes are computed correctly; zero baseline makes relative change undefined; mismatched scope or methodology is incompatible; a policy-only rule change reuses the delta; formatting-only JSON change is unchanged; keyed collection reorder is unchanged; ordered sequence reorder changes; type/version mismatch is inconclusive; wrong merge-base, altered baseline, branch race, missing baseline and stale approval cannot pass; policy change recalculates assessment without regenerating evidence.
+- Turn hard-coded limits into settings with defaults. Safety limits stay hard; size limits become
+  budgets, and truncation is stated.
+- Attention levels (`act`, `review`, `quiet`) and the one-screen limits on the comment and the
+  agent-facing Markdown, with ranking.
+- Optional event and telemetry output as JSON-lines files, off by default.
 
-## Phase 4 — Report and CLI
+### 3. The root file and `diffra record`
 
-1. CLI commands: `collect`, `diff`, `eval`, `report`, `baseline verify`, `baseline update --mode missing|changed|all`, `bundle export|import`. `collect` emits evidence, `diff` emits a policy-free delta, `eval` assesses that delta under versioned rules, and `report` accepts a delta with optional assessment. `update` prepares candidates; approval/promotion is a separate explicit operation. Make help and exit codes distinguish no change, policy failure and invalid evidence.
-2. Define a generic review model with group summaries, typed differences, findings, provenance, attachments and trust status. Render deterministic JSON and one self-contained HTML file with escaped untrusted content and accessible structure. Reports show candidate and baseline role, commits/digests, comparator and policy versions.
-3. Keep report-kit version/digest in presentation identity. First use bundled CSS; later support pinned design-system report kit without a runtime network dependency.
+- The root YAML file: projects, datasets, named rule sets on each dataset, and settings.
+- `diffra record`: one command per job that produces data, built from the existing operations.
+  Invalid input is reported, not fatal.
+- Built-in converters for every standard dataset type before the first installation, each tested
+  from the tool's validator and synthetic values.
+- CI timing and the job graph, with wait, queue and execution time recorded. Rules apply to
+  execution time only.
 
-**Tests:** identical inputs produce identical report bytes after intentional volatile fields are excluded or normalized; malicious HTML in evidence is escaped; a style-only renderer change changes presentation identity but leaves evidence approval valid; missing evidence is visible, never green.
+### 4. Comparison and history
 
-## Phase 5 — Prove with an adopter
+- Compare with the record at the pull request's merge base on the target branch. Say "cannot
+  attribute" when there is none.
+- The history window as a setting, read and written through a pluggable storage strategy, with
+  CI artifacts first. Records carry a format version; unreadable ones are skipped and counted.
+- Noise: fixed thresholds for deterministic measures; the history window for noisy ones.
+- Remove the Baseline reference document, approval and promotion. Records are named by commit,
+  project and dataset; the hash becomes an integrity check and storage key, computed only by the
+  CLI, with the environment outside it.
 
-1. Integrate a small Parquet.SourceGenerator slice: generated-source text, a typed public API or complexity sample, and a manifest. Adapt existing derived artifacts rather than moving the protocol into that repository.
-2. Compare a real branch against its trusted merge-base and inspect the report with maintainers. Confirm that refreshed snapshots cannot bypass compilation/API semantic checks in the adopter's existing pipeline.
-3. Export one release-style evidence bundle and verify it can be imported and compared offline. Exercise the external producer fixture with a Node or Python script.
-4. Gather API friction and revise extension interfaces before publishing a stable package. Document explicit migration from existing golden checks, including what remains gated by native project tests.
+### 5. The GitHub surface
 
-**Done when:** a reviewer can answer what changed, whether it is acceptable, which baseline and tools were used, and which artifacts support the claim without reading raw diffs alone.
+- The Action's metadata at the root of this repository; the collecting job for each workflow
+  file.
+- One comment per pull request, rebuilt from every record; nothing on a quiet pull request; the
+  summary page on read-only runs; one checks-list line and a fixed artifact name on every run.
+- Two builds: a CI build without the web server, and a local build with it.
 
-## Backlog after validation
+### 6. Diffra on itself
 
-- XML/CSV adapters mapping to shared evidence types; archive/NuGet layout, .NET API, graph and image comparators. Image integration should produce multiple named observations (pixel mask, changed area, regions and structural measure) and multiple review views (overlay, blink, slider, heatmap) without conflating views with policy. Declare alignment, masks, colour handling and capture environment.
-- Approved-main and previous-release resolvers; trusted CI artifact and release stores; release-to-release reports and retention.
-- Pinned design-system static report kit and visual regression for its reference fixture.
-- Multi-run benchmark distributions, environment comparability and uncertainty; trends over more than two baselines; coverage, architecture and security evidence families.
-- Remote extension catalogue, caching/parallel scheduling and dashboards only after the contract stabilizes.
+- Install Diffra in this repository the adopter's way and retire the self-evaluation scripts,
+  keeping only what the separate, non-gating lane needs.
+- Benchmark the converters on real input.
+- Fixture repositories that test the comparison point under five branching models.
 
-## Implementation rules and review checkpoints
+### 7. Adopt
 
-- Every new evidence family supplies a schema, documented identity/order semantics, comparable scope/methodology, appropriate comparison mechanisms and meaningful fixtures. Do not default structured formats to text diff.
-- Preserve raw artifact digest alongside semantic identity. Do not claim semantic equivalence for an unknown type.
-- A measurement states unit, scope and method; comparisons and policies reference exact inputs and versions. Never encode a policy verdict into a producer's payload.
-- Baseline lookup is explicit, immutable once resolved and trust-aware. Candidate production and approval are separate, with head/digest checks and a clean verification pass.
-- Keep optional integrations outside the core. Use a second ecosystem fixture to prevent accidental .NET-only wire assumptions.
-- At each phase, update protocol examples and run end-to-end import/compare tests. Prefer a small demonstrated path to speculative general interfaces.
+Adopt the three repositories in order, applying the review triggers to each.
 
-## Suggested initial issue sequence
+## Rules for each change
 
-1. Repository skeleton, CI and architecture decisions.
-2. Evidence envelope, schemas, canonical identity and adversarial validation.
-3. Artifact grouping, typed registry and migration rules.
-4. Local immutable store and portable bundle.
-5. Graph composition, validation and external command adapter.
-6. Git merge-base resolver and trust model.
-7. Structured decoder, keyed collection and typed numeric comparison mechanisms.
-8. Semantic JSON and explicit text comparators.
-9. Typed complexity evidence and policy example.
-10. Candidate verification, approval record and race checks.
-11. Review model, deterministic JSON/HTML and CLI.
-12. Parquet vertical slice and offline release bundle proof.
-
-Each issue should name a testable acceptance criterion from its phase; split further only if implementation reveals a concrete dependency. Keep this ordering flexible where parallel work is independent.
-
-## Diffra CLI contract checkpoint
-
-The first end-to-end fixture should run these independent steps (exact flags may change before public release):
-
-```sh
-diffra collect -o evidence.diffra.json
-diffra diff --baseline main.diffra.json --evidence evidence.diffra.json -o delta.diffra.json
-diffra eval --rules policy.yaml --delta delta.diffra.json -o assessment.diffra.json
-diffra report delta.diffra.json --assessment assessment.diffra.json --format markdown
-```
-
-`policy.yaml` is illustrative; implement JSON rules first if that keeps the initial release smaller. Verify that changing rules changes only the assessment, while a renderer upgrade changes only presentation identity. A report from a delta alone describes measured changes and explicitly has no policy verdict.
-
-## Comparison design checkpoint and adversarial fixtures
-
-Before publishing extension APIs, document the registry contract for decoders, typed observations, comparators and policies. Selection must consider type/version, scope, methodology and declared capabilities. Comparator output is a versioned delta containing named measurements and provenance; a policy cannot mutate it. Review views are derived from immutable inputs and results.
-
-Use these fixtures to settle semantics and report wording:
-
-1. Differently formatted JSON or XML decodes to equivalent typed evidence; order matters only when the type declares it.
-2. Structured metrics extract per-subject numbers. Check absolute/relative deltas, zero baselines, units, bounds, direction, keyed identity, new/removed/missing values, and outliers.
-3. Equal numeric values from incompatible methodology or scope yield `incompatible`, never `unchanged`.
-4. A noisy benchmark has repeated samples; its distribution comparison reports uncertainty and cannot be treated as a certain regression from one number.
-5. An image pair yields several observations and review views. Check explicit masks, alignment, colour handling, dimensions and comparator version. A changed overlay presentation leaves evidence identity intact.
-6. A required group missing from the baseline, a stale baseline, and an unsupported schema migration cannot silently pass.
-7. Changing policy thresholds recalculates only Assessment from the same Delta; changing report assets changes only presentation identity.
-
-The first release must implement fixtures 1–3 and 7. Fixtures 4–6 specify extension boundaries and can initially be exercised with a minimal stub and an explicit `unsupported` outcome; implement the full mechanisms after the vertical slice.
+- Zero warnings. Every change has tests.
+- The frozen regression corpus under `tests/regression/` is not edited. A change that breaks it is
+  a release decision for the owner.
+- Keep record formats, schemas and comparison generic, tied to no adopter or CI vendor.
+- Update the feature status table in [docs/README.md](docs/README.md) and the matching decision
+  record when a change lands.

@@ -1,8 +1,8 @@
 # Contributing to Diffra
 
-Diffra is being developed in phases described in `PLAN.md`. Before implementing a phase, read the
-matching goals, constraints, and completion criteria there, along with the relevant design in
-`VISION.md`.
+Diffra's order of work is in `PLAN.md`. Before implementing a step, read it together with the
+matching [decision record](docs/adr/) and the [glossary](docs/glossary.md). The root `VISION.md`
+is the original design handover and no longer describes the design.
 
 ---
 

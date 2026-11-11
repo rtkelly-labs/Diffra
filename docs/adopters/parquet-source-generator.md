@@ -1,6 +1,10 @@
 # Parquet.SourceGenerator adopter slice
 
-Parquet.SourceGenerator is the first Diffra adopter. Keep the protocol and all core types independent of Parquet names and assumptions. The integration reads the existing generated artifacts and emits a generic Diffra Evidence document.
+> This page is an earlier integration plan, written for the Evidence and Baseline reference
+> design. Parquet.SourceGenerator is now the second repository in the rollout; see the
+> [plan](../../PLAN.md) and the [decision records](../adr/).
+
+Keep the protocol and all core types independent of Parquet names and assumptions. The integration reads the existing generated artifacts and emits a generic Diffra Evidence document.
 
 ## Evidence to collect
 

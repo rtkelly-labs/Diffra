@@ -12,6 +12,7 @@ preserves the original design handover and no longer describes the design.
 - **Surface, Do Not Enforce**: Diffra reports findings; it does not manage workflow. Its step does not fail a build unless the adopter opts in, and it has no approval or promotion step.
 - **Tool First, Protocol as the Means**: Record formats, schemas and comparison rules stay generic and tied to no adopter or CI vendor, but they serve the tool rather than stand as the product.
 - **Limited Package References**: Each package reference is reviewed. Libraries that pull in large dependencies stay out of the core and live in separate packages built from this repository (`docs/adr/0009-dependencies-and-extensions.md`).
+- **Keep the Vision True**: `docs/vision.md` describes the project as it actually is, not as it was planned. Any pull request that changes scope, behaviour or a decision record updates it in the same change, including its "What exists today" section. The root `VISION.md` is history and is not updated.
 - **Zero Warnings, Zero Regressions**: The codebase enforces `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` and deterministic output.
 
 ## Build and validation

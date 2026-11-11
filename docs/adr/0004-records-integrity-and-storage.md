@@ -23,9 +23,9 @@ the open tool can reach.
 3. **Every record carries a format version.** A newer CLI skips records it cannot read and says
    so in one line with the count. History then rebuilds itself. There are no migration readers
    during alpha.
-4. **History is stored through a pluggable strategy.** CI artifacts are the first
-   implementation. A branch in the repository is a legitimate alternative. Per-commit records are
-   the source of truth; a cumulative window may be carried forward for speed, is checked against
+4. **History is stored through a pluggable strategy.** A branch in the repository is the default
+   store; the adopter can choose another, such as CI artifacts. Per-commit records are the source
+   of truth; a cumulative window may be carried forward for speed, is checked against
    git's commit list, and its gaps are repaired by re-reading per-commit records.
 5. **Binary files are stored once per hash.** A record refers to a file by hash, size and media
    type. The bytes are kept once per distinct hash, with an index from hash to the run and

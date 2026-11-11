@@ -35,11 +35,13 @@ to see what the change did.
    reusable workflow all live here. Separate packages may be built from it.
 9. **Alpha output carries no compatibility promise.** Any `0.x` document, file or report format
    may change between versions.
+10. **`docs/vision.md` describes the project as it actually is.** It is kept up to date in every
+    change that alters scope, behaviour or a decision. The root `VISION.md` is the original design
+    handover, kept as history and not updated.
 
 ## Not yet decided
 
 - Whether visual comparison of images is part of the first rollout.
-- Whether the root `VISION.md` stays as a historical document.
 
 ## Current code
 

@@ -198,7 +198,7 @@ Diffra tests itself in three tiers. The plan and its order of work are in
 | Tier | When | Gate |
 | --- | --- | --- |
 | Shallow | Every pull request and push to `main` (`ci.yml`) | Required. The `build` check passes only when every shallow job passes. |
-| Deep | Nightly on `main`, on demand, and before a release (`deep.yml`) | Five-platform archive smoke matrix, full-scope Protocol mutation testing (floor 57 ratcheting upward, 80 gate on Comparison and Assessment), fuzzing across all targets, 100k property runs, and unit/e2e checks with coverage. Aggregated into `deep-summary.json`, then collected as Diffra Evidence and gated against main's deep baseline (see [Deep test strength as Evidence](#deep-test-strength-as-evidence)). Will be required for release (release gate). |
+| Deep | Nightly on `main`, on demand, and before a release (`deep.yml`) | Five-platform archive smoke matrix, full-scope Protocol mutation testing (floor 57 ratcheting upward, 80 gate on Comparison and Assessment), fuzzing across all targets, 100k property runs, and unit/e2e checks with coverage. Aggregated into `deep-summary.json`, then collected as Diffra Evidence and gated against main's deep baseline (see [Deep test strength as Evidence](#deep-test-strength-as-evidence)). A release requires it on the tagged commit. |
 | Regression | Nightly on `main` and before a release | Frozen corpora from earlier releases must reproduce, and the released and candidate tools must agree. A release requires it on the tagged commit. |
 
 The shallow tier is the build and unit tests, the schema fixtures, the
@@ -245,6 +245,79 @@ unintended changes to metrics or policies.
   verified Baseline Reference, and evaluate the Delta. If no baseline exists for the
   merge-base (such as in new repositories or bootstrap runs), the gate reports the
   assessment outcome as `inconclusive` in the step summary without failing the build.
+
+### Releasing Diffra
+
+`release.yml` runs on a `v*` tag push and on a manual `workflow_dispatch` dry run. Both
+take the same path, on the exact commit being released (`github.sha`: the tagged commit,
+or the head of the dispatched ref):
+
+1. `preflight` resolves the version from `Directory.Build.props`. On a tag push it fails
+   unless the tag is `v<version>`, `CHANGELOG.md` has a non-empty `## <version> ` section,
+   and every earlier published release has a regression corpus with at least one case. A
+   dry run (any dispatch, even on a tag ref) only warns about the notes and the corpora.
+2. `deep` and `regression` call `deep.yml` and `regression.yml` as reusable workflows
+   with `contents: read`. A called deep run is always strict, so a release cannot shorten
+   the fuzz budget, skip a fuzz target or lower a mutation floor.
+3. `build-and-package` needs both tiers. It packs the CLI tool, publishes the five
+   self-contained archives, smoke-tests the linux-x64 archive with no .NET on `PATH`,
+   and writes `SHA256SUMS`. It runs no tests of its own; the deep tier covers them.
+4. `publish-github-release` runs only for a tag push, never for a dispatch (even on a tag
+   ref). It needs the build and both tiers, and is the only job with `contents: write`.
+
+If either tier fails or is skipped, no GitHub Release is created. A dry run that is green
+and has no `preflight` warnings therefore means the commit is ready to release.
+
+A release PR bumps `<Version>` and adds the `CHANGELOG.md` section. Once it merges, tag
+the merge commit `v<version>`. The release is gated by the frozen corpora of earlier
+releases, which the regression tier replays against the candidate build.
+
+The release's own corpus, `tests/regression/<version>/`, is added afterwards by a separate
+PR, generated from the package the GitHub Release published. That way the provenance in
+the corpus (the package's SHA-256) is the digest of the published binary, not of a rebuild:
+
+1. Download the published package and its checksums into an empty `temp/release/`, and
+   check the package against them. `gh release download` will not overwrite files already
+   there, and macOS `sha256sum` passes `--ignore-missing` with nothing checked, so the first
+   line makes sure the package is present:
+
+   ```sh
+   gh release download v<version> -D temp/release -p 'Diffra.Cli.*.nupkg' -p SHA256SUMS
+   test -f temp/release/Diffra.Cli.<version>.nupkg
+   (cd temp/release && sha256sum -c --ignore-missing SHA256SUMS)
+   ```
+
+2. Install the tool from that package only. Use a NuGet config whose sources are just that
+   folder, and an empty package cache, so no other build of the same version can be
+   installed. Save this as `temp/release-nuget.config`:
+
+   ```xml
+   <configuration>
+     <packageSources>
+       <clear />
+       <add key="release" value="release" />
+     </packageSources>
+   </configuration>
+   ```
+
+   ```sh
+   NUGET_PACKAGES="$PWD/temp/release-packages" dotnet tool install Diffra.Cli \
+     --configfile temp/release-nuget.config --tool-path temp/release-bin --version <version>
+   ```
+
+3. Run the one-command generator, passing the package digest from the published
+   `SHA256SUMS`; see "Adding a Corpus for a New Release" in
+   [tests/regression/README.md](../tests/regression/README.md):
+
+   ```sh
+   dotnet run --project tests/regression/Diffra.Regression.csproj -- generate <version> \
+     --tool temp/release-bin/diffra \
+     --package temp/release/Diffra.Cli.<version>.nupkg \
+     --expected-sha256 <digest-from-SHA256SUMS>
+   ```
+
+4. Open a PR that commits `tests/regression/<version>/`. From then on, the corpus gates
+   every later release. The next release's `preflight` fails while it is missing.
 
 ### Deep test strength as Evidence
 
@@ -334,7 +407,7 @@ notice. The bounds, the `AssertJudgeSafe` check and the rounding can then be rel
 units, with a methodology bump.
 
 **Publishing main baselines.** `deep.yml` keeps no job with write access, because it is a
-reusable workflow meant for read-only callers, such as the planned release gate. A run records only
+reusable workflow meant for read-only callers, such as the release gate in `release.yml`. A run records only
 when all of these hold:
 
 - it is strict;

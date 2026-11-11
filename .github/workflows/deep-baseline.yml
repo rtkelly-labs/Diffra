@@ -5,7 +5,7 @@ name: Deep baseline
 # record-baseline-publish split: the Deep run collects without write access, and only this job
 # can write. It lives in its own workflow so that deep.yml keeps no job with write access, which
 # a read-only caller could not start. deep.yml is a reusable workflow meant for read-only
-# callers such as the planned release gate.
+# callers such as the release gate in release.yml.
 #
 # workflow_run fires only for runs of the Deep workflow itself. A release or any other caller
 # runs deep.yml inside its own run, so it never triggers this workflow.

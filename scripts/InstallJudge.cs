@@ -61,19 +61,15 @@ if (!string.Equals(actualSha, expectedSha, StringComparison.OrdinalIgnoreCase))
 Console.WriteLine($"Verified SHA-256 checksum: {actualSha}");
 
 // Ensure no stale package in global packages folder overrides the verified nupkg
-var globalPkgDir = Path.Combine(
-    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-    ".nuget", "packages", packageId.ToLowerInvariant(), version.ToLowerInvariant());
+var nugetPackagesDir = Environment.GetEnvironmentVariable("NUGET_PACKAGES");
+if (string.IsNullOrWhiteSpace(nugetPackagesDir))
+{
+    nugetPackagesDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".nuget", "packages");
+}
+var globalPkgDir = Path.Combine(nugetPackagesDir, packageId.ToLowerInvariant(), version.ToLowerInvariant());
 if (Directory.Exists(globalPkgDir))
 {
-    try
-    {
-        Directory.Delete(globalPkgDir, recursive: true);
-    }
-    catch
-    {
-        // Ignore if locked or permission denied
-    }
+    Directory.Delete(globalPkgDir, recursive: true);
 }
 
 // Create isolated nuget.config
@@ -81,13 +77,11 @@ var nugetConfigPath = Path.Combine(cacheDir, "nuget.config");
 File.WriteAllText(nugetConfigPath,
     "<configuration><packageSources><clear /><add key=\"local-judge\" value=\".\" /></packageSources></configuration>");
 
-var dotnetBin = ResolveDotNet();
-
 if (!string.IsNullOrEmpty(toolPath))
 {
     Directory.CreateDirectory(toolPath);
     Console.WriteLine($"Installing {packageId} tool to {toolPath} via isolated NuGet config...");
-    var installCode = RunProcess(dotnetBin, "tool", "install", packageId, "--tool-path", toolPath, "--version", version, "--configfile", nugetConfigPath);
+    var installCode = RunProcess("dotnet", "tool", "install", packageId, "--tool-path", toolPath, "--version", version, "--configfile", nugetConfigPath);
     if (installCode != 0)
     {
         Console.Error.WriteLine($"[FAIL] dotnet tool install exited with code {installCode}.");
@@ -98,7 +92,7 @@ if (!string.IsNullOrEmpty(toolPath))
 else
 {
     Console.WriteLine($"Restoring manifest tools via isolated NuGet config...");
-    var restoreCode = RunProcess(dotnetBin, "tool", "restore", "--configfile", nugetConfigPath);
+    var restoreCode = RunProcess("dotnet", "tool", "restore", "--configfile", nugetConfigPath);
     if (restoreCode != 0)
     {
         Console.Error.WriteLine($"[FAIL] dotnet tool restore exited with code {restoreCode}.");
@@ -108,15 +102,6 @@ else
 }
 
 Console.WriteLine($"[SUCCESS] Successfully installed verified judge {packageId} {version}.");
-
-static string ResolveDotNet()
-{
-    var host = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
-    if (!string.IsNullOrEmpty(host) && File.Exists(host)) return host;
-    var userDotnet = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dotnet", "dotnet");
-    if (File.Exists(userDotnet)) return userDotnet;
-    return "dotnet";
-}
 
 static string FindRepositoryRoot()
 {
@@ -135,11 +120,6 @@ static int RunProcess(string filename, params string[] args)
         RedirectStandardError = true,
         UseShellExecute = false
     };
-    var dir = Path.GetDirectoryName(filename);
-    if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
-    {
-        start.Environment["DOTNET_ROOT"] = dir;
-    }
     foreach (var arg in args) start.ArgumentList.Add(arg);
     using var proc = Process.Start(start)!;
     var stdoutTask = proc.StandardOutput.ReadToEndAsync();

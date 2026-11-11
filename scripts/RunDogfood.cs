@@ -10,6 +10,13 @@ var baselinesDir = Path.Combine(repoRoot, "baselines", "dogfood");
 var workDir = Path.Combine(repoRoot, "dogfood-run");
 Directory.CreateDirectory(workDir);
 
+if (args.Length >= 2 && args[0] == "--check-invariants")
+{
+    var testPayload = args[1];
+    CheckInvariants(testPayload);
+    return;
+}
+
 // Guard: A PR must not supply tracked baseline or dogfood run files.
 var trackedFiles = CaptureOutput("git", "ls-files", "dogfood-run").Trim();
 if (!string.IsNullOrWhiteSpace(trackedFiles))
@@ -25,6 +32,9 @@ Console.WriteLine($"=== Diffra Dogfooding Execution (Pinned Judge: {judgeVersion
 Console.WriteLine("1. Collecting repository metrics...");
 var candidatePayload = Path.Combine(workDir, "candidate-payload.json");
 RunProcess("dotnet", "run", Path.Combine(repoRoot, "scripts", "DogfoodMetrics.cs"), "--", candidatePayload);
+
+// Check hard architectural invariants
+CheckInvariants(candidatePayload);
 
 // 2. Collect candidate evidence via pinned tool
 Console.WriteLine("2. Producing candidate Evidence document...");
@@ -431,33 +441,47 @@ static int RunProcessAllowExitCode(string filename, params string[] args)
     return exitCode;
 }
 
-static (int exitCode, string stdout, string stderr) RunProcessAllowExitCodeWithOutput(string filename, params string[] args)
+static void CheckInvariants(string payloadPath)
 {
-    var resolvedFile = filename;
-    if (filename == "dotnet")
+    Console.WriteLine("Evaluating hard architectural invariants...");
+    using var payloadDoc = JsonDocument.Parse(File.ReadAllBytes(payloadPath));
+    var metrics = payloadDoc.RootElement.GetProperty("metrics");
+
+    var invariants = new List<(string Name, int Value, int Expected)>
     {
-        var host = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
-        if (!string.IsNullOrEmpty(host) && File.Exists(host))
+        ("aspireRuntimeDependencies", metrics.GetProperty("aspireRuntimeDependencies").GetInt32(), 0),
+        ("compilerWarnings", metrics.GetProperty("compilerWarnings").GetInt32(), 0)
+    };
+
+    bool anyFailed = false;
+    foreach (var (name, value, expected) in invariants)
+    {
+        if (value == expected)
         {
-            resolvedFile = host;
+            Console.WriteLine($"[INVARIANT] {name}={value} PASS");
         }
         else
         {
-            var userDotnet = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dotnet", "dotnet");
-            if (File.Exists(userDotnet)) resolvedFile = userDotnet;
+            Console.Error.WriteLine($"[INVARIANT] {name}={value} FAIL (expected {expected})");
+            anyFailed = true;
         }
     }
-    var start = new ProcessStartInfo(resolvedFile)
+
+    if (anyFailed)
+    {
+        Console.Error.WriteLine("[FAIL] One or more architectural invariants failed!");
+        Environment.Exit(1);
+    }
+}
+
+static (int exitCode, string stdout, string stderr) RunProcessAllowExitCodeWithOutput(string filename, params string[] args)
+{
+    var start = new ProcessStartInfo(filename)
     {
         RedirectStandardOutput = true,
         RedirectStandardError = true,
         UseShellExecute = false
     };
-    var dir = Path.GetDirectoryName(resolvedFile);
-    if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
-    {
-        start.Environment["DOTNET_ROOT"] = dir;
-    }
     foreach (var arg in args) start.ArgumentList.Add(arg);
     using var proc = Process.Start(start)!;
     var stdoutTask = proc.StandardOutput.ReadToEndAsync();

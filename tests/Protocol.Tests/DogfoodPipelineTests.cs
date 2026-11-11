@@ -9,6 +9,9 @@ public static class DogfoodPipelineTests
     {
         RunsDogfoodPipelineEndToEnd();
         Console.WriteLine("PASS dogfood pipeline runs and evaluates Diffra against baseline budget");
+
+        ProvesInvariantViolationFails();
+        Console.WriteLine("PASS invariant violation in dogfood metrics fails the self-evaluation gate");
     }
 
     private static void RunsDogfoodPipelineEndToEnd()
@@ -159,6 +162,101 @@ public static class DogfoodPipelineTests
         }
     }
 
+    private static void ProvesInvariantViolationFails()
+    {
+        var repoRoot = FindRepositoryRoot();
+        var tempDir = Path.Combine(Path.GetTempPath(), "diffra-invariant-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var runDogfoodScript = Path.Combine(repoRoot, "scripts", "RunDogfood.cs");
+
+            // 1. Valid invariants pass
+            var validPayload = Path.Combine(tempDir, "valid-payload.json");
+            File.WriteAllText(validPayload, """
+            {
+              "scope": "diffra/core",
+              "methodology": "static-analysis",
+              "metrics": {
+                "aspireRuntimeDependencies": 0,
+                "compilerWarnings": 0,
+                "packageSizeBytes": 184000,
+                "schemasCount": 12,
+                "sourceFilesCount": 29
+              }
+            }
+            """);
+
+            var (validExit, validOut, _) = RunProcessAllowExitCodeWithOutput("dotnet", "run", runDogfoodScript, "--", "--check-invariants", validPayload);
+            if (validExit != 0)
+            {
+                throw new InvalidOperationException($"Expected valid invariants to pass (exit 0), got {validExit}:\n{validOut}");
+            }
+            if (!validOut.Contains("[INVARIANT] aspireRuntimeDependencies=0 PASS") ||
+                !validOut.Contains("[INVARIANT] compilerWarnings=0 PASS"))
+            {
+                throw new InvalidOperationException($"Expected PASS outputs for invariants, got:\n{validOut}");
+            }
+
+            // 2. Aspire dependency invariant violation fails
+            var badAspirePayload = Path.Combine(tempDir, "bad-aspire-payload.json");
+            File.WriteAllText(badAspirePayload, """
+            {
+              "scope": "diffra/core",
+              "methodology": "static-analysis",
+              "metrics": {
+                "aspireRuntimeDependencies": 1,
+                "compilerWarnings": 0,
+                "packageSizeBytes": 184000,
+                "schemasCount": 12,
+                "sourceFilesCount": 29
+              }
+            }
+            """);
+
+            var (badAspireExit, badAspireOut, badAspireErr) = RunProcessAllowExitCodeWithOutput("dotnet", "run", runDogfoodScript, "--", "--check-invariants", badAspirePayload);
+            if (badAspireExit == 0)
+            {
+                throw new InvalidOperationException("Expected non-zero exit code when aspireRuntimeDependencies > 0, but got 0.");
+            }
+            if (!badAspireErr.Contains("[INVARIANT] aspireRuntimeDependencies=1 FAIL (expected 0)"))
+            {
+                throw new InvalidOperationException($"Expected FAIL message in stderr for aspireRuntimeDependencies, got:\n{badAspireErr}\n{badAspireOut}");
+            }
+
+            // 3. Compiler warnings invariant violation fails
+            var badWarningsPayload = Path.Combine(tempDir, "bad-warnings-payload.json");
+            File.WriteAllText(badWarningsPayload, """
+            {
+              "scope": "diffra/core",
+              "methodology": "static-analysis",
+              "metrics": {
+                "aspireRuntimeDependencies": 0,
+                "compilerWarnings": 3,
+                "packageSizeBytes": 184000,
+                "schemasCount": 12,
+                "sourceFilesCount": 29
+              }
+            }
+            """);
+
+            var (badWarningsExit, badWarningsOut, badWarningsErr) = RunProcessAllowExitCodeWithOutput("dotnet", "run", runDogfoodScript, "--", "--check-invariants", badWarningsPayload);
+            if (badWarningsExit == 0)
+            {
+                throw new InvalidOperationException("Expected non-zero exit code when compilerWarnings > 0, but got 0.");
+            }
+            if (!badWarningsErr.Contains("[INVARIANT] compilerWarnings=3 FAIL (expected 0)"))
+            {
+                throw new InvalidOperationException($"Expected FAIL message in stderr for compilerWarnings, got:\n{badWarningsErr}\n{badWarningsOut}");
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch { }
+        }
+    }
+
     private static string FindRepositoryRoot()
     {
         for (var dir = new DirectoryInfo(Directory.GetCurrentDirectory()); dir != null; dir = dir.Parent)
@@ -179,6 +277,16 @@ public static class DogfoodPipelineTests
 
     private static int RunProcessAllowExitCode(string filename, params string[] args)
     {
+        var (exitCode, _, stderr) = RunProcessAllowExitCodeWithOutput(filename, args);
+        if (exitCode != 0 && !string.IsNullOrWhiteSpace(stderr))
+        {
+            Console.Error.WriteLine(stderr);
+        }
+        return exitCode;
+    }
+
+    private static (int exitCode, string stdout, string stderr) RunProcessAllowExitCodeWithOutput(string filename, params string[] args)
+    {
         var start = new ProcessStartInfo(filename)
         {
             RedirectStandardOutput = true,
@@ -187,16 +295,11 @@ public static class DogfoodPipelineTests
         };
         foreach (var arg in args) start.ArgumentList.Add(arg);
         using var proc = Process.Start(start)!;
-        // Drain both pipes concurrently so a child filling either buffer cannot deadlock.
         var stdoutTask = proc.StandardOutput.ReadToEndAsync();
         var stderrTask = proc.StandardError.ReadToEndAsync();
         proc.WaitForExit();
-        _ = stdoutTask.GetAwaiter().GetResult();
-        var err = stderrTask.GetAwaiter().GetResult();
-        if (proc.ExitCode != 0 && !string.IsNullOrWhiteSpace(err))
-        {
-            Console.Error.WriteLine(err);
-        }
-        return proc.ExitCode;
+        var stdout = stdoutTask.GetAwaiter().GetResult();
+        var stderr = stderrTask.GetAwaiter().GetResult();
+        return (proc.ExitCode, stdout, stderr);
     }
 }

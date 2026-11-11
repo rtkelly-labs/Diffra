@@ -18,8 +18,9 @@ on:
         description: 'Fuzz target to run (or "all"); a single target needs strict unticked'
         required: false
         default: 'all'
-  # A caller can pass only the inputs declared here. Strictness is deliberately not one of
-  # them: every called run is strict, so a caller cannot weaken the release gate.
+  # Strictness is deliberately not declared here, and every called run is strict whatever the
+  # caller passes or leaks (see the concurrency comment below), so a caller cannot weaken the
+  # release gate.
   workflow_call:
     inputs:
       fuzz_seconds:
@@ -43,15 +44,22 @@ on:
 permissions:
   contents: read
 
-# Only a manual dispatch with strict unticked is non-strict: `strict` is declared for
-# workflow_dispatch alone, so a schedule or a workflow_call never has it and a caller cannot
-# pass it. Inside a called workflow github.event_name is the caller's event, so it is not used.
+# A run is non-strict only when BOTH hold:
+#   1. inputs.strict is literally false, and
+#   2. the top-level workflow is this repository's deep.yml (github.workflow_ref).
+# Condition 2 is what a caller cannot spoof. Inside a called workflow github.event_name is the
+# caller's event, and a dispatched caller's own `strict` input leaks into `inputs` here (shown
+# by a probe run), so condition 1 alone is not enough. For a called run, github.workflow_ref
+# names the caller's workflow file, never this one. The repository slug is literal on purpose:
+# github.repository is the caller's repository, so a foreign repo's own deep.yml must not
+# match. A fork therefore always runs strict, which fails safe.
 # Non-strict ad hoc runs share one group per ref and replace each other. Every strict run
 # (nightly, strict dispatch, workflow_call) gets a group unique to its run_id and is never
-# cancelled, so no other run can cancel it or make it wait.
+# cancelled, so no other run can cancel it or make it wait. The same predicate is repeated in
+# the validate job, because workflow-level env is not available here.
 concurrency:
-  group: ${{ format('{0}', inputs.strict) == 'false' && format('deep-adhoc-{0}', github.ref) || format('deep-strict-{0}', github.run_id) }}
-  cancel-in-progress: ${{ format('{0}', inputs.strict) == 'false' }}
+  group: ${{ (format('{0}', inputs.strict) == 'false' && startsWith(github.workflow_ref, 'rtkelly-labs/Diffra/.github/workflows/deep.yml@')) && format('deep-adhoc-{0}', github.ref) || format('deep-strict-{0}', github.run_id) }}
+  cancel-in-progress: ${{ format('{0}', inputs.strict) == 'false' && startsWith(github.workflow_ref, 'rtkelly-labs/Diffra/.github/workflows/deep.yml@') }}
 
 defaults:
   run:
@@ -83,13 +91,17 @@ jobs:
       - name: Resolve strictness, fuzz budget and fuzz targets
         id: resolve
         env:
-          # Empty for a schedule or a workflow_call; only a dispatch can set it.
+          # Same predicate as the concurrency block: non-strict needs strict=false AND a
+          # direct run of this repository's deep.yml. A caller can leak `strict` but not
+          # github.workflow_ref.
+          NON_STRICT: ${{ format('{0}', inputs.strict) == 'false' && startsWith(github.workflow_ref, 'rtkelly-labs/Diffra/.github/workflows/deep.yml@') }}
           STRICT_INPUT: ${{ format('{0}', inputs.strict) }}
+          TOP_LEVEL_WORKFLOW: ${{ github.workflow_ref }}
           TARGET_INPUT: ${{ inputs.target }}
           FUZZ_SECONDS_INPUT: ${{ inputs.fuzz_seconds }}
         run: |
-          # Anything but an explicit false is strict.
-          if [ "$STRICT_INPUT" = "false" ]; then strict=false; else strict=true; fi
+          # Anything but an explicit, unspoofable non-strict is strict.
+          if [ "$NON_STRICT" = "true" ]; then strict=false; else strict=true; fi
 
           fuzz_seconds="${FUZZ_SECONDS_INPUT:-$STRICT_FUZZ_FLOOR_SECONDS}"
           if ! [[ "$fuzz_seconds" =~ ^[0-9]{1,6}$ ]]; then
@@ -108,7 +120,7 @@ jobs:
             exit 1
           fi
 
-          echo "Resolved: strict=$strict (strict input='${STRICT_INPUT}'), target=$target, fuzz_seconds=$fuzz_seconds, strict floor=${STRICT_FUZZ_FLOOR_SECONDS}s"
+          echo "Resolved: strict=$strict (strict input='${STRICT_INPUT}', top-level workflow='${TOP_LEVEL_WORKFLOW}'), target=$target, fuzz_seconds=$fuzz_seconds, strict floor=${STRICT_FUZZ_FLOOR_SECONDS}s"
 
           if [ "$strict" = "true" ]; then
             if [ "$target" != "all" ]; then

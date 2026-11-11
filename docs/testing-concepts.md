@@ -90,8 +90,8 @@ Today the steps are separate CLI operations from the earlier design:
    the nearest earlier one in the history window.
 3. `diffra diff` writes a policy-free Delta.
 4. `diffra eval` applies rules and writes an Assessment. Its exit code is non-zero for any outcome
-   other than pass or warn; under [0005](adr/0005-surface-do-not-enforce.md), failing the build becomes an
-   opt-in setting.
+   other than pass or warn; under [0005](adr/0005-surface-do-not-enforce.md), failing the build becomes the
+   opt-in setting `fail-on`.
 5. `diffra report` or `diffra present` renders the result for review.
 
 Steps 1, 3, 4 and 5 are CLI commands. Step 2 is done by the self-evaluation script; see the

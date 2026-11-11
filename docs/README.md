@@ -38,6 +38,7 @@ built.
 | Content-addressed store and portable bundles (`bundle`) | CLI | `ContentAddressedStore.cs`, `EvidenceBundle.cs` | |
 | Review bundle and local server (`present`) | CLI | `PresentationBundle.cs`, `src/Cli/PresentCommand.cs` | |
 | Self-verification pipeline | CI script | `scripts/RunDogfood.cs` | |
+| Enforcement setting `fail-on` | Library; nothing calls it yet | `Enforcement.cs` | [0005](adr/0005-surface-do-not-enforce.md) |
 | Git merge-base baseline resolver | Library | `GitBaselineResolver.cs` | [0003](adr/0003-comparison-history-and-noise.md) |
 | Two-run verification and promotion records | Library | `Promotion.cs` | [0005](adr/0005-surface-do-not-enforce.md) |
 | Keyed and ordered collection comparison | Library | `KeyedCollectionComparator.cs` | [0003](adr/0003-comparison-history-and-noise.md) |

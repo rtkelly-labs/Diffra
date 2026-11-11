@@ -30,7 +30,9 @@ public static class AttentionTests
         LongFindingIsShortenedNotDropped();
         ScalarChangeValueIsRead();
         LineLimitBoundary();
-        Console.WriteLine("PASS attention levels and one-screen output");
+        FailOnNamesTheLowestFailingStatus();
+        FailOnReadsOnlyTheThreeValues();
+        Console.WriteLine("PASS attention levels, one-screen output and fail-on");
     }
 
     private static void StatusesMapToLevels()
@@ -291,6 +293,47 @@ public static class AttentionTests
         var visible = overflow[..overflow.IndexOf("<details>", StringComparison.Ordinal)];
         Equal(3, CountRows(visible), "An overflow leaves room for three rows in ten lines.");
         Contains(visible, "4 more findings are not shown.");
+    }
+
+    private static void FailOnNamesTheLowestFailingStatus()
+    {
+        RankedFinding[] failed = [Finding("pass", "a"), Finding("fail", "b")];
+        RankedFinding[] warned = [Finding("warn", "a"), Finding("pass", "b")];
+        RankedFinding[] unjudged = [Finding("needs-review", "a"), Finding("inconclusive", "b"), Finding("changed", "c")];
+
+        Equal(FailOn.Never, Enforcement.Default, "The default never fails the step.");
+        Equal(false, Enforcement.FailsStep(FailOn.Never, failed), "never ignores a failed rule");
+        Equal(true, Enforcement.FailsStep(FailOn.Fail, failed), "fail trips on fail");
+        Equal(false, Enforcement.FailsStep(FailOn.Fail, warned), "fail ignores warn");
+        Equal(true, Enforcement.FailsStep(FailOn.Warn, warned), "warn trips on warn");
+        Equal(true, Enforcement.FailsStep(FailOn.Warn, failed), "warn trips on fail");
+        Equal(false, Enforcement.FailsStep(FailOn.Warn, unjudged), "statuses other than fail and warn never fail the step");
+        Equal(false, Enforcement.FailsStep(FailOn.Warn, []), "no findings never fail the step");
+        Equal(false, Enforcement.FailsStep(FailOn.Fail, unjudged), "fail ignores unjudged statuses");
+        Equal(false, Enforcement.FailsStep(FailOn.Never, warned), "never ignores a warning");
+        Throws<ArgumentOutOfRangeException>(() => Enforcement.FailsStep((FailOn)7, failed));
+        Throws<ArgumentNullException>(() => Enforcement.FailsStep(FailOn.Fail, null!));
+        Throws<ArgumentOutOfRangeException>(() => Enforcement.Token((FailOn)7));
+    }
+
+    private static void FailOnReadsOnlyTheThreeValues()
+    {
+        foreach (var value in new[] { FailOn.Never, FailOn.Fail, FailOn.Warn })
+        {
+            Equal(true, Enforcement.TryParse(Enforcement.Token(value), out var read), Enforcement.Token(value));
+            Equal(value, read, "The token reads back as the same value.");
+        }
+
+        Equal(true, Enforcement.TryParse(null, out var absent), "absent");
+        Equal(FailOn.Never, absent, "An absent setting is the default.");
+        Equal(true, Enforcement.TryParse("", out var empty), "empty");
+        Equal(FailOn.Never, empty, "An empty setting is the default.");
+        foreach (var bad in new[] { "Fail", "error", "look-now", " warn" })
+        {
+            Equal(false, Enforcement.TryParse(bad, out _), $"'{bad}' is rejected");
+        }
+
+        Equal("fail-on", Enforcement.SettingName, "setting name");
     }
 
     private static RankedFinding Finding(string status, string id, string? relative = "0") =>

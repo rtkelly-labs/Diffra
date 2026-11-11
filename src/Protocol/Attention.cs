@@ -327,7 +327,11 @@ internal static class AttentionRenderer
         {
             string[] cells =
             [
-                $"**{finding.Status}** `{Code(finding.Id)}`",
+                // A finding with no values to show, such as one that could not be compared, keeps
+                // its explanation so the reader can see why it needs attention.
+                finding.Before is null && finding.After is null
+                    ? $"**{finding.Status}** `{Code(finding.Id)}`: {Prose(finding.Message)}"
+                    : $"**{finding.Status}** `{Code(finding.Id)}`",
                 finding.Before is null ? string.Empty : $"`{Code(finding.Before)}`",
                 finding.After is null ? string.Empty : $"`{Code(finding.After)}`",
                 Change(finding) is { Length: > 0 } change ? $"`{Code(change)}`" : string.Empty,
@@ -367,6 +371,10 @@ internal static class AttentionRenderer
     // Text inside a code span: no line breaks, backticks or table separators.
     private static string Code(string value) =>
         OneLine(value).Replace('`', '\'').Replace("|", "\\|", StringComparison.Ordinal);
+
+    private static string Prose(string value) =>
+        OneLine(value).Replace("&", "&amp;", StringComparison.Ordinal).Replace("<", "&lt;", StringComparison.Ordinal)
+            .Replace("|", "\\|", StringComparison.Ordinal);
 
     private static string OneLine(string value) =>
         value.Replace("\r", " ", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal);

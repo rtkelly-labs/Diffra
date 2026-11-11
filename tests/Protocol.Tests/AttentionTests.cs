@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.Json;
-using Diffra.Protocol;
 
 namespace Diffra.Protocol.Tests;
 
@@ -248,7 +247,10 @@ public static class AttentionTests
         var (delta, assessment) = Documents(["""{"id":"ok","status":"pass","message":"Within limits.","changePaths":[]}"""], "fail");
         var comment = ReportRenderer.Render(delta, assessment, ReportFormat.Comment);
         Contains(comment, "### Needs action");
-        Contains(comment, "| **fail** `assessment` |");
+        Contains(comment, "| **fail** `assessment`: The assessment outcome is fail, but no finding explains it. |");
+
+        var (unmeasured, unmeasuredAssessment) = Documents(["""{"id":"comparison","status":"inconclusive","message":"Units differ: ms | s <b>\nnow</b>","changePaths":[]}"""], "inconclusive");
+        Contains(ReportRenderer.Render(unmeasured, unmeasuredAssessment, ReportFormat.Comment), "| **inconclusive** `comparison`: Units differ: ms \\| s &lt;b> now&lt;/b> |  |  |  |\n");
         var agent = ReportRenderer.Render(delta, assessment, ReportFormat.Agent);
         Contains(agent, "attention: act\nfindings: 1\n- act fail assessment: The assessment outcome is fail, but no finding explains it.\n");
     }

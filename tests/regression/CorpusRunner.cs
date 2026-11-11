@@ -7,7 +7,6 @@ public sealed class RunSummary
 {
     public int TotalCases { get; set; }
     public int PassedCases { get; set; }
-    public List<(string CaseId, string File)> IdentityUnverifiedCases { get; } = new();
     public List<(string CaseId, string Reason)> DeclaredBreaks { get; } = new();
     public List<(string CaseId, string File, string? Pointer, string Message)> Failures { get; } = new();
     public bool BackwardReadsPassed { get; set; } = true;
@@ -22,7 +21,6 @@ public static class CorpusRunner
         string tool,
         RunSummary summary,
         bool quick = false,
-        bool strict = false,
         bool allowPath = false)
     {
         var manifestPath = Path.Combine(corpusDir, "manifest.json");
@@ -36,6 +34,10 @@ public static class CorpusRunner
             ?? throw new InvalidOperationException($"Failed to deserialize manifest at {manifestPath}");
 
         Console.WriteLine($"Running corpus {manifest.Version} ({corpusDir}) with candidate tool: {tool}");
+        if (manifest.Provenance != null)
+        {
+            Console.WriteLine($"  [Corpus Provenance: {manifest.Provenance.Asset} ({manifest.Provenance.Tool} {manifest.Provenance.Version}) SHA256: {manifest.Provenance.Sha256}]");
+        }
         if (quick)
         {
             Console.WriteLine("  [Quick mode active: skipping old-vs-new and slow directory materialization checks]");
@@ -57,14 +59,12 @@ public static class CorpusRunner
 
                 summary.TotalCases++;
                 var casePassed = true;
-                var caseUnverified = false;
                 var caseDeclaredBreak = false;
 
                 // Prepare execution args
                 var resolvedArgs = new List<string>();
-                for (var i = 0; i < testCase.Args.Count; i++)
+                foreach (var token in testCase.Args)
                 {
-                    var token = testCase.Args[i];
                     if (token.StartsWith("inputs/", StringComparison.Ordinal) ||
                         token.StartsWith("expected/", StringComparison.Ordinal))
                     {
@@ -94,7 +94,6 @@ public static class CorpusRunner
                     var msg = $"Exit code mismatch: expected {testCase.ExpectedExitCode}, got {exitCode}. Stderr: {stderr.Trim()}";
                     Console.WriteLine($"FAIL {testCase.Id}: {msg}");
                     summary.Failures.Add((testCase.Id, "exitCode", null, msg));
-                    casePassed = false;
                     continue;
                 }
 
@@ -165,35 +164,10 @@ public static class CorpusRunner
                     // Strictly assert Delta ID existence, canonical self-consistency, invariant environment, and determinism
                     if (testCase.Command == "diff" && exp.Path.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
                     {
-                        using var parsedAct = JsonDocument.Parse(actualBytes);
-                        if (!parsedAct.RootElement.TryGetProperty("id", out var candIdProp) ||
-                            candIdProp.ValueKind != JsonValueKind.String ||
-                            string.IsNullOrWhiteSpace(candIdProp.GetString()))
+                        if (!TryVerifyDeltaDocument(actualBytes, requireInvariantEnvironment: true, out var deltaErr))
                         {
-                            var msg = "Candidate Delta is missing a valid string 'id' property.";
-                            Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {msg}");
-                            summary.Failures.Add((testCase.Id, exp.Path, "/id", msg));
-                            casePassed = false;
-                            continue;
-                        }
-
-                        var candComputedId = CanonicalHashHelper.ComputeDocumentId("delta", actualBytes);
-                        if (!string.Equals(candIdProp.GetString(), candComputedId, StringComparison.Ordinal))
-                        {
-                            var msg = $"Candidate Delta ID is self-inconsistent: expected {candComputedId}, got {candIdProp.GetString()}.";
-                            Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {msg}");
-                            summary.Failures.Add((testCase.Id, exp.Path, "/id", msg));
-                            casePassed = false;
-                            continue;
-                        }
-
-                        if (!parsedAct.RootElement.TryGetProperty("provenance", out var candProv) ||
-                            !candProv.TryGetProperty("environment", out var candEnv) ||
-                            !DeclaredBreakAllowList.IsExactInvariantDeltaEnvironment(candEnv))
-                        {
-                            var msg = "Candidate Delta environment must equal {\"runtime\":\"dotnet\"} exactly with no extra or changed keys.";
-                            Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {msg}");
-                            summary.Failures.Add((testCase.Id, exp.Path, "/provenance/environment", msg));
+                            Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {deltaErr}");
+                            summary.Failures.Add((testCase.Id, exp.Path, "/id", deltaErr!));
                             casePassed = false;
                             continue;
                         }
@@ -240,31 +214,17 @@ public static class CorpusRunner
                         }
                         finally
                         {
-                            try { Directory.Delete(tempRepeat, true); } catch { }
+                            try { Directory.Delete(tempRepeat, true); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
                         }
                     }
 
                     // Strictly assert Evidence ID existence and self-ID verification
                     if (testCase.Command == "collect" && exp.Path.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
                     {
-                        using var parsedAct = JsonDocument.Parse(actualBytes);
-                        if (!parsedAct.RootElement.TryGetProperty("id", out var evIdProp) ||
-                            evIdProp.ValueKind != JsonValueKind.String ||
-                            string.IsNullOrWhiteSpace(evIdProp.GetString()))
+                        if (!TryVerifyEvidenceDocument(actualBytes, out var evErr))
                         {
-                            var msg = "Candidate Evidence is missing a valid string 'id' property.";
-                            Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {msg}");
-                            summary.Failures.Add((testCase.Id, exp.Path, "/id", msg));
-                            casePassed = false;
-                            continue;
-                        }
-
-                        var candComputedEvId = CanonicalHashHelper.ComputeEvidenceId(actualBytes);
-                        if (!string.Equals(evIdProp.GetString(), candComputedEvId, StringComparison.Ordinal))
-                        {
-                            var msg = $"Evidence ID drift detected: recomputed ID '{candComputedEvId}' != stored ID '{evIdProp.GetString()}'.";
-                            Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {msg}");
-                            summary.Failures.Add((testCase.Id, exp.Path, "/id", msg));
+                            Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {evErr}");
+                            summary.Failures.Add((testCase.Id, exp.Path, "/id", evErr!));
                             casePassed = false;
                             continue;
                         }
@@ -352,10 +312,6 @@ public static class CorpusRunner
                 {
                     // Declared break counted separately
                 }
-                else if (caseUnverified)
-                {
-                    // Identity unverified counted separately
-                }
                 else
                 {
                     summary.PassedCases++;
@@ -384,7 +340,6 @@ public static class CorpusRunner
         string oldTool,
         string newTool,
         RunSummary summary,
-        bool strict = false,
         bool allowPath = false)
     {
         var manifestPath = Path.Combine(corpusDir, "manifest.json");
@@ -398,6 +353,10 @@ public static class CorpusRunner
             ?? throw new InvalidOperationException($"Failed to deserialize manifest at {manifestPath}");
 
         Console.WriteLine($"Comparing old tool ({oldTool}) vs new tool ({newTool}) on corpus {manifest.Version}");
+        if (manifest.Provenance != null)
+        {
+            Console.WriteLine($"  [Corpus Provenance: {manifest.Provenance.Asset} ({manifest.Provenance.Tool} {manifest.Provenance.Version}) SHA256: {manifest.Provenance.Sha256}]");
+        }
 
         var tempOld = Path.Combine(Path.GetTempPath(), "diffra-cmp-old-" + Guid.NewGuid().ToString("N"));
         var tempNew = Path.Combine(Path.GetTempPath(), "diffra-cmp-new-" + Guid.NewGuid().ToString("N"));
@@ -410,7 +369,6 @@ public static class CorpusRunner
             {
                 summary.TotalCases++;
                 var casePassed = true;
-                var caseUnverified = false;
                 var caseDeclaredBreak = false;
 
                 var oldArgs = ResolveArgs(testCase.Args, corpusDir, tempOld);
@@ -493,35 +451,10 @@ public static class CorpusRunner
                     // Strictly assert Delta ID and exact environment on new tool
                     if (testCase.Command == "diff" && exp.Path.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
                     {
-                        using var parsedNew = JsonDocument.Parse(newBytes);
-                        if (!parsedNew.RootElement.TryGetProperty("id", out var newIdProp) ||
-                            newIdProp.ValueKind != JsonValueKind.String ||
-                            string.IsNullOrWhiteSpace(newIdProp.GetString()))
+                        if (!TryVerifyDeltaDocument(newBytes, requireInvariantEnvironment: true, out var deltaErr))
                         {
-                            var msg = "New tool Delta is missing a valid string 'id' property.";
-                            Console.WriteLine($"FAIL [CMP] {testCase.Id} ({relOut}): {msg}");
-                            summary.Failures.Add((testCase.Id, relOut, "/id", msg));
-                            casePassed = false;
-                            continue;
-                        }
-
-                        var newComputedId = CanonicalHashHelper.ComputeDocumentId("delta", newBytes);
-                        if (!string.Equals(newIdProp.GetString(), newComputedId, StringComparison.Ordinal))
-                        {
-                            var msg = $"New tool Delta ID is self-inconsistent: expected {newComputedId}, got {newIdProp.GetString()}.";
-                            Console.WriteLine($"FAIL [CMP] {testCase.Id} ({relOut}): {msg}");
-                            summary.Failures.Add((testCase.Id, relOut, "/id", msg));
-                            casePassed = false;
-                            continue;
-                        }
-
-                        if (!parsedNew.RootElement.TryGetProperty("provenance", out var newProv) ||
-                            !newProv.TryGetProperty("environment", out var newEnv) ||
-                            !DeclaredBreakAllowList.IsExactInvariantDeltaEnvironment(newEnv))
-                        {
-                            var msg = "New tool Delta environment must equal {\"runtime\":\"dotnet\"} exactly with no extra or changed keys.";
-                            Console.WriteLine($"FAIL [CMP] {testCase.Id} ({relOut}): {msg}");
-                            summary.Failures.Add((testCase.Id, relOut, "/provenance/environment", msg));
+                            Console.WriteLine($"FAIL [CMP] {testCase.Id} ({relOut}): {deltaErr}");
+                            summary.Failures.Add((testCase.Id, relOut, "/id", deltaErr!));
                             casePassed = false;
                             continue;
                         }
@@ -530,24 +463,10 @@ public static class CorpusRunner
                     // Strictly assert Evidence self-ID on new tool
                     if (testCase.Command == "collect" && exp.Path.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
                     {
-                        using var parsedNew = JsonDocument.Parse(newBytes);
-                        if (!parsedNew.RootElement.TryGetProperty("id", out var evIdProp) ||
-                            evIdProp.ValueKind != JsonValueKind.String ||
-                            string.IsNullOrWhiteSpace(evIdProp.GetString()))
+                        if (!TryVerifyEvidenceDocument(newBytes, out var evErr))
                         {
-                            var msg = "New tool Evidence is missing a valid string 'id' property.";
-                            Console.WriteLine($"FAIL [CMP] {testCase.Id} ({relOut}): {msg}");
-                            summary.Failures.Add((testCase.Id, relOut, "/id", msg));
-                            casePassed = false;
-                            continue;
-                        }
-
-                        var newComputedEvId = CanonicalHashHelper.ComputeEvidenceId(newBytes);
-                        if (!string.Equals(evIdProp.GetString(), newComputedEvId, StringComparison.Ordinal))
-                        {
-                            var msg = $"Evidence ID drift detected on new tool: recomputed ID '{newComputedEvId}' != stored ID '{evIdProp.GetString()}'.";
-                            Console.WriteLine($"FAIL [CMP] {testCase.Id} ({relOut}): {msg}");
-                            summary.Failures.Add((testCase.Id, relOut, "/id", msg));
+                            Console.WriteLine($"FAIL [CMP] {testCase.Id} ({relOut}): {evErr}");
+                            summary.Failures.Add((testCase.Id, relOut, "/id", evErr!));
                             casePassed = false;
                             continue;
                         }
@@ -621,10 +540,6 @@ public static class CorpusRunner
                 {
                     // Declared break
                 }
-                else if (caseUnverified)
-                {
-                    // Identity unverified
-                }
                 else
                 {
                     summary.PassedCases++;
@@ -639,9 +554,9 @@ public static class CorpusRunner
                 Directory.Delete(tempOld, true);
                 Directory.Delete(tempNew, true);
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // Ignore
+                // Ignore cleanup failure
             }
         }
     }
@@ -713,26 +628,14 @@ public static class CorpusRunner
                         {
                             case "https://diffra.dev/schemas/evidence-v1.schema.json":
                             {
-                                if (!doc.RootElement.TryGetProperty("id", out var evIdProp) ||
-                                    evIdProp.ValueKind != JsonValueKind.String ||
-                                    string.IsNullOrWhiteSpace(evIdProp.GetString()))
+                                if (!TryVerifyEvidenceDocument(bytes, out var evErr))
                                 {
-                                    var msg = $"Evidence document {rel} is missing a valid string 'id'.";
-                                    Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
-                                    summary.Failures.Add(("backward-reads", rel, "/id", msg));
+                                    Console.WriteLine($"FAIL backward-reads ({rel}): {evErr}");
+                                    summary.Failures.Add(("backward-reads", rel, "/id", evErr!));
                                     break;
                                 }
 
-                                var expectedEvId = CanonicalHashHelper.ComputeEvidenceId(bytes);
-                                if (!string.Equals(expectedEvId, evIdProp.GetString(), StringComparison.Ordinal))
-                                {
-                                    var msg = $"Evidence ID drift: recomputed ID '{expectedEvId}' != stored ID '{evIdProp.GetString()}'.";
-                                    Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
-                                    summary.Failures.Add(("backward-reads", rel, "/id", msg));
-                                    break;
-                                }
-
-                                var evId = evIdProp.GetString()!;
+                                var evId = doc.RootElement.GetProperty("id").GetString()!;
                                 var commit = doc.RootElement.GetProperty("subject").GetProperty("commit").GetString()!;
                                 var tempRefPath = Path.Combine(tempDir, "ref-" + Guid.NewGuid().ToString("N") + ".json");
                                 var unsignedRefObj = new
@@ -804,13 +707,10 @@ public static class CorpusRunner
 
                             case "https://diffra.dev/schemas/delta-v1.schema.json":
                             {
-                                var expectedDeltaId = CanonicalHashHelper.ComputeDocumentId("delta", bytes);
-                                var actualDeltaId = doc.RootElement.GetProperty("id").GetString();
-                                if (!string.Equals(expectedDeltaId, actualDeltaId, StringComparison.Ordinal))
+                                if (!TryVerifyDeltaDocument(bytes, requireInvariantEnvironment: false, out var deltaErr))
                                 {
-                                    var msg = $"DocumentIdentity verification failed for Delta {rel}: expected {expectedDeltaId}, got {actualDeltaId}";
-                                    Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
-                                    summary.Failures.Add(("backward-reads", rel, null, msg));
+                                    Console.WriteLine($"FAIL backward-reads ({rel}): {deltaErr}");
+                                    summary.Failures.Add(("backward-reads", rel, "/id", deltaErr!));
                                     break;
                                 }
 
@@ -837,7 +737,7 @@ public static class CorpusRunner
                                 {
                                     var deltaId = deltaIdProp.GetString();
                                     foreach (var candFile in files)
-                                     {
+                                    {
                                         if (candFile.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
                                         {
                                             try
@@ -852,7 +752,10 @@ public static class CorpusRunner
                                                     break;
                                                 }
                                             }
-                                            catch { }
+                                            catch (JsonException)
+                                            {
+                                                // Ignore invalid candidate JSON
+                                            }
                                         }
                                     }
                                 }
@@ -1017,24 +920,47 @@ public static class CorpusRunner
             }
         }
 
-        // 3. Candidate Delta missing id must fail
+        // 3. Candidate Delta missing id or self-inconsistent ID must fail
         {
             var missingIdJson = """
             {
               "schema": "https://diffra.dev/schemas/delta-v1.schema.json",
-              "status": "changed"
+              "status": "changed",
+              "provenance": { "environment": { "runtime": "dotnet" } }
             }
-            """;
-            using var doc = JsonDocument.Parse(missingIdJson);
-            if (doc.RootElement.TryGetProperty("id", out var idProp) && !string.IsNullOrWhiteSpace(idProp.GetString()))
+            """u8.ToArray();
+
+            if (TryVerifyDeltaDocument(missingIdJson, requireInvariantEnvironment: true, out var missingErr))
             {
-                throw new InvalidOperationException("Self-test failed: Missing id check did not detect missing id.");
+                throw new InvalidOperationException("Self-test failed: Delta document missing 'id' was incorrectly accepted.");
+            }
+            if (string.IsNullOrEmpty(missingErr) || !missingErr.Contains("missing a valid string 'id'"))
+            {
+                throw new InvalidOperationException($"Self-test failed: Expected missing id error, got '{missingErr}'.");
+            }
+
+            var wrongIdJson = """
+            {
+              "schema": "https://diffra.dev/schemas/delta-v1.schema.json",
+              "id": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "status": "changed",
+              "provenance": { "environment": { "runtime": "dotnet" } }
+            }
+            """u8.ToArray();
+
+            if (TryVerifyDeltaDocument(wrongIdJson, requireInvariantEnvironment: true, out var wrongIdErr))
+            {
+                throw new InvalidOperationException("Self-test failed: Delta document with wrong id was incorrectly accepted.");
+            }
+            if (string.IsNullOrEmpty(wrongIdErr) || !wrongIdErr.Contains("Delta ID self-inconsistent"))
+            {
+                throw new InvalidOperationException($"Self-test failed: Expected self-inconsistent id error, got '{wrongIdErr}'.");
             }
         }
 
         // 4. Evidence ID drift must fail
         {
-            var evJson = System.Text.Encoding.UTF8.GetBytes("""
+            var driftedEvJson = """
             {
               "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
               "id": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
@@ -1050,16 +976,92 @@ public static class CorpusRunner
               "payload": { "test": 1 },
               "artifactRefs": []
             }
-            """);
+            """u8.ToArray();
 
-            var recomputed = CanonicalHashHelper.ComputeEvidenceId(evJson);
-            if (string.Equals(recomputed, "sha256:0000000000000000000000000000000000000000000000000000000000000000", StringComparison.Ordinal))
+            if (TryVerifyEvidenceDocument(driftedEvJson, out var driftErr))
             {
                 throw new InvalidOperationException("Self-test failed: Drifted Evidence ID was incorrectly accepted.");
+            }
+            if (string.IsNullOrEmpty(driftErr) || !driftErr.Contains("Evidence ID drift detected"))
+            {
+                throw new InvalidOperationException($"Self-test failed: Expected drift error, got '{driftErr}'.");
             }
         }
 
         Console.WriteLine("PASS regression runner self-tests (all 4 security and allow-list assertions verified).");
+    }
+
+    public static bool TryVerifyDeltaDocument(byte[] bytes, bool requireInvariantEnvironment, out string? error)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(bytes);
+            if (!doc.RootElement.TryGetProperty("id", out var idProp) ||
+                idProp.ValueKind != JsonValueKind.String ||
+                string.IsNullOrWhiteSpace(idProp.GetString()))
+            {
+                error = "Candidate Delta is missing a valid string 'id' property.";
+                return false;
+            }
+
+            var actualId = idProp.GetString()!;
+            var expectedId = CanonicalHashHelper.ComputeDocumentId("delta", bytes);
+            if (!string.Equals(actualId, expectedId, StringComparison.Ordinal))
+            {
+                error = $"Delta ID self-inconsistent: expected {expectedId}, got {actualId}.";
+                return false;
+            }
+
+            if (requireInvariantEnvironment)
+            {
+                if (!doc.RootElement.TryGetProperty("provenance", out var prov) ||
+                    !prov.TryGetProperty("environment", out var env) ||
+                    !DeclaredBreakAllowList.IsExactInvariantDeltaEnvironment(env))
+                {
+                    error = "Candidate Delta environment must equal {\"runtime\":\"dotnet\"} exactly with no extra or changed keys.";
+                    return false;
+                }
+            }
+
+            error = null;
+            return true;
+        }
+        catch (JsonException ex)
+        {
+            error = $"Delta document is not valid JSON: {ex.Message}";
+            return false;
+        }
+    }
+
+    public static bool TryVerifyEvidenceDocument(byte[] bytes, out string? error)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(bytes);
+            if (!doc.RootElement.TryGetProperty("id", out var idProp) ||
+                idProp.ValueKind != JsonValueKind.String ||
+                string.IsNullOrWhiteSpace(idProp.GetString()))
+            {
+                error = "Evidence document is missing a valid string 'id' property.";
+                return false;
+            }
+
+            var actualId = idProp.GetString()!;
+            var expectedId = CanonicalHashHelper.ComputeEvidenceId(bytes);
+            if (!string.Equals(actualId, expectedId, StringComparison.Ordinal))
+            {
+                error = $"Evidence ID drift detected: recomputed ID '{expectedId}' != stored ID '{actualId}'.";
+                return false;
+            }
+
+            error = null;
+            return true;
+        }
+        catch (JsonException ex)
+        {
+            error = $"Evidence document is not valid JSON: {ex.Message}";
+            return false;
+        }
     }
 
     private static string GetDocumentKind(string command, JsonElement element1, JsonElement element2)

@@ -14,7 +14,7 @@ public static class DeclaredBreakAllowList
     private static readonly List<DeclaredBreakRule> Rules =
     [
         // PR #115: Keep host runtime out of Delta identity
-        new DeclaredBreakRule(
+        new(
             DocumentKind: "delta",
             JsonPath: "/provenance/environment/runtime",
             Reason: "DECLARED-BREAK delta-identity-runtime (PR #115)",
@@ -24,7 +24,7 @@ public static class DeclaredBreakAllowList
                 actual.ValueKind == JsonValueKind.String &&
                 actual.GetString() == "dotnet"
         ),
-        new DeclaredBreakRule(
+        new(
             DocumentKind: "delta",
             JsonPath: "/id",
             Reason: "DECLARED-BREAK delta-identity-runtime (PR #115)",
@@ -36,7 +36,7 @@ public static class DeclaredBreakAllowList
         ),
 
         // Evidence host environment variance for collect cases across platforms/runtimes
-        new DeclaredBreakRule(
+        new(
             DocumentKind: "evidence",
             JsonPath: "/environment/platform",
             Reason: "ENVIRONMENT-PLATFORM host-platform-drift (diffra collect records host OS)",
@@ -44,7 +44,7 @@ public static class DeclaredBreakAllowList
                 expected.ValueKind == JsonValueKind.String &&
                 actual.ValueKind == JsonValueKind.String
         ),
-        new DeclaredBreakRule(
+        new(
             DocumentKind: "evidence",
             JsonPath: "/environment/runtime",
             Reason: "ENVIRONMENT-RUNTIME host-runtime-drift (diffra collect records host framework)",
@@ -52,7 +52,7 @@ public static class DeclaredBreakAllowList
                 expected.ValueKind == JsonValueKind.String &&
                 actual.ValueKind == JsonValueKind.String
         ),
-        new DeclaredBreakRule(
+        new(
             DocumentKind: "evidence",
             JsonPath: "/environment/tools/0/version",
             Reason: "ENVIRONMENT-TOOLS host-sdk-drift (diffra collect records host SDK version)",
@@ -60,7 +60,7 @@ public static class DeclaredBreakAllowList
                 expected.ValueKind == JsonValueKind.String &&
                 actual.ValueKind == JsonValueKind.String
         ),
-        new DeclaredBreakRule(
+        new(
             DocumentKind: "evidence",
             JsonPath: "/environment/tools",
             Reason: "ENVIRONMENT-TOOLS host-sdk-drift (diffra collect records host SDK tool inventory)",
@@ -68,7 +68,7 @@ public static class DeclaredBreakAllowList
                 expected.ValueKind == JsonValueKind.Array &&
                 actual.ValueKind == JsonValueKind.Array
         ),
-        new DeclaredBreakRule(
+        new(
             DocumentKind: "evidence",
             JsonPath: "/id",
             Reason: "IDENTITY-UNVERIFIED evidence-environment-drift (diffra collect incorporates host environment in Evidence ID)",
@@ -96,15 +96,34 @@ public static class DeclaredBreakAllowList
                 continue;
             }
 
-            if (!string.Equals(rule.JsonPath, jsonPath, StringComparison.Ordinal))
+            var matchPath = rule.JsonPath;
+            bool matches;
+            string resolvePath;
+
+            if (matchPath.EndsWith("/*", StringComparison.Ordinal))
+            {
+                var prefix = matchPath[..^2];
+                matches = jsonPath.StartsWith(prefix + "/", StringComparison.Ordinal) || jsonPath == prefix;
+                resolvePath = prefix;
+            }
+            else
+            {
+                matches = string.Equals(rule.JsonPath, jsonPath, StringComparison.Ordinal) ||
+                          jsonPath.StartsWith(rule.JsonPath + "/", StringComparison.Ordinal);
+                resolvePath = jsonPath.StartsWith(rule.JsonPath + "/", StringComparison.Ordinal) && !JsonDiff.TryResolvePointer(expectedRoot, jsonPath, out _)
+                    ? rule.JsonPath
+                    : jsonPath;
+            }
+
+            if (!matches)
             {
                 continue;
             }
 
             if (rule.Validator != null)
             {
-                var hasExp = JsonDiff.TryResolvePointer(expectedRoot, jsonPath, out var expVal);
-                var hasAct = JsonDiff.TryResolvePointer(actualRoot, jsonPath, out var actVal);
+                var hasExp = JsonDiff.TryResolvePointer(expectedRoot, resolvePath, out var expVal);
+                var hasAct = JsonDiff.TryResolvePointer(actualRoot, resolvePath, out var actVal);
 
                 if (!hasExp || !hasAct || !rule.Validator(expVal, actVal))
                 {
@@ -119,7 +138,7 @@ public static class DeclaredBreakAllowList
         return false;
     }
 
-    public static bool IsPatchVersionRuntimeString(string? runtime)
+    private static bool IsPatchVersionRuntimeString(string? runtime)
     {
         if (string.IsNullOrWhiteSpace(runtime))
         {

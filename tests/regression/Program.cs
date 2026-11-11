@@ -11,7 +11,6 @@ string? oldPkg = null;
 string? newPkg = null;
 string? corpusRoot = null;
 var quick = false;
-var strict = false;
 var allowPath = false;
 
 for (var i = 0; i < argsList.Count; i++)
@@ -40,7 +39,7 @@ for (var i = 0; i < argsList.Count; i++)
             break;
 
         case "--strict":
-            strict = true;
+            // Strict verification against declared-break allow-list is now the default and only mode
             break;
 
         case "--allow-path":
@@ -158,6 +157,12 @@ var summary = new RunSummary();
 
 if (mode == "compare")
 {
+    if (quick)
+    {
+        Console.Error.WriteLine("Error: --quick cannot be combined with --compare. Old-vs-new comparison requires running the full verification suite.");
+        return 1;
+    }
+
     if (string.IsNullOrWhiteSpace(oldTool) || string.IsNullOrWhiteSpace(newTool))
     {
         Console.Error.WriteLine("Error: '--compare' requires both --old <tool> and --new <tool>.");
@@ -233,17 +238,10 @@ if (mode == "compare")
     Console.WriteLine("Verified: Old and new executables are distinct builds.");
     Console.WriteLine("============================================================");
 
-    if (quick)
+    foreach (var corpusDir in corpora)
     {
-        Console.WriteLine("Quick mode: Skipping full old-vs-new comparison execution.");
-    }
-    else
-    {
-        foreach (var corpusDir in corpora)
-        {
-            CorpusRunner.RunComparison(corpusDir, oldTool, newTool, summary, strict: strict, allowPath: allowPath);
-            CorpusRunner.RunBackwardReads(corpusDir, newTool, summary, quick: false, allowPath: allowPath);
-        }
+        CorpusRunner.RunComparison(corpusDir, oldTool, newTool, summary, allowPath: allowPath);
+        CorpusRunner.RunBackwardReads(corpusDir, newTool, summary, quick: false, allowPath: allowPath);
     }
 }
 else
@@ -259,7 +257,7 @@ else
 
     foreach (var corpusDir in corpora)
     {
-        CorpusRunner.RunCandidate(corpusDir, tool, summary, quick: quick, strict: strict, allowPath: allowPath);
+        CorpusRunner.RunCandidate(corpusDir, tool, summary, quick: quick, allowPath: allowPath);
     }
 }
 
@@ -271,21 +269,10 @@ Console.WriteLine("============================================================"
 Console.WriteLine($"Corpora Evaluated:         {corpora.Count}");
 Console.WriteLine($"Total Cases:               {summary.TotalCases}");
 Console.WriteLine($"Passed Cases:              {summary.PassedCases}");
-Console.WriteLine($"Identity-Unverified Cases: {summary.IdentityUnverifiedCases.Count}");
 Console.WriteLine($"Declared Breaks:           {summary.DeclaredBreaks.Count}");
 Console.WriteLine($"Failed Cases:              {summary.Failures.Count}");
 Console.WriteLine($"Backward Reads:            {(summary.BackwardReadsPassed ? "PASSED" : "FAILED")}");
 Console.WriteLine("============================================================");
-
-if (summary.IdentityUnverifiedCases.Count > 0)
-{
-    Console.WriteLine();
-    Console.WriteLine("Identity-Unverified Cases (matched only after environment/identity normalization):");
-    foreach (var (caseId, file) in summary.IdentityUnverifiedCases)
-    {
-        Console.WriteLine($"  - {caseId} ({file})");
-    }
-}
 
 if (summary.DeclaredBreaks.Count > 0)
 {
@@ -306,12 +293,6 @@ if (summary.Failures.Count > 0)
         var ptr = pointer is not null ? $" [pointer: {pointer}]" : "";
         Console.WriteLine($"  - {caseId} ({file}){ptr}: {message}");
     }
-    return 1;
-}
-
-if (strict && summary.IdentityUnverifiedCases.Count > 0)
-{
-    Console.Error.WriteLine($"Strict mode failure: {summary.IdentityUnverifiedCases.Count} case(s) had unverified identity.");
     return 1;
 }
 
@@ -349,7 +330,7 @@ static void PrintUsage()
     Console.WriteLine("Modes & Options:");
     Console.WriteLine("  --tool <path>                          Run candidate binary against all corpora");
     Console.WriteLine("  --quick                                Quick mode: fast smoke-test skipping slow checks and old-vs-new");
-    Console.WriteLine("  --strict                               Strict mode: fail on any IDENTITY-UNVERIFIED cases");
+    Console.WriteLine("  --strict                               Strict mode: always enabled (fails on any unlisted diff)");
     Console.WriteLine("  --allow-path                           Allow bare tool names to resolve via system PATH");
     Console.WriteLine("  --compare --old <old> --new <new>      Compare two tool builds against all corpora");
     Console.WriteLine("            [--old-pkg <path>]           Path to old package (.nupkg / archive) for SHA-256 check");

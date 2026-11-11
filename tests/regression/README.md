@@ -92,15 +92,16 @@ In **PR #115**, the host runtime version was dropped from the default comparator
   ```
   DECLARED-BREAK delta-identity-runtime (PR #115)
   ```
-  This exemption applies exclusively to Delta documents whose expected environment contains a patch-version runtime string. Every other ID mismatch still fails under `--strict`.
+  This exemption applies exclusively to Delta documents whose expected environment contains a patch-version runtime string. Every other ID mismatch causes the test to fail immediately.
 - **Strict Backward Reads**: Candidate builds must still parse, read, and strictly verify (`DocumentIdentity.Verify`) historical `0.0.1-alpha.1` Delta documents without error.
 
-### Normalization and Identity Verification (`IDENTITY-UNVERIFIED`)
+### Host Environment Variance and Strict Allow-List
 
-`diffra collect` records host platform, runtime, and SDK versions in Evidence documents. For `collect` cases, when outputs match only after normalizing environment metadata across machines:
-- The case is reported as `IDENTITY-UNVERIFIED` (never as `PASS`).
-- `IDENTITY-UNVERIFIED` cases are counted separately in the run summary.
-- If `--strict` is enabled, any `IDENTITY-UNVERIFIED` case causes the runner to exit with failure unless explicitly permitted by the allow-list.
+`diffra collect` records host platform, runtime, and SDK versions in Evidence documents. Rather than loose normalization, all cross-platform variances are explicitly verified against committed rules in `DeclaredBreakAllowList.cs`:
+- Specific JSON pointers (`/environment/platform`, `/environment/runtime`, `/environment/tools/0/version`, `/environment/tools`, and the resulting `/id`) are permitted only when matching exact structural and type rules.
+- Evidence payload digests and contents must match byte-for-byte.
+- Candidate Evidence documents must pass self-identity verification (`CanonicalHashHelper.ComputeEvidenceId` matching stored `id`).
+- Strict verification is always active: any difference at an unlisted JSON pointer causes the regression suite to fail immediately.
 
 ### Declared Breaks and Explicit Allow-List
 
@@ -110,7 +111,7 @@ Declared breaks must never hide regressions. Rather than blanket-skipping docume
 - **Reason and Reference**: the rationale and PR introducing the change (e.g., `DECLARED-BREAK delta-identity-runtime (PR #115)`).
 - **Rule Validator**: programmatic validation ensuring the difference matches the exact expected variance.
 
-Comparison of every other field in the document continues strictly. Any difference outside the allow-list (such as a changed comparator that also corrupts `changes`) fails immediately. In `--strict` mode, all unverified differences fail the build.
+Comparison of every other field in the document continues strictly. Any difference outside the allow-list (such as a changed comparator that also corrupts `changes`) fails immediately. All unverified differences fail the build.
 
 ## Adding a Corpus for a New Release
 

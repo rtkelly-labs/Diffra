@@ -13,30 +13,26 @@ public static class CanonicalHashHelper
     public static string ComputeDocumentId(string kind, ReadOnlySpan<byte> documentJson)
     {
         var projection = Canonicalize(documentJson, excludedRootProperty: "id");
-        var domain = Encoding.ASCII.GetBytes($"diffra/v1\0{kind}\0");
+        ReadOnlySpan<byte> domain = kind switch
+        {
+            "delta" => "diffra/v1\0delta\0"u8,
+            "evidence" => "diffra/v1\0evidence\0"u8,
+            "baseline-reference" => "diffra/v1\0baseline-reference\0"u8,
+            "assessment" => "diffra/v1\0assessment\0"u8,
+            _ => Encoding.UTF8.GetBytes($"diffra/v1\0{kind}\0")
+        };
         var input = new byte[domain.Length + projection.Length];
-        domain.CopyTo(input, 0);
-        projection.CopyTo(input, domain.Length);
+        domain.CopyTo(input);
+        projection.CopyTo(input.AsSpan(domain.Length));
         return $"sha256:{Convert.ToHexStringLower(SHA256.HashData(input))}";
     }
 
     public static string ComputeEvidenceId(ReadOnlySpan<byte> evidenceJson)
     {
-        var projection = Canonicalize(evidenceJson, excludedRootProperty: "id");
-        var domain = Encoding.ASCII.GetBytes("diffra/v1\0evidence\0");
-        var input = new byte[domain.Length + projection.Length];
-        domain.CopyTo(input, 0);
-        projection.CopyTo(input, domain.Length);
-        return $"sha256:{Convert.ToHexStringLower(SHA256.HashData(input))}";
+        return ComputeDocumentId("evidence", evidenceJson);
     }
 
-    public static string ComputePayloadDigest(ReadOnlySpan<byte> payloadJson)
-    {
-        var canonical = Canonicalize(payloadJson);
-        return $"sha256:{Convert.ToHexStringLower(SHA256.HashData(canonical))}";
-    }
-
-    public static byte[] Canonicalize(ReadOnlySpan<byte> utf8Json, string? excludedRootProperty = null)
+    private static byte[] Canonicalize(ReadOnlySpan<byte> utf8Json, string? excludedRootProperty = null)
     {
         using var doc = JsonDocument.Parse(utf8Json.ToArray());
         var output = new ArrayBufferWriter<byte>();

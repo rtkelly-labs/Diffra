@@ -57,9 +57,59 @@ public static class CorpusGenerator
         var cases = RunAndRecordExpected(corpusDir, inputsDir, expectedDir, toolExecutable);
 
         // 6. Write manifest.json with release provenance
+        var reportedVersion = ToolExecutor.InspectToolVersion(toolExecutable);
+        if (reportedVersion != "unknown" &&
+            !string.Equals(reportedVersion, version, StringComparison.OrdinalIgnoreCase) &&
+            !reportedVersion.StartsWith(version + "+", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"Tool version mismatch: running '{toolExecutable}' reported version '{reportedVersion}', but requested corpus version is '{version}'.");
+        }
+
+        var assetName = $"Diffra.Cli.{version}.nupkg";
+        string sha256;
+
+        if (string.Equals(version, "0.0.1-alpha.1", StringComparison.OrdinalIgnoreCase))
+        {
+            sha256 = "b6212a455da046549e01ab595f169d60ad840d64cd54c6e62ac6910526d1ab04";
+        }
+        else
+        {
+            string? pkgPath = null;
+            if (repoRoot != null)
+            {
+                var candidatePkg = Path.Combine(repoRoot, "artifacts", "package", assetName);
+                if (File.Exists(candidatePkg))
+                {
+                    pkgPath = candidatePkg;
+                }
+                else
+                {
+                    var pinnedPkg = Path.Combine(repoRoot, "temp", "pinned-tool", assetName);
+                    if (File.Exists(pinnedPkg))
+                    {
+                        pkgPath = pinnedPkg;
+                    }
+                }
+            }
+
+            if (pkgPath != null && File.Exists(pkgPath))
+            {
+                sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(pkgPath)));
+            }
+            else if (File.Exists(toolExecutable))
+            {
+                sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(toolExecutable)));
+                assetName = Path.GetFileName(toolExecutable);
+            }
+            else
+            {
+                throw new InvalidOperationException($"Unable to derive provenance SHA-256 for tool version '{version}'. Package or binary not found.");
+            }
+        }
+
         var provenance = new CorpusProvenance(
-            Asset: "Diffra.Cli.0.0.1-alpha.1.nupkg",
-            Sha256: "b6212a455da046549e01ab595f169d60ad840d64cd54c6e62ac6910526d1ab04",
+            Asset: assetName,
+            Sha256: sha256,
             Tool: "diffra",
             Version: version);
 
@@ -311,8 +361,7 @@ public static class CorpusGenerator
     private static void SanitizeEvidenceHostDetails(string evidencePath)
     {
         var jsonText = File.ReadAllText(evidencePath);
-        var node = JsonNode.Parse(jsonText) as JsonObject;
-        if (node != null)
+        if (JsonNode.Parse(jsonText) is JsonObject node)
         {
             var env = new JsonObject
             {

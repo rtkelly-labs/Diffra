@@ -71,7 +71,7 @@ public static class ToolExecutor
         // Attempt running tool with --version
         try
         {
-            var (code, stdout, stderr) = RunWithOutput(tool, ["--version"], allowPath: allowPath);
+            var (_, stdout, stderr) = RunWithOutput(tool, ["--version"], allowPath: allowPath);
             var text = !string.IsNullOrWhiteSpace(stdout) ? stdout.Trim() : stderr.Trim();
             if (!string.IsNullOrWhiteSpace(text) && !text.StartsWith("Unknown command", StringComparison.OrdinalIgnoreCase))
             {
@@ -86,7 +86,7 @@ public static class ToolExecutor
         return "unknown";
     }
 
-    public static bool IsGitTracked(string filePath)
+    private static bool IsGitTracked(string filePath)
     {
         try
         {

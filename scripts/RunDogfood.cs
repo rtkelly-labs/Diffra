@@ -87,7 +87,7 @@ if (args.Contains("--collect-only"))
 }
 
 // 3. Resolve merge-base and baseline evidence
-Console.WriteLine("3. Resolving merge-base baseline Evidence...");
+Console.WriteLine("3. Resolving the comparison point Evidence...");
 var baselineEvidencePath = Path.Combine(workDir, "baseline-evidence.json");
 var baselineRefPath = Path.Combine(workDir, "baseline-reference.json");
 
@@ -235,7 +235,15 @@ Console.WriteLine($"[BASELINE] Resolved baseline Evidence from commit '{matchedC
 var comparisonPointNote = DescribeComparisonPoint(mergeBaseCommit, matchedCommit, matchedDistance, ancestorList);
 if (comparisonPointNote.Length > 0)
 {
-    Console.WriteLine("::notice::" + comparisonPointNote.ReplaceLineEndings(" "));
+    // Annotations are plain text, so drop the Markdown callout and list markers.
+    var noticeText = string.Join(
+        " ",
+        comparisonPointNote
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line => line.TrimStart('>', ' '))
+            .Where(line => line.Length > 0 && line != "[!NOTE]")
+            .Select(line => line.StartsWith("- ", StringComparison.Ordinal) ? line[2..] : line));
+    Console.WriteLine("::notice::" + noticeText);
 }
 
 // 4. Construct verified Baseline Reference
@@ -243,7 +251,7 @@ Console.WriteLine("4. Building verified Baseline Reference document...");
 BuildBaselineReference(baselineEvidencePath, matchedCommit, baselineRefPath);
 
 // 5. Diff against baseline (the pinned judge validates the baseline reference ID and structure)
-Console.WriteLine("5. Computing typed Delta against merge-base baseline...");
+Console.WriteLine("5. Computing typed Delta against the comparison point...");
 var deltaPath = Path.Combine(workDir, "delta.json");
 
 RunProcess("dotnet", "diffra", "diff",

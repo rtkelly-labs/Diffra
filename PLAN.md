@@ -47,14 +47,14 @@ Until all three exist, no repository can adopt Diffra within the limit.
 
 Each step is a set of small pull requests, each with tests. Smaller changes go first.
 
-### 1. Clear the earlier design
+### 1. Clear the earlier design (done)
 
-- Delete the graph executor and builder. Move the graph data model and validator out of the
-  protocol library, for reuse in recording the CI job graph.
-- In the self-evaluation baseline search, state the distance and the commits in between when it
-  falls back to an earlier commit, and say "cannot attribute" when nothing in the window has a
+- The graph executor and builder are deleted. The graph data model and validator are moved out
+  of the protocol library, for reuse in recording the CI job graph.
+- The self-evaluation baseline search states the distance and the commits in between when it
+  falls back to an earlier commit, and says "cannot attribute" when nothing in the window has a
   record.
-- State and check the package-reference rule.
+- The package-reference rule is stated in record 0009 and checked by the protocol tests.
 
 ### 2. Settings and output
 

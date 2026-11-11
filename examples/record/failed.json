@@ -1,0 +1,1 @@
+{"schema":"https://diffra.net/schemas/record-entry-v1.schema.json","project":"main","dataset":"coverage","commit":"0123456789abcdef0123456789abcdef01234567","job":{"name":"test (linux)"},"status":"failed","reason":"The coverage collector exited with code 1."}

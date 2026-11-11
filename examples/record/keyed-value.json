@@ -1,0 +1,1 @@
+{"schema":"https://diffra.net/schemas/record-entry-v1.schema.json","project":"main","dataset":"startupTime","commit":"0123456789abcdef0123456789abcdef01234567","job":{"name":"bench"},"dimensions":{"os":"linux"},"key":"cold","status":"recorded","value":{"value":"12.5","unit":"ms"}}

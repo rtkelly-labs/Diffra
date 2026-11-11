@@ -23,8 +23,9 @@ emitter's error never reached the pull request.
 4. **Optional is a property of the dataset** (`required: false`), not of one part of it.
 5. **Diffra reads each tool's own output.** A built-in converter turns a tool's standard output
    into a typed dataset, so the adopter does not reshape output for Diffra. All standard dataset
-   types are built before the first adopter installs Diffra. Converters are tested against
-   published validators for each format and against synthetic values.
+   types are built before the first adopter installs Diffra, including flame graphs and Parquet
+   and OpenMetrics input. Converters are tested against published validators for each format and
+   against synthetic values.
 6. **CI timing and the CI job graph are datasets from the first install.** Each run records wait
    time, queue time and execution time per job and for the longest path through the job graph.
    Rules apply to execution time only. A re-run uses the latest attempt and notes that earlier
@@ -44,8 +45,6 @@ emitter's error never reached the pull request.
 
 ## Not yet decided
 
-- Whether "all standard dataset types" includes flame graphs, Parquet input and OpenMetrics
-  input.
 - Whether each supported tool version also needs one real output file as a test fixture
   (proposed).
 - Whether size data folds into the generic keyed table type.
@@ -68,7 +67,9 @@ that a custom dataset type is declared under `types`, and that each `stratify` e
 under `dimensions`. It reads datasets, rule-set names, projects and settings, and accepts a small
 part of YAML (one document, no anchors, aliases or tags, no duplicate keys). It does not validate
 the file against the schema, so rule bodies are checked only by the schema. Nothing calls the
-loader yet, and `diffra record` does not exist.
+loader yet, and `diffra record` does not exist. [Recording a run](../record.md) specifies the
+command and `schemas/record-entry-v1.schema.json` the entries it writes; both take both a
+`--value` and the dataset's `from` source, with `from` preferred.
 
 `schemas/project-v1.schema.json`, `schemas/collection-v1.schema.json` and
 `examples/project-file/` describe the earlier single-project, metric-based design. The root

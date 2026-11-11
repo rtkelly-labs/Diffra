@@ -357,15 +357,17 @@ internal static class ComparisonTests
         Equal("dotnet", delta.Provenance.Environment["runtime"]);
         True(!delta.Provenance.Environment.Values.Contains(Environment.Version.ToString()));
 
-        var pinned = StructuredNumericComparator.Compare(
+        // A host-specific environment would change the ID, so the default must not carry one.
+        var hostSpecific = StructuredNumericComparator.Compare(
             baseline,
             candidate,
             new BaselineEvidenceReference(BaselineId, BaselineEvidenceId, "trusted"),
             NumericComparatorOptions.Default with
             {
-                Environment = new Dictionary<string, string>(StringComparer.Ordinal) { ["runtime"] = "dotnet" }
+                Environment = new Dictionary<string, string>(StringComparer.Ordinal) { ["runtime"] = Environment.Version.ToString() }
             });
-        Equal(pinned.Id, delta.Id);
+        True(!string.Equals(hostSpecific.Id, delta.Id, StringComparison.Ordinal));
+        Equal(delta.Id, Compare(baseline, candidate).Id);
     }
 
     private static void InvalidArgumentsAreRejected()

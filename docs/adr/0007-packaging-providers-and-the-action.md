@@ -19,8 +19,8 @@ intended direction.
    from git. Provider integrations supply the rest: run and job data, moving bundles between
    jobs, reading and writing history, and posting the comment.
 4. **Provider code starts as Action steps.** When a provider's logic outgrows workflow steps, it
-   moves into a small companion executable beside the one core CLI, named per provider:
-   `diffra-github` for GitHub.
+   moves into a small companion executable beside the one core CLI. The GitHub companion is
+   named `diffra-github`.
 5. **Optional converters are separate .NET programs** outside the native CI build. Diffra does not
    take on making third-party libraries work under ahead-of-time compilation.
 6. **The Action's metadata file sits at the root of this repository.** Adopters reference
@@ -29,8 +29,7 @@ intended direction.
 ## Not yet decided
 
 - The Marketplace listing name ("Diffra" alone is not available, because a GitHub organization
-  of that name exists) and whether to list before an
-  install outside the owner's repositories.
+  of that name exists) and whether to list before an install outside the owner's repositories.
 - The name of the reusable workflow path.
 - Whether the CI build is compiled ahead of time, an install-time limit per job, and checksum
   verification on download (all proposed).

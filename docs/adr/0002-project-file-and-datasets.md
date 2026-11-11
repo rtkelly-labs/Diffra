@@ -63,8 +63,10 @@ emitter's error never reached the pull request.
 `schemas/root-file-v1.schema.json` and `examples/root-file/` describe the root file in this
 record: settings, datasets with named rule sets, `required: false`, and projects that map each
 dataset to a rule set, or to `null` to record it without rules. The file's name in a repository
-is not decided. The standard dataset types are those of the earlier project file; CI timing and
-the job graph (decision 6) have no type yet.
+is not decided. The standard dataset types are those of the earlier project file
+(`diffra/benchmark@1`, `diffra/size@1` and others); there is no table type with declared columns
+(decision 11), and CI timing and the job graph (decision 6) have no type yet. The Baseline
+reference and bundle manifest schemas still allow a `previous-release` role (decision 13).
 
 `src/RootFile/` loads the root file. It checks what the schema cannot: that each dataset a
 project selects is declared, that each rule set a project applies is defined on that dataset,

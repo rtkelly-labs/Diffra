@@ -50,14 +50,15 @@ number with `--value`. A value that does not fit the root file is saved as rejec
 at the end rather than failing the job. A collecting job in each workflow file gathers the
 records for the commit.
 
-Diffra reads the formats tools already write: test results, coverage, lint findings, sizes,
+Diffra is to read the formats tools already write: test results, coverage, lint findings, sizes,
 tables such as benchmark results and OpenMetrics, with declared columns, and flame graphs as
 collapsed stacks. Readers that need a large library, such as Parquet, ship as separate packages
-outside the core. History is stored in a branch of the repository by default, one record per
-commit, and the adopter can choose another store. On GitHub, provider work runs in a small
-companion, `diffra-github`, beside the one core CLI. CI already schedules jobs; Diffra records
-the job graph and its timing as data and does not run work itself. Measures that are noisy from
-run to run are judged against a window of recent history rather than one earlier value.
+outside the core. History is to be stored in a branch of the repository by default, one record
+per commit, and the adopter can choose another store. On GitHub, provider work starts as Action
+steps and moves into a small companion, `diffra-github`, beside the one core CLI when it
+outgrows them. CI already schedules jobs; Diffra records the job graph and its timing as data
+and does not run work itself. Measures that are noisy from run to run are judged against a
+window of recent history rather than one earlier value.
 
 ## Diffra uses Diffra
 
@@ -84,12 +85,13 @@ or Markdown, and as the one-screen comment and agent formats headed by an attent
 Nothing posts the comment yet. `bundle` moves evidence through a content-addressed store, and
 `present` builds and serves a review bundle. The root file has a schema and a loader that checks
 its cross-references, which no command uses yet; the `fail-on` decision is library code with no
-step to read it; and `diffra record` is specified but not built. The earlier names come from the
-earlier design; the glossary gives the words that replace them. The
-[sample workflow](../examples/sample-project/workflow/) contains inputs and checked-in outputs,
-the [protocol](protocol.md) describes the current document shapes, and the
-[CLI reference](cli.md) the commands. The [feature status](README.md#feature-status) table shows
-what is a command, what is a library API only, and what is planned.
+step to read it; and `diffra record` is specified but not built. No converter for a tool's own
+format exists yet. The names Evidence, Delta and Assessment come from the earlier design; the
+glossary gives the words that replace them. The [sample
+workflow](../examples/sample-project/workflow/) contains inputs and checked-in outputs, the
+[protocol](protocol.md) describes the current document shapes, and the [CLI reference](cli.md)
+the commands. The [feature status](README.md#feature-status) table shows what is a command, what
+is a library API only, and what is planned.
 
 The root [VISION.md](../VISION.md) is the original design handover. It describes an earlier
 design built around a trusted baseline and approval, and is kept as history.

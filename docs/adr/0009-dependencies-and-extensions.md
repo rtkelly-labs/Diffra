@@ -28,9 +28,13 @@ code-first builder and a graph executor, which the root project file replaces.
    check that no project file under `src/Protocol/` declares one; a reference brought in another
    way, such as through a project reference, is caught in review. Other projects under `src/` keep a short list of reviewed references.
 
+7. **Parquet is read by a separate converter package.** It is built from this repository on
+   Parquet.Net, which stays out of the core; a fork of that library can replace it once it is
+   ready.
+
 ## Not yet decided
 
-- Where a Parquet reader would live.
+- Whether visual comparison needs an image decoder, and where it would live.
 
 ## Current code
 

@@ -988,10 +988,74 @@ public static class CorpusRunner
             }
         }
 
-        Console.WriteLine("PASS regression runner self-tests (all 4 security and allow-list assertions verified).");
+        // 5. Evidence tool entries: only the dotnet-sdk version may vary; an added key, a changed
+        //    tool id, or a changed tools array length must fail.
+        {
+            const string expectedEvidenceJson = """
+            {
+              "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
+              "environment": { "platform": "a", "runtime": "b", "tools": [ { "id": "dotnet-sdk", "version": "10.0.100" } ] }
+            }
+            """;
+
+            var versionOnly = DisallowedEvidenceDifferences(expectedEvidenceJson, """
+            {
+              "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
+              "environment": { "platform": "a", "runtime": "b", "tools": [ { "id": "dotnet-sdk", "version": "10.0.200" } ] }
+            }
+            """);
+            if (versionOnly.Count != 0)
+            {
+                throw new InvalidOperationException($"Self-test failed: An Evidence dotnet-sdk version change must be allow-listed, but '{string.Join(", ", versionOnly)}' was rejected.");
+            }
+
+            var addedKey = DisallowedEvidenceDifferences(expectedEvidenceJson, """
+            {
+              "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
+              "environment": { "platform": "a", "runtime": "b", "tools": [ { "id": "dotnet-sdk", "version": "10.0.200", "path": "/x" } ] }
+            }
+            """);
+            if (!addedKey.Contains("/environment/tools/0/path") || !addedKey.Contains("/environment/tools/0/version"))
+            {
+                throw new InvalidOperationException("Self-test failed: An added key inside an Evidence tool entry must be rejected, together with the version change in that entry.");
+            }
+
+            var changedToolId = DisallowedEvidenceDifferences(expectedEvidenceJson, """
+            {
+              "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
+              "environment": { "platform": "a", "runtime": "b", "tools": [ { "id": "other-sdk", "version": "10.0.200" } ] }
+            }
+            """);
+            if (!changedToolId.Contains("/environment/tools/0/id") || !changedToolId.Contains("/environment/tools/0/version"))
+            {
+                throw new InvalidOperationException("Self-test failed: A changed Evidence tool id must be rejected.");
+            }
+
+            var addedTool = DisallowedEvidenceDifferences(expectedEvidenceJson, """
+            {
+              "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
+              "environment": { "platform": "a", "runtime": "b", "tools": [ { "id": "dotnet-sdk", "version": "10.0.200" }, { "id": "extra", "version": "1" } ] }
+            }
+            """);
+            if (!addedTool.Contains("/environment/tools/[length:1!=2]") || !addedTool.Contains("/environment/tools/0/version"))
+            {
+                throw new InvalidOperationException("Self-test failed: A changed Evidence tools array length must be rejected.");
+            }
+        }
+
+        Console.WriteLine("PASS regression runner self-tests (all 5 security and allow-list assertions verified).");
     }
 
-    public static bool TryVerifyDeltaDocument(byte[] bytes, bool requireInvariantEnvironment, out string? error)
+    private static List<string> DisallowedEvidenceDifferences(string expectedJson, string actualJson)
+    {
+        using var expected = JsonDocument.Parse(expectedJson);
+        using var actual = JsonDocument.Parse(actualJson);
+        return JsonDiff.FindAllDifferences(expected.RootElement, actual.RootElement)
+            .Where(d => !DeclaredBreakAllowList.TryMatch("evidence", d, expected.RootElement, actual.RootElement, out _))
+            .ToList();
+    }
+
+    private static bool TryVerifyDeltaDocument(byte[] bytes, bool requireInvariantEnvironment, out string? error)
     {
         try
         {
@@ -1033,7 +1097,7 @@ public static class CorpusRunner
         }
     }
 
-    public static bool TryVerifyEvidenceDocument(byte[] bytes, out string? error)
+    private static bool TryVerifyEvidenceDocument(byte[] bytes, out string? error)
     {
         try
         {

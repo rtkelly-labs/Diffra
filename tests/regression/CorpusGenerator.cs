@@ -20,6 +20,10 @@ public static class CorpusGenerator
             throw new ArgumentException("Refusing to generate corpus with in-tree tool path. Must use an installed release binary.");
         }
 
+        // Verify the tool and derive its provenance before anything is written, so a wrong or
+        // unidentifiable tool never leaves a partially regenerated corpus behind.
+        var provenance = DeriveProvenance(version, toolExecutable, repoRoot);
+
         var corpusDir = Path.Combine(corpusRoot, version);
         var inputsDir = Path.Combine(corpusDir, "inputs");
         var payloadsDir = Path.Combine(inputsDir, "payloads");
@@ -57,66 +61,58 @@ public static class CorpusGenerator
         var cases = RunAndRecordExpected(corpusDir, inputsDir, expectedDir, toolExecutable);
 
         // 6. Write manifest.json with release provenance
+        var manifest = new RegressionManifest(version, cases, provenance);
+        var manifestPath = Path.Combine(corpusDir, "manifest.json");
+        File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, JsonOptions) + "\n");
+        Console.WriteLine($"Corpus generated successfully for {version} at {corpusDir} with {cases.Count} cases.");
+    }
+
+    private static CorpusProvenance DeriveProvenance(string version, string toolExecutable, string? repoRoot)
+    {
         var reportedVersion = ToolExecutor.InspectToolVersion(toolExecutable);
-        if (reportedVersion != "unknown" &&
-            !string.Equals(reportedVersion, version, StringComparison.OrdinalIgnoreCase) &&
+        if (string.Equals(reportedVersion, "unknown", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Unable to determine the version of '{toolExecutable}'. A corpus can only be generated from a tool that reports its version.");
+        }
+
+        if (!string.Equals(reportedVersion, version, StringComparison.OrdinalIgnoreCase) &&
             !reportedVersion.StartsWith(version + "+", StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException($"Tool version mismatch: running '{toolExecutable}' reported version '{reportedVersion}', but requested corpus version is '{version}'.");
         }
 
         var assetName = $"Diffra.Cli.{version}.nupkg";
-        string sha256;
-
-        if (string.Equals(version, "0.0.1-alpha.1", StringComparison.OrdinalIgnoreCase))
+        string? pkgPath = null;
+        if (repoRoot != null)
         {
-            sha256 = "b6212a455da046549e01ab595f169d60ad840d64cd54c6e62ac6910526d1ab04";
+            pkgPath = new[]
+                {
+                    Path.Combine(repoRoot, "artifacts", "package", assetName),
+                    Path.Combine(repoRoot, "temp", "pinned-tool", assetName),
+                }
+                .FirstOrDefault(File.Exists);
+        }
+
+        string sha256;
+        if (pkgPath != null)
+        {
+            sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(pkgPath)));
+        }
+        else if (File.Exists(toolExecutable))
+        {
+            sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(toolExecutable)));
+            assetName = Path.GetFileName(toolExecutable);
         }
         else
         {
-            string? pkgPath = null;
-            if (repoRoot != null)
-            {
-                var candidatePkg = Path.Combine(repoRoot, "artifacts", "package", assetName);
-                if (File.Exists(candidatePkg))
-                {
-                    pkgPath = candidatePkg;
-                }
-                else
-                {
-                    var pinnedPkg = Path.Combine(repoRoot, "temp", "pinned-tool", assetName);
-                    if (File.Exists(pinnedPkg))
-                    {
-                        pkgPath = pinnedPkg;
-                    }
-                }
-            }
-
-            if (pkgPath != null && File.Exists(pkgPath))
-            {
-                sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(pkgPath)));
-            }
-            else if (File.Exists(toolExecutable))
-            {
-                sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(toolExecutable)));
-                assetName = Path.GetFileName(toolExecutable);
-            }
-            else
-            {
-                throw new InvalidOperationException($"Unable to derive provenance SHA-256 for tool version '{version}'. Package or binary not found.");
-            }
+            throw new InvalidOperationException($"Unable to derive provenance SHA-256 for tool version '{version}'. Package or binary not found.");
         }
 
-        var provenance = new CorpusProvenance(
+        return new CorpusProvenance(
             Asset: assetName,
             Sha256: sha256,
             Tool: "diffra",
             Version: version);
-
-        var manifest = new RegressionManifest(version, cases, provenance);
-        var manifestPath = Path.Combine(corpusDir, "manifest.json");
-        File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, JsonOptions) + "\n");
-        Console.WriteLine($"Corpus generated successfully for {version} at {corpusDir} with {cases.Count} cases.");
     }
 
     private static void WritePayloads(string dir)

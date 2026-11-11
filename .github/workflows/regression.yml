@@ -54,7 +54,7 @@ jobs:
           dotnet tool install Diffra.Cli --add-source temp/candidate-pkg --tool-path temp/candidate-bin --version "$candidate_version"
 
       - name: Run regression corpus against candidate build
-        run: dotnet run --project tests/regression/Diffra.Regression.csproj --configuration Release --no-build -- --tool temp/candidate-bin/diffra --strict
+        run: dotnet run --project tests/regression/Diffra.Regression.csproj --configuration Release --no-build -- --tool temp/candidate-bin/diffra
 
       - name: Run old vs new tool comparison against v0.0.1-alpha.1
         env:
@@ -62,4 +62,4 @@ jobs:
           RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           candidate_version="0.0.1-alpha.1.ci.${RUN_ID}.${RUN_ATTEMPT}"
-          dotnet run --project tests/regression/Diffra.Regression.csproj --configuration Release --no-build -- --compare --old temp/pinned-bin/diffra --new temp/candidate-bin/diffra --old-pkg temp/pinned-tool/Diffra.Cli.0.0.1-alpha.1.nupkg --new-pkg "temp/candidate-pkg/Diffra.Cli.${candidate_version}.nupkg" --strict
+          dotnet run --project tests/regression/Diffra.Regression.csproj --configuration Release --no-build -- --compare --old temp/pinned-bin/diffra --new temp/candidate-bin/diffra --old-pkg temp/pinned-tool/Diffra.Cli.0.0.1-alpha.1.nupkg --new-pkg "temp/candidate-pkg/Diffra.Cli.${candidate_version}.nupkg"

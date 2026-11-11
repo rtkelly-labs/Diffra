@@ -7,7 +7,8 @@ public sealed record DeclaredBreakRule(
     string DocumentKind,
     string JsonPath,
     string Reason,
-    Func<JsonElement, JsonElement, bool>? Validator = null);
+    Func<JsonElement, JsonElement, bool>? Validator = null,
+    Func<JsonElement, JsonElement, bool>? RootValidator = null);
 
 public static class DeclaredBreakAllowList
 {
@@ -52,21 +53,21 @@ public static class DeclaredBreakAllowList
                 expected.ValueKind == JsonValueKind.String &&
                 actual.ValueKind == JsonValueKind.String
         ),
+        // Only the version of the single dotnet-sdk tool entry may vary. The tool id, the array
+        // length, and any key added to or removed from a tool entry are not allow-listed, so they
+        // surface as their own differences and fail.
         new(
             DocumentKind: "evidence",
             JsonPath: "/environment/tools/0/version",
             Reason: "ENVIRONMENT-TOOLS host-sdk-drift (diffra collect records host SDK version)",
             Validator: (expected, actual) =>
                 expected.ValueKind == JsonValueKind.String &&
-                actual.ValueKind == JsonValueKind.String
-        ),
-        new(
-            DocumentKind: "evidence",
-            JsonPath: "/environment/tools",
-            Reason: "ENVIRONMENT-TOOLS host-sdk-drift (diffra collect records host SDK tool inventory)",
-            Validator: (expected, actual) =>
-                expected.ValueKind == JsonValueKind.Array &&
-                actual.ValueKind == JsonValueKind.Array
+                !string.IsNullOrWhiteSpace(expected.GetString()) &&
+                actual.ValueKind == JsonValueKind.String &&
+                !string.IsNullOrWhiteSpace(actual.GetString()),
+            RootValidator: (expectedRoot, actualRoot) =>
+                IsSingleDotnetSdkToolEntry(expectedRoot) &&
+                IsSingleDotnetSdkToolEntry(actualRoot)
         ),
         new(
             DocumentKind: "evidence",
@@ -96,34 +97,20 @@ public static class DeclaredBreakAllowList
                 continue;
             }
 
-            var matchPath = rule.JsonPath;
-            bool matches;
-            string resolvePath;
-
-            if (matchPath.EndsWith("/*", StringComparison.Ordinal))
-            {
-                var prefix = matchPath[..^2];
-                matches = jsonPath.StartsWith(prefix + "/", StringComparison.Ordinal) || jsonPath == prefix;
-                resolvePath = prefix;
-            }
-            else
-            {
-                matches = string.Equals(rule.JsonPath, jsonPath, StringComparison.Ordinal) ||
-                          jsonPath.StartsWith(rule.JsonPath + "/", StringComparison.Ordinal);
-                resolvePath = jsonPath.StartsWith(rule.JsonPath + "/", StringComparison.Ordinal) && !JsonDiff.TryResolvePointer(expectedRoot, jsonPath, out _)
-                    ? rule.JsonPath
-                    : jsonPath;
-            }
-
-            if (!matches)
+            if (!string.Equals(rule.JsonPath, jsonPath, StringComparison.Ordinal))
             {
                 continue;
             }
 
+            if (rule.RootValidator != null && !rule.RootValidator(expectedRoot, actualRoot))
+            {
+                return false;
+            }
+
             if (rule.Validator != null)
             {
-                var hasExp = JsonDiff.TryResolvePointer(expectedRoot, resolvePath, out var expVal);
-                var hasAct = JsonDiff.TryResolvePointer(actualRoot, resolvePath, out var actVal);
+                var hasExp = JsonDiff.TryResolvePointer(expectedRoot, jsonPath, out var expVal);
+                var hasAct = JsonDiff.TryResolvePointer(actualRoot, jsonPath, out var actVal);
 
                 if (!hasExp || !hasAct || !rule.Validator(expVal, actVal))
                 {
@@ -136,6 +123,30 @@ public static class DeclaredBreakAllowList
         }
 
         return false;
+    }
+
+    private static bool IsSingleDotnetSdkToolEntry(JsonElement root)
+    {
+        if (!JsonDiff.TryResolvePointer(root, "/environment/tools", out var tools) ||
+            tools.ValueKind != JsonValueKind.Array ||
+            tools.GetArrayLength() != 1)
+        {
+            return false;
+        }
+
+        var entry = tools[0];
+        if (entry.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        var props = entry.EnumerateObject().ToList();
+        return props.Count == 2 &&
+               entry.TryGetProperty("id", out var id) &&
+               id.ValueKind == JsonValueKind.String &&
+               string.Equals(id.GetString(), "dotnet-sdk", StringComparison.Ordinal) &&
+               entry.TryGetProperty("version", out var version) &&
+               version.ValueKind == JsonValueKind.String;
     }
 
     private static bool IsPatchVersionRuntimeString(string? runtime)

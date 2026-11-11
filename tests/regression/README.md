@@ -39,13 +39,11 @@ dotnet run --project tests/regression/Diffra.Regression.csproj --configuration R
 - Skips slow multi-file directory generation cases (`present bundle` presentation materialization and `bundle import` CAS extraction).
 - Validates fast document backward reads.
 
-### Strict Mode (`--strict`)
+### Strict Comparison
 
-In strict mode, any test case that matches only after runtime environment normalization is failed immediately:
-
-```sh
-dotnet run --project tests/regression/Diffra.Regression.csproj --configuration Release -- --strict --tool <path-to-diffra>
-```
+Every run is strict; there is no opt-in flag. Only differences at exact JSON pointers listed in
+`DeclaredBreakAllowList.cs` are accepted, and every other difference fails. The former `--strict`
+flag has been removed, and passing it is an error.
 
 ### Old vs New Tool Comparison (`--compare`)
 
@@ -98,7 +96,8 @@ In **PR #115**, the host runtime version was dropped from the default comparator
 ### Host Environment Variance and Strict Allow-List
 
 `diffra collect` records host platform, runtime, and SDK versions in Evidence documents. Rather than loose normalization, all cross-platform variances are explicitly verified against committed rules in `DeclaredBreakAllowList.cs`:
-- Specific JSON pointers (`/environment/platform`, `/environment/runtime`, `/environment/tools/0/version`, `/environment/tools`, and the resulting `/id`) are permitted only when matching exact structural and type rules.
+- Only four exact JSON pointers may differ: `/environment/platform`, `/environment/runtime`, `/environment/tools/0/version`, and the resulting `/id`. Each is permitted only when it passes its validator.
+- `/environment/tools/0/version` is accepted only when both documents hold exactly one tool entry, `{"id":"dotnet-sdk","version":<string>}`. A change to the tools array length, to a tool `id`, or a key added to or removed from a tool entry fails.
 - Evidence payload digests and contents must match byte-for-byte.
 - Candidate Evidence documents must pass self-identity verification (`CanonicalHashHelper.ComputeEvidenceId` matching stored `id`).
 - Strict verification is always active: any difference at an unlisted JSON pointer causes the regression suite to fail immediately.
@@ -121,5 +120,6 @@ To freeze a new corpus for release `<version>` using a verified released binary:
 dotnet run --project tests/regression/Diffra.Regression.csproj -- generate <version> --tool <path-to-released-diffra>
 ```
 
-`generate` strictly requires a verified external release executable and refuses `.csproj` or in-tree source paths. It records release asset provenance (asset name, SHA-256, version) in `manifest.json`.
-Committed Evidence inputs are stripped of host machine fingerprints, ensuring clean cross-platform fixtures.
+`generate` strictly requires a verified external release executable and refuses `.csproj` or in-tree source paths. Before it writes anything, it checks that the tool reports `<version>` (an unknown version fails) and derives the SHA-256 from the release package (`artifacts/package/` or `temp/pinned-tool/`) or, failing that, from the executable itself. It records that provenance (asset name, SHA-256, version) in `manifest.json`.
+
+Committed Evidence inputs under `inputs/evidence/` are rewritten by the harness, not kept as the release emitted them: `environment` is replaced with `{"platform":"generic","runtime":"10.0","tools":[]}` and `id` is re-minted with `CanonicalHashHelper.ComputeEvidenceId`, so the fixtures carry no host fingerprint.

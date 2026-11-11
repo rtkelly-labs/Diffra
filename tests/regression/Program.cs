@@ -39,8 +39,8 @@ for (var i = 0; i < argsList.Count; i++)
             break;
 
         case "--strict":
-            // Strict verification against declared-break allow-list is now the default and only mode
-            break;
+            Console.Error.WriteLine("Error: --strict has been removed. Every run is strict: only allow-listed, exact-path differences are accepted.");
+            return 2;
 
         case "--allow-path":
             allowPath = true;
@@ -330,7 +330,6 @@ static void PrintUsage()
     Console.WriteLine("Modes & Options:");
     Console.WriteLine("  --tool <path>                          Run candidate binary against all corpora");
     Console.WriteLine("  --quick                                Quick mode: fast smoke-test skipping slow checks and old-vs-new");
-    Console.WriteLine("  --strict                               Strict mode: always enabled (fails on any unlisted diff)");
     Console.WriteLine("  --allow-path                           Allow bare tool names to resolve via system PATH");
     Console.WriteLine("  --compare --old <old> --new <new>      Compare two tool builds against all corpora");
     Console.WriteLine("            [--old-pkg <path>]           Path to old package (.nupkg / archive) for SHA-256 check");

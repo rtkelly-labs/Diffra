@@ -315,8 +315,8 @@ jobs:
             exit 1
           fi
 
-      # Run regression corpus against extracted native self-contained archive
-      # TODO(#114): Switch to quick mode (--quick) once PR #114 lands on main.
+      # Run the quick regression corpus against the extracted native self-contained archive.
+      # Platform legs run only the archive smoke and the quick corpus.
       - name: Run regression corpus against native self-contained archive
         env:
           RID: ${{ matrix.rid }}
@@ -326,7 +326,7 @@ jobs:
           else
             archive_bin="$PWD/temp/smoke-selfcontained/diffra"
           fi
-          dotnet run --project tests/regression/Diffra.Regression.csproj --configuration Release -- --tool "$archive_bin"
+          dotnet run --project tests/regression/Diffra.Regression.csproj --configuration Release -- --tool "$archive_bin" --quick
 
       - name: Record platform metadata
         if: always()

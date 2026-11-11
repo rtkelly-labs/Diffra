@@ -7,8 +7,8 @@
 
 A pull request's values are only useful beside what they replaced. The earlier design compared
 against an approved Baseline reference and, in the self-evaluation script, fell back to any of
-the last 20 commits with data. That fallback blamed a pull request for changes other pull
-requests had made. Noisy values such as timings cannot be judged by a fixed threshold.
+the last 20 commits with data without saying so. A pull request was then blamed for changes
+other pull requests had made. Noisy values such as timings cannot be judged by a fixed threshold.
 
 ## Decision
 
@@ -22,7 +22,8 @@ requests had made. Noisy values such as timings cannot be judged by a fixed thre
 3. **Cannot attribute.** When nothing in the window qualifies, the output says so in one line
    and does not compare.
 4. **The history window is its own setting.** It is the set of recent records used for judging
-   noise and for rules over time. It is not a fallback for the comparison point. Gaps are shown,
+   noise and for rules over time. Its only part in finding the comparison point is to bound how
+far back decision 2 looks. Gaps are shown,
    not filled (for example "history: 18 of 20 commits"). History is rebuilt by re-reading stored
    records, never by measuring again.
 5. **Noise.** Each converter marks every measure as deterministic or noisy.

@@ -115,7 +115,7 @@ Comparison of every other field in the document continues strictly. Any differen
 ## Adding a Corpus for a New Release
 
 A release's corpus is generated after the GitHub Release is published, from the published
-package, and added in a follow-up PR. "Releasing Diffra" in
+package, and added in a follow-up PR. The next release fails `preflight` until it is added. "Releasing Diffra" in
 [docs/artifact-delivery-and-ci.md](../../docs/artifact-delivery-and-ci.md) describes how to
 download, check and install that package.
 

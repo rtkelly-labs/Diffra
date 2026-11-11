@@ -253,8 +253,9 @@ take the same path, on the exact commit being released (`github.sha`: the tagged
 or the head of the dispatched ref):
 
 1. `preflight` resolves the version from `Directory.Build.props`. On a tag push it fails
-   unless the tag is `v<version>` and `CHANGELOG.md` has a `## <version> ` section. A dry
-   run only warns when the release notes are missing.
+   unless the tag is `v<version>`, `CHANGELOG.md` has a non-empty `## <version> ` section,
+   and every earlier published release has a regression corpus with at least one case. A
+   dry run (any dispatch, even on a tag ref) only warns about the notes and the corpora.
 2. `deep` and `regression` call `deep.yml` and `regression.yml` as reusable workflows
    with `contents: read`. A called deep run is always strict, so a release cannot shorten
    the fuzz budget, skip a fuzz target or lower a mutation floor.
@@ -275,11 +276,14 @@ The release's own corpus, `tests/regression/<version>/`, is added afterwards by 
 PR, generated from the package the GitHub Release published. That way the provenance in
 the corpus (the package's SHA-256) is the digest of the published binary, not of a rebuild:
 
-1. Download the published package and its checksums into `temp/release/`, and check the
-   package against them:
+1. Download the published package and its checksums into an empty `temp/release/`, and
+   check the package against them. `gh release download` will not overwrite files already
+   there, and macOS `sha256sum` passes `--ignore-missing` with nothing checked, so the first
+   line makes sure the package is present:
 
    ```sh
    gh release download v<version> -D temp/release -p 'Diffra.Cli.*.nupkg' -p SHA256SUMS
+   test -f temp/release/Diffra.Cli.<version>.nupkg
    (cd temp/release && sha256sum -c --ignore-missing SHA256SUMS)
    ```
 
@@ -313,7 +317,7 @@ the corpus (the package's SHA-256) is the digest of the published binary, not of
    ```
 
 4. Open a PR that commits `tests/regression/<version>/`. From then on, the corpus gates
-   every later release.
+   every later release. The next release's `preflight` fails while it is missing.
 
 ### Deep test strength as Evidence
 

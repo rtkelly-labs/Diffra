@@ -23,7 +23,7 @@ evidence.
 The [protocol manifest](../schemas/manifest-v1.schema.json) lists semantic
 artifacts and Evidence IDs. Each artifact has a stable ID, SHA-256 digest, media
 type, byte length, and safe relative path. Evidence, Delta, Assessment, and
-baseline approval retain their own identities. Materializing or rendering a
+Baseline Reference documents retain their own identities. Materializing or rendering a
 report does not change those identities.
 
 Add a separate, versioned delivery index for transport. It maps each required
@@ -34,9 +34,12 @@ digest. A mutable `latest` selector may help a person discover a release, but th
 resolved index and presentation inventory record exact IDs. CI requires an
 explicit tag or index digest.
 
-A release asset is a storage location, not proof that a baseline is trusted. The
-baseline resolver and approval policy still decide trust. The CLI rejects a
-delivery index that disagrees with the protocol manifest or the bytes it fetches.
+A release asset is a storage location, not a statement about the records it
+holds. Which record a run is compared with is set by the comparison point
+([0003](adr/0003-comparison-history-and-noise.md)), not by where the record is
+stored, and there is no approval step ([0005](adr/0005-surface-do-not-enforce.md)).
+The CLI rejects a delivery index that disagrees with the protocol manifest or
+the bytes it fetches.
 
 ## CLI contract
 
@@ -168,9 +171,9 @@ package version. Global installation remains available for interactive use.
 ## CI and release flow
 
 An adopter's pull request workflow runs its native build and tests, produces
-Evidence and artifacts, compares against a baseline resolved from a trusted
-mainline, evaluates policy, and uploads a temporary review bundle. It uses
-read-only repository permissions and cannot promote its own baseline. Required
+Evidence and artifacts, compares with the record at the comparison point on the
+main branch, evaluates policy, and uploads a temporary review bundle. It uses
+read-only repository permissions and cannot write to the shared record store. Required
 native gates remain required. A neutral or incomplete Diffra result must not
 turn a failed native gate green.
 

@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diffra.dev/baselines/deep/payload.schema.json",
+  "title": "Diffra deep-tier test strength payload",
+  "description": "Structured numeric payloads that scripts/DeepEvidence.cs builds from deep-summary.json, one per facet. Every gated metric is oriented so that weaker tests or bigger artifacts are a higher value. Value bounds keep every real change at a relative change of at least 1e-4; see docs/artifact-delivery-and-ci.md.",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/$defs/strength" },
+    { "$ref": "#/$defs/mutation" },
+    { "$ref": "#/$defs/throughput" },
+    { "$ref": "#/$defs/size" }
+  ],
+  "$defs": {
+    "methodology": { "type": "string", "pattern": "^deep-v1(?:; .+)?$" },
+    "exact": {
+      "description": "An exact integer within +/-10000, so a change of one is a relative change of at least 1e-4.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "unit"],
+      "properties": {
+        "value": { "type": "integer", "minimum": -10000, "maximum": 10000 },
+        "unit": { "enum": ["tests", "findings", "basis-points"] }
+      }
+    },
+    "basisPoints": {
+      "allOf": [
+        { "$ref": "#/$defs/exact" },
+        {
+          "properties": {
+            "value": { "minimum": 0, "maximum": 10000 },
+            "unit": { "const": "basis-points" }
+          }
+        }
+      ]
+    },
+    "rounded": {
+      "description": "An integer of at least 100 rounded to three significant figures, so the smallest step is about 1e-3 of the value.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "unit"],
+      "properties": {
+        "value": { "type": "integer", "minimum": 100 },
+        "unit": { "enum": ["ns", "bytes"] }
+      }
+    },
+    "strength": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "methodology", "metrics"],
+      "properties": {
+        "scope": { "const": "diffra/deep/strength" },
+        "methodology": { "$ref": "#/$defs/methodology" },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tests", "coverage", "fuzz"],
+          "properties": {
+            "tests": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["negatedCount"],
+              "properties": {
+                "negatedCount": {
+                  "description": "Minus the number of passing protocol and integration tests.",
+                  "allOf": [
+                    { "$ref": "#/$defs/exact" },
+                    { "properties": { "value": { "maximum": -1 }, "unit": { "const": "tests" } } }
+                  ]
+                }
+              }
+            },
+            "coverage": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["uncoveredLineBasisPoints", "uncoveredBranchBasisPoints"],
+              "properties": {
+                "uncoveredLineBasisPoints": { "$ref": "#/$defs/basisPoints" },
+                "uncoveredBranchBasisPoints": { "$ref": "#/$defs/basisPoints" }
+              }
+            },
+            "fuzz": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["findings"],
+              "properties": {
+                "findings": {
+                  "allOf": [
+                    { "$ref": "#/$defs/exact" },
+                    { "properties": { "value": { "minimum": 0 }, "unit": { "const": "findings" } } }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "mutation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "methodology", "metrics"],
+      "properties": {
+        "scope": { "const": "diffra/deep/mutation" },
+        "methodology": { "$ref": "#/$defs/methodology" },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mutation"],
+          "properties": {
+            "mutation": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["protocolSurvivedBasisPoints", "comparisonSurvivedBasisPoints", "assessmentSurvivedBasisPoints"],
+              "properties": {
+                "protocolSurvivedBasisPoints": { "$ref": "#/$defs/basisPoints" },
+                "comparisonSurvivedBasisPoints": { "$ref": "#/$defs/basisPoints" },
+                "assessmentSurvivedBasisPoints": { "$ref": "#/$defs/basisPoints" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "throughput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "methodology", "metrics"],
+      "properties": {
+        "scope": { "const": "diffra/deep/throughput" },
+        "methodology": { "type": "string", "pattern": "^deep-v1; fuzz budget [0-9]+s per target$" },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fuzz"],
+          "properties": {
+            "fuzz": {
+              "type": "object",
+              "minProperties": 1,
+              "propertyNames": { "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["nanosecondsPerExecution"],
+                "properties": {
+                  "nanosecondsPerExecution": {
+                    "allOf": [
+                      { "$ref": "#/$defs/rounded" },
+                      { "properties": { "unit": { "const": "ns" } } }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "size": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "methodology", "metrics"],
+      "properties": {
+        "scope": { "const": "diffra/deep/size" },
+        "methodology": { "$ref": "#/$defs/methodology" },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["archives", "cliToolPackage"],
+          "properties": {
+            "archives": {
+              "type": "object",
+              "minProperties": 1,
+              "propertyNames": { "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+              "additionalProperties": {
+                "allOf": [
+                  { "$ref": "#/$defs/rounded" },
+                  { "properties": { "unit": { "const": "bytes" } } }
+                ]
+              }
+            },
+            "cliToolPackage": {
+              "allOf": [
+                { "$ref": "#/$defs/rounded" },
+                { "properties": { "unit": { "const": "bytes" } } }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

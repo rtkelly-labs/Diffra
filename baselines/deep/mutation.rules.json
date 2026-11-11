@@ -1,0 +1,6 @@
+{
+  "id": "diffra.deep.mutation",
+  "version": "1.0.0",
+  "warnAboveAbsoluteIncrease": "25",
+  "failAboveAbsoluteIncrease": "100"
+}

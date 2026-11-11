@@ -7,8 +7,8 @@
 
 A pull request's values are only useful beside what they replaced. The earlier design compared
 against an approved Baseline reference and, in the self-evaluation script, fell back to any of
-the last 20 commits with data without stating the distance. A pull request was then blamed for changes
-other pull requests had made. Noisy values such as timings cannot be judged by a fixed threshold.
+the last 20 commits with data without stating the distance. A pull request was then blamed for
+changes other pull requests had made. Noisy values such as timings cannot be judged by a fixed threshold.
 
 ## Decision
 

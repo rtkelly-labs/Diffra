@@ -21,6 +21,13 @@ The root `VISION.md` preserves the original design handover.
 
 ## Repository workflow
 
-- Use pull requests with squash merges and linear history. Do not commit directly to the primary branch.
-- Keep temporary files and worktrees under `/temp/`; keep local task notes in the ignored `TODO.md`.
-- Treat external publication and issue creation as owner-authorized actions, as specified in `PLAN.md`.
+1. **Squash Merge Only**: All pull requests must be merged into `main` using **Squash and Merge** exclusively.
+2. **Delete Branch on Merge**: Feature branches must be automatically deleted immediately upon merge into `main`.
+3. **Linear History**: Maintain a strictly linear history. Rebase feature branches onto `main` before merging; no merge commits allowed.
+4. **Direct Push Protection**: Direct pushes to `main` are blocked; PR mechanism required.
+5. **Local Temp & Worktree Directory**: Keep temporary files and worktrees under `/temp/` (gitignored).
+6. **Local Task Notes**: Keep local task notes in the ignored `TODO.md`.
+7. **Auto-Merge Enabled**: PRs may enable auto-merge (squash) so they merge automatically once required checks pass.
+8. **Pinned Action SHAs**: All GitHub Actions workflows MUST use 40-character commit SHAs instead of mutable tags.
+9. **Script Language Policy**: Automation scripts in `scripts/` MUST use C# (`.cs`) executed via `dotnet run`. Python (`.py`), shell (`.sh`), and PowerShell (`.ps1`) scripts in `scripts/` are prohibited.
+10. **External Actions**: Treat external package publication and issue creation as owner-authorized actions, as specified in `PLAN.md`.

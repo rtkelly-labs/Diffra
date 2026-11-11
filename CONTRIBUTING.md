@@ -1,27 +1,63 @@
-# Contributing
+# Contributing to Diffra
 
 Diffra is being developed in phases described in `PLAN.md`. Before implementing a phase, read the
 matching goals, constraints, and completion criteria there, along with the relevant design in
 `VISION.md`.
 
+---
+
+## Code of Conduct
+
+All contributors and maintainers are expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md) in all interactions.
+
+---
+
 ## Development
 
 Install the exact SDK version from `global.json`. Build and run tests with:
 
-```sh
+```bash
 dotnet build Diffra.slnx --configuration Release
 dotnet run --project tests/Protocol.Tests/Protocol.Tests.csproj --configuration Release --no-build
+dotnet run scripts/RunDogfood.cs
 ```
 
 Keep the core independent of adopter-specific concepts and external runtime frameworks. Use the
 existing BCL-first approach for the foundation; propose dependencies where they solve a specific,
 documented need.
 
-## Changes
+---
 
-Submit changes through a pull request. Keep history linear and use squash merges. Add tests with
-behavior changes, and update the phase documentation when a design decision changes the protocol,
-identity rules, trust model, or public command contract.
+## Development Workflow
 
-Use `/temp/` for local temporary files and worktrees. Do not publish packages or create external
-issues until the repository owner authorizes those actions.
+1. **Branching & Pull Requests**:
+   - Create a feature or bugfix branch using clear naming:
+     - `feat/<feature-name>`
+     - `fix/<bug-description>`
+     - `docs/<doc-update>`
+     - `chore/<maintenance-task>`
+   - Submit changes through a pull request.
+   - Add tests with behavior changes, and update the phase documentation when a design decision changes the protocol, identity rules, trust model, or public command contract.
+   - All pull requests are merged exclusively via **Squash and Merge**.
+
+2. **Linear History & Rebase**:
+   - We enforce a strictly linear history on `main`.
+   - Before opening a PR or marking it ready for review, rebase your branch on the latest upstream `main`.
+     If you work from a fork, add the Diffra repository as `upstream` once, then rebase on it:
+
+     ```bash
+     git remote add upstream https://github.com/rtkelly-labs/Diffra.git
+     git fetch upstream
+     git rebase upstream/main
+     ```
+
+3. **Temporary Files & Policies**:
+   - Use `/temp/` for local temporary files and worktrees.
+   - Do not publish packages or create external issues until the repository owner authorizes those actions.
+
+---
+
+## Reporting Issues
+
+- **Bug Reports**: Please use the [Bug Report](https://github.com/rtkelly-labs/Diffra/issues/new?template=bug_report.yml) form. Provide exact reproduction steps and system versions.
+- **Feature Requests**: Please use the [Feature Request](https://github.com/rtkelly-labs/Diffra/issues/new?template=feature_request.yml) form.

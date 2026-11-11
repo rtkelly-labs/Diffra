@@ -235,14 +235,15 @@ Console.WriteLine($"[BASELINE] Resolved baseline Evidence from commit '{matchedC
 var comparisonPointNote = DescribeComparisonPoint(mergeBaseCommit, matchedCommit, matchedDistance, ancestorList);
 if (comparisonPointNote.Length > 0)
 {
-    // Annotations are plain text, so drop the Markdown callout and list markers.
+    // Annotations are plain text, so drop the Markdown callout, list markers and code spans.
     var noticeText = string.Join(
         " ",
         comparisonPointNote
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(line => line.TrimStart('>', ' '))
             .Where(line => line.Length > 0 && line != "[!NOTE]")
-            .Select(line => line.StartsWith("- ", StringComparison.Ordinal) ? line[2..] : line));
+            .Select(line => line.StartsWith("- ", StringComparison.Ordinal) ? line[2..] : line))
+        .Replace("`", string.Empty, StringComparison.Ordinal);
     Console.WriteLine("::notice::" + noticeText);
 }
 

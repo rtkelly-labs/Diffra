@@ -1,8 +1,8 @@
 # Diffra in testing terms
 
 Diffra is a form of **differential testing**: it judges a change by comparing what the software
-produces now with what it produced at a trusted earlier point. This page places Diffra among the
-testing techniques it borrows from, and says what it adds to them.
+produces for a pull request with what it produced at the commit the pull request branched from.
+This page places Diffra among the testing techniques it borrows from, and says what it adds to them.
 
 ## The oracle problem
 
@@ -15,17 +15,19 @@ Differential testing answers that by changing the question. Instead of "is this 
 it asks "how does this output differ from a reference I already trust?" The reference can be
 another implementation of the same specification (McKeeman's original use, for C compilers), the
 same program on different inputs that should agree, or the same program at an earlier commit.
-Diffra uses the last: the reference is the evidence produced at an exact, trusted baseline commit.
+Diffra uses the last: the reference is the record stored for the commit the pull request branched
+from, or for the target branch tip when CI tests the merged result. That commit is the comparison
+point ([0003](adr/0003-comparison-history-and-noise.md)).
 
 ## Techniques Diffra builds on
 
 | Technique | What it compares | What Diffra keeps | What Diffra changes |
 | --- | --- | --- | --- |
-| Golden-file and snapshot testing | Output against a stored copy, usually as text | A stored reference and a reviewed update | Typed comparison instead of text diff; the reference is trusted by process, not by being in the branch |
-| Approval testing | Output against an approved copy; a person approves changes | Human approval of changes | Approval is a recorded decision bound to exact evidence, not a renamed file |
+| Golden-file and snapshot testing | Output against a stored copy, usually as text | A stored reference | Typed comparison instead of text diff; the reference is the record CI stored for the comparison point, not a file in the branch |
+| Approval testing | Output against an approved copy; a person approves changes | A person deciding whether a change was intended | No approval step: the change is shown in the pull request and the reviewer decides ([0005](adr/0005-surface-do-not-enforce.md)) |
 | Characterization testing | Legacy behaviour, recorded as found | Recording behaviour without asserting it is right | The record is versioned evidence with its producer, toolchain and methodology |
 | Differential testing | Two implementations, or two versions, on the same input | Comparison against a reference instead of an oracle | The comparison result (Delta) is separate from the verdict (Assessment) |
-| Metric budgets and ratchets | A number against a threshold | Thresholds on growth | Thresholds apply to the change, under a named and versioned policy |
+| Metric budgets and ratchets | A number against a threshold | Thresholds on growth | Thresholds apply to the change, under a named rule set; noisy measures are judged against recent history |
 
 ## What Diffra adds
 
@@ -47,49 +49,56 @@ fail. An Assessment applies a named, versioned policy to one Delta. Changing the
 new Assessment and leaves the Delta and the Evidence untouched, so the same measured change can be
 judged under a stricter rule later without measuring again.
 
-### A baseline the candidate cannot rewrite
+### No reference in the branch to regenerate
 
 The failure mode of snapshot testing is the update command. When a snapshot fails, the quickest
 fix is to regenerate it in the same pull request, and a reviewer sees a large file change they are
 unlikely to read. The test then passes because the candidate approved itself.
 
-Diffra separates producing evidence from trusting it. A candidate can propose new evidence but
-cannot mark it trusted. A trusted baseline is pinned to an exact commit and evidence identity, and
-the trust decision comes from a process outside the candidate pull request. The promotion rules in
-[trust and identity](trust-and-identity.md) also require a second clean run at the same commit to
-reproduce the same evidence identity before approval. That is a determinism check: evidence that
-differs between two runs of the same code is not a baseline.
+Diffra has no stored copy in the branch, so there is nothing to regenerate in the diff. The
+reference is the record CI stored for the comparison point, a commit already on the target branch.
+When the commit a pull request branched from has no record,
+Diffra uses the nearest earlier one in its history window and states how far back it is; when
+none has a record, it says it cannot attribute the change. There is no approval or promotion
+step.
 
 ### Unknown is not a pass
 
 A test runner reports pass or fail. Diffra has explicit states for the cases in between: evidence
-that could not be produced, inputs that failed validation, comparisons the host cannot perform, and
-comparisons that could not reach a result. None of them can produce a passing Assessment. A gate
-built on Diffra cannot pass because a producer crashed and wrote nothing.
+that could not be produced, inputs that failed validation, comparisons Diffra cannot perform, and
+comparisons that could not reach a result. None of them can produce a passing Assessment, so a
+step that enforces the result cannot pass because a producer crashed and wrote nothing.
 
 ## What Diffra does not replace
 
-Diffra detects and judges *change*. It does not decide whether the baseline was correct in the
+Diffra detects and judges *change*. It does not decide whether the reference was correct in the
 first place. Keep the tests that state what correct means: example and property-based tests,
 compilation checks, golden-file tests that an adopter already gates on. The
 [Parquet.SourceGenerator adopter plan](adopters/parquet-source-generator.md) keeps those native
 gates required and adds Diffra beside them.
 
-Differential testing has a known weakness: if the baseline and candidate share a defect, comparing
-them cannot reveal it. Diffra makes the baseline auditable (its commit, producer, toolchain and
-approval are recorded) but cannot make it right.
+Differential testing has a known weakness: if the reference and candidate share a defect, comparing
+them cannot reveal it. Diffra makes the reference auditable (its commit, producer and toolchain are
+recorded) but cannot make it right.
 
 ## Where it fits in a pipeline
 
-1. A producer observes the candidate commit and writes Evidence (`diffra collect`).
-2. The baseline for the comparison is resolved to an exact commit and Evidence identity.
-3. `diffra diff` writes a policy-free Delta.
-4. `diffra eval` applies a policy and writes an Assessment; its exit code gates the build.
-5. `diffra report` or `diffra present` renders the result for review.
-6. After merge, trusted automation can promote the new evidence to become the next baseline.
+Today the steps are separate CLI operations from the earlier design:
 
-Steps 1, 3, 4 and 5 are CLI commands today. Steps 2 and 6 exist as library APIs; see the
-[feature status](README.md#feature-status).
+1. A producer observes the candidate commit and writes Evidence (`diffra collect`).
+2. The comparison point is found: the record for the commit the pull request branched from, or
+   the nearest earlier one in the history window.
+3. `diffra diff` writes a policy-free Delta.
+4. `diffra eval` applies rules and writes an Assessment. Its exit code is non-zero for any outcome
+   other than pass or warn; under [0005](adr/0005-surface-do-not-enforce.md), failing the build becomes an
+   opt-in setting.
+5. `diffra report` or `diffra present` renders the result for review.
+
+Steps 1, 3, 4 and 5 are CLI commands. Step 2 is done by the self-evaluation script; see the
+[feature status](README.md#feature-status). In the design set by the
+[decision records](adr/), each job that produces data runs one `diffra record` command and a
+collecting job gathers the records for the commit
+([0002](adr/0002-project-file-and-datasets.md), [0004](adr/0004-records-integrity-and-storage.md)).
 
 ## Further reading
 

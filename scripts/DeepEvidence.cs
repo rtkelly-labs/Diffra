@@ -3,7 +3,7 @@
 //   dotnet run scripts/DeepEvidence.cs -- payloads <deep-summary.json> <work-dir>
 //   dotnet run scripts/DeepEvidence.cs -- evidence <work-dir>
 //
-// `payloads` writes one structured numeric payload per facet (strength, throughput, size),
+// `payloads` writes one structured numeric payload per facet (strength, mutation, throughput, size),
 // shaped by baselines/deep/payload.schema.json. `evidence` runs the minimal-change self-check,
 // collects Evidence for every facet with the pinned judge from .config/dotnet-tools.json and,
 // unless DEEP_EVIDENCE_RECORD is "true", diffs it against the nearest ancestor main deep
@@ -32,7 +32,7 @@ const string MethodologyVersion = "deep-v1";
 // nightly, so this covers many days of merges.
 const int AncestorSearchDepth = 1000;
 
-string[] facets = ["strength", "throughput", "size"];
+string[] facets = ["strength", "mutation", "throughput", "size"];
 
 if (args.Length >= 3 && args[0] == "payloads")
 {
@@ -68,18 +68,21 @@ int WritePayloads(string summaryPath, string workDir)
         // The evaluator only flags increases, so the test count is recorded negated: one test
         // fewer is an increase of 1.
         ["tests"] = new JsonObject { ["negatedCount"] = Exact(-summary.GetProperty("testCount").GetInt64(), "tests") },
-        ["mutation"] = new JsonObject
-        {
-            ["protocolSurvivedBasisPoints"] = SurvivedBasisPoints(mutation.GetProperty("protocol")),
-            ["comparisonSurvivedBasisPoints"] = SurvivedBasisPoints(mutation.GetProperty("comparison")),
-            ["assessmentSurvivedBasisPoints"] = SurvivedBasisPoints(mutation.GetProperty("assessment"))
-        },
         ["coverage"] = new JsonObject
         {
             ["uncoveredLineBasisPoints"] = UncoveredBasisPoints(coverage, "linesCovered", "linesValid"),
             ["uncoveredBranchBasisPoints"] = UncoveredBasisPoints(coverage, "branchesCovered", "branchesValid")
         },
         ["fuzz"] = new JsonObject { ["findings"] = Exact(summary.GetProperty("fuzz").GetProperty("findings").GetInt64(), "findings") }
+    };
+
+    // Mutation: surviving mutants have a tolerance (baselines/deep/mutation.rules.json), because
+    // Stryker timeouts flip between runs of an unchanged tree.
+    var mutationMetrics = new JsonObject
+    {
+        ["protocolSurvivedBasisPoints"] = SurvivedBasisPoints(mutation.GetProperty("protocol")),
+        ["comparisonSurvivedBasisPoints"] = SurvivedBasisPoints(mutation.GetProperty("comparison")),
+        ["assessmentSurvivedBasisPoints"] = SurvivedBasisPoints(mutation.GetProperty("assessment"))
     };
 
     // Throughput: time per fuzz execution, so a fall in execs/sec is an increase.
@@ -125,6 +128,7 @@ int WritePayloads(string summaryPath, string workDir)
     var payloads = new Dictionary<string, JsonObject>(StringComparer.Ordinal)
     {
         ["strength"] = Payload("diffra/deep/strength", MethodologyVersion, strength),
+        ["mutation"] = Payload("diffra/deep/mutation", MethodologyVersion, new JsonObject { ["mutation"] = mutationMetrics }),
         ["throughput"] = Payload("diffra/deep/throughput", string.Create(CultureInfo.InvariantCulture, $"{MethodologyVersion}; fuzz budget {budget}s per target"), new JsonObject { ["fuzz"] = throughputTargets }),
         ["size"] = Payload("diffra/deep/size", MethodologyVersion, size)
     };
@@ -269,8 +273,16 @@ void SelfCheck(string workDir, string repoRoot, StringBuilder report)
     var testsNode = weaker["metrics"]!["tests"]!["negatedCount"]!;
     testsNode["value"] = testsNode["value"]!.GetValue<decimal>() + 1;
     Expect("strength-one-test-fewer", "strength", strengthPayload, weaker, Path.Combine(repoRoot, "baselines", "deep", "strength.rules.json"), "fail");
+    // Mutation tolerates timeout flips (about 10 bp seen on an unchanged tree), warns above
+    // 25 bp and fails above 100 bp.
+    var mutationPayload = JsonNode.Parse(File.ReadAllText(Path.Combine(workDir, "payload-mutation.json")))!.AsObject();
+    var mutationRules = Path.Combine(repoRoot, "baselines", "deep", "mutation.rules.json");
+    Expect("mutation-noise-10bp", "mutation", mutationPayload, Shift(mutationPayload, 10), mutationRules, "pass");
+    Expect("mutation-weaker-26bp", "mutation", mutationPayload, Shift(mutationPayload, 26), mutationRules, "warn");
+    Expect("mutation-weaker-101bp", "mutation", mutationPayload, Shift(mutationPayload, 101), mutationRules, "fail");
+    // Throughput is warn-only until nightly data supports a fail threshold.
     var throughputPayload = JsonNode.Parse(File.ReadAllText(Path.Combine(workDir, "payload-throughput.json")))!.AsObject();
-    Expect("throughput-half-speed", "throughput", throughputPayload, Scale(throughputPayload, 2.1m), Path.Combine(repoRoot, "baselines", "deep", "throughput.rules.json"), "fail");
+    Expect("throughput-half-speed", "throughput", throughputPayload, Scale(throughputPayload, 2.1m), Path.Combine(repoRoot, "baselines", "deep", "throughput.rules.json"), "warn");
     var sizePayload = JsonNode.Parse(File.ReadAllText(Path.Combine(workDir, "payload-size.json")))!.AsObject();
     Expect("size-grows-a-quarter", "size", sizePayload, Scale(sizePayload, 1.3m), Path.Combine(repoRoot, "baselines", "deep", "size.rules.json"), "fail");
     Expect("size-grows-a-tenth", "size", sizePayload, Scale(sizePayload, 1.1m), Path.Combine(repoRoot, "baselines", "deep", "size.rules.json"), "warn");
@@ -570,6 +582,23 @@ static JsonObject Scale(JsonObject payload, decimal factor)
             var obj = child!.AsObject();
             if (!obj.ContainsKey("value")) { Visit(obj); continue; }
             obj["value"] = RoundSignificant(obj["value"]!.GetValue<long>() * factor);
+        }
+    }
+}
+
+static JsonObject Shift(JsonObject payload, long delta)
+{
+    var copy = payload.DeepClone().AsObject();
+    Visit(copy["metrics"]!.AsObject());
+    return copy;
+
+    void Visit(JsonObject node)
+    {
+        foreach (var (_, child) in node.ToArray())
+        {
+            var obj = child!.AsObject();
+            if (!obj.ContainsKey("value")) { Visit(obj); continue; }
+            obj["value"] = Math.Min(10000, obj["value"]!.GetValue<long>() + delta);
         }
     }
 }

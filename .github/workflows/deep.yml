@@ -845,8 +845,8 @@ jobs:
           path: deep-summary.json
           if-no-files-found: ignore
 
-      # Test strength as Evidence. The summary becomes three Diffra payloads (strength,
-      # throughput, size), collected with the pinned judge. A nightly run of this workflow on
+      # Test strength as Evidence. The summary becomes four Diffra payloads (strength,
+      # mutation, throughput, size), collected with the pinned judge. A nightly run of this workflow on
       # main records them; the Deep baseline workflow then publishes them to diffra-baselines.
       # Every other run diffs them against the nearest ancestor's main deep Evidence and
       # evaluates them with baselines/deep/*.rules.json. A missing baseline is inconclusive.

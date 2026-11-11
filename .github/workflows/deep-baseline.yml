@@ -4,7 +4,8 @@ name: Deep baseline
 # branch, at evidence/deep/<sha>/<facet>.json. This mirrors ci.yml's record-baseline-collect and
 # record-baseline-publish split: the Deep run collects without write access, and only this job
 # can write. It lives in its own workflow so that deep.yml keeps no job with write access, which
-# a read-only caller (release.yml calls deep.yml) could not start.
+# a read-only caller could not start. deep.yml is a reusable workflow meant for read-only
+# callers such as the planned release gate.
 #
 # workflow_run fires only for runs of the Deep workflow itself. A release or any other caller
 # runs deep.yml inside its own run, so it never triggers this workflow.
@@ -15,6 +16,11 @@ on:
 
 permissions:
   contents: read
+
+# Two publishes for the same commit queue rather than race; neither is cancelled.
+concurrency:
+  group: deep-baseline-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
 
 defaults:
   run:
@@ -54,7 +60,7 @@ jobs:
           MANIFEST="${INPUT_DIR}/manifest.json"
           REPO_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           WORK_DIR="${RUNNER_TEMP}/diffra-baselines-repo"
-          FACETS="strength throughput size"
+          FACETS="strength mutation throughput size"
 
           if ! [[ "$COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::Unexpected head SHA '$COMMIT_SHA'."

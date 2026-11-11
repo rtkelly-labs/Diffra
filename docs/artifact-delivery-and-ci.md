@@ -255,7 +255,7 @@ coverlet (`COVERLET_VERSION`), giving the test count and the line and branch cov
 mutant counts to `deep-summary.json`. The final `deep` job then runs
 `scripts/DeepEvidence.cs`:
 
-1. **Payloads.** `payloads` turns the summary into three structured numeric payloads, one per
+1. **Payloads.** `payloads` turns the summary into four structured numeric payloads, one per
    facet, valid against [`baselines/deep/payload.schema.json`](../baselines/deep/payload.schema.json).
    The workflow checks them against that schema.
 2. **Self-check.** `evidence` first proves, with the pinned judge, that the encodings below
@@ -291,14 +291,23 @@ and metrics that need different thresholds are separate facets:
 | Facet | Metric (path) | Encoding | Rule |
 | --- | --- | --- | --- |
 | strength | `/tests/negatedCount` | minus the number of passing tests | fail on any increase (`failAboveAbsoluteIncrease` `0`) |
-| strength | `/mutation/{protocol,comparison,assessment}SurvivedBasisPoints` | survived plus no-coverage mutants, in basis points of scored mutants (10000 minus the mutation score) | fail on any increase |
 | strength | `/coverage/uncovered{Line,Branch}BasisPoints` | uncovered lines and branches of `Diffra.Protocol`, in basis points | fail on any increase |
 | strength | `/fuzz/findings` | total fuzz findings | fail on any increase, so a finding above a zero baseline fails |
-| throughput | `/fuzz/<target>/nanosecondsPerExecution` | 10^9 / execs per second, three significant figures | warn above +25%, fail above +100% (execs/sec halved) |
+| mutation | `/mutation/{protocol,comparison,assessment}SurvivedBasisPoints` | survived plus no-coverage mutants, in basis points of scored mutants (10000 minus the mutation score) | warn above +25 bp, fail above +100 bp |
+| throughput | `/fuzz/<target>/nanosecondsPerExecution` | 10^9 / execs per second, three significant figures | warn above +25%; no fail threshold yet |
 | size | `/archives/<platform>`, `/cliToolPackage` | bytes, three significant figures | warn above +5%, fail above +20% |
 
-- **Zero baselines.** Strength uses absolute thresholds only, so a zero baseline (no
-  findings) still compares. Throughput and size values are never zero.
+- **Mutation noise.** Mutation scores move between runs on an unchanged tree, because a
+  mutant near the test timeout can flip between survived and timed out. Two runs of the same
+  source gave 761 survived and 7 timed out (4149 bp) and 758 survived and 8 timed out
+  (4139 bp) on `Diffra.Protocol`. Comparison and Assessment share the same timeout risk, so
+  all three use the mutation tolerance. The test count and coverage were stable across those
+  runs and keep zero tolerance in the strength facet.
+- **Throughput noise.** At the 30 s per-target budget, two runs of the same target gave 17550
+  and 35298 execs/s. Throughput therefore only warns. A fail threshold waits until nightly
+  runs give enough data to set one.
+- **Zero baselines.** Strength and mutation use absolute thresholds only, so a zero baseline
+  (no findings) still compares. Throughput and size values are never zero.
 - **Methodology.** Each methodology starts with `deep-v1`; a change of encoding bumps it. The
   throughput methodology also names the fuzz budget per target. A short ad hoc run is then
   incompatible with a nightly baseline and reports `inconclusive`, not a slowdown. Fuzz
@@ -322,8 +331,8 @@ a release with the decimal-formatting fix, the control is accepted and the job p
 notice. The bounds, the `AssertJudgeSafe` check and the rounding can then be relaxed to finer
 units, with a methodology bump.
 
-**Publishing main baselines.** `deep.yml` keeps no job with write access, because
-`release.yml` calls it as a reusable workflow with read-only permissions. A run records only
+**Publishing main baselines.** `deep.yml` keeps no job with write access, because it is a
+reusable workflow meant for read-only callers, such as the planned release gate. A run records only
 when all of these hold:
 
 - it is strict;
@@ -338,7 +347,7 @@ and `actions: read`. It:
 
 1. downloads that run's `deep-evidence` artifact;
 2. checks that the manifest is a record for exactly the run's head commit;
-3. commits `evidence/deep/<sha>/{strength,throughput,size}.json` to `diffra-baselines`, with
+3. commits `evidence/deep/<sha>/{strength,mutation,throughput,size}.json` to `diffra-baselines`, with
    the same clone, orphan-bootstrap and retrying push as `ci.yml`'s `record-baseline-publish`.
 
 The nightly run repeats on an unchanged `main` and fuzz throughput varies, so the first

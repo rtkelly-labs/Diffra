@@ -6,6 +6,7 @@
   "type": "object",
   "oneOf": [
     { "$ref": "#/$defs/strength" },
+    { "$ref": "#/$defs/mutation" },
     { "$ref": "#/$defs/throughput" },
     { "$ref": "#/$defs/size" }
   ],
@@ -52,7 +53,7 @@
         "metrics": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["tests", "mutation", "coverage", "fuzz"],
+          "required": ["tests", "coverage", "fuzz"],
           "properties": {
             "tests": {
               "type": "object",
@@ -66,16 +67,6 @@
                     { "properties": { "value": { "maximum": -1 }, "unit": { "const": "tests" } } }
                   ]
                 }
-              }
-            },
-            "mutation": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["protocolSurvivedBasisPoints", "comparisonSurvivedBasisPoints", "assessmentSurvivedBasisPoints"],
-              "properties": {
-                "protocolSurvivedBasisPoints": { "$ref": "#/$defs/basisPoints" },
-                "comparisonSurvivedBasisPoints": { "$ref": "#/$defs/basisPoints" },
-                "assessmentSurvivedBasisPoints": { "$ref": "#/$defs/basisPoints" }
               }
             },
             "coverage": {
@@ -98,6 +89,32 @@
                     { "properties": { "value": { "minimum": 0 }, "unit": { "const": "findings" } } }
                   ]
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "mutation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "methodology", "metrics"],
+      "properties": {
+        "scope": { "const": "diffra/deep/mutation" },
+        "methodology": { "$ref": "#/$defs/methodology" },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mutation"],
+          "properties": {
+            "mutation": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["protocolSurvivedBasisPoints", "comparisonSurvivedBasisPoints", "assessmentSurvivedBasisPoints"],
+              "properties": {
+                "protocolSurvivedBasisPoints": { "$ref": "#/$defs/basisPoints" },
+                "comparisonSurvivedBasisPoints": { "$ref": "#/$defs/basisPoints" },
+                "assessmentSurvivedBasisPoints": { "$ref": "#/$defs/basisPoints" }
               }
             }
           }

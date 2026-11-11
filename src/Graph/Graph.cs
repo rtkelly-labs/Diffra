@@ -9,7 +9,6 @@ public enum GraphNodeKind
     Comparator,
     Policy,
     Store,
-    Presenter,
 }
 
 /// <summary>
@@ -37,11 +36,10 @@ public sealed class GraphDefinition
         var dict = new Dictionary<string, GraphNode>(StringComparer.Ordinal);
         foreach (var node in nodes)
         {
-            if (dict.ContainsKey(node.Id))
+            if (!dict.TryAdd(node.Id, node))
             {
                 throw new ArgumentException($"Duplicate node identifier '{node.Id}'.", nameof(nodes));
             }
-            dict[node.Id] = node;
         }
         Nodes = dict;
     }

@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
-using Diffra.Protocol;
 
 namespace Diffra.Protocol.Tests;
 
@@ -217,10 +216,10 @@ public static class ExternalCommandAdapterTests
             // Wait until the child has recorded its PID before cancelling.
             for (var attempt = 0; attempt < 100 && !HasPid(pidFile); attempt++)
             {
-                await Task.Delay(100).ConfigureAwait(false);
+                await Task.Delay(100, CancellationToken.None).ConfigureAwait(false);
             }
 
-            await Task.Delay(200).ConfigureAwait(false);
+            await Task.Delay(200, CancellationToken.None).ConfigureAwait(false);
             await callerCts.CancelAsync().ConfigureAwait(false);
 
             await ThrowsAsync<OperationCanceledException>(() => run).ConfigureAwait(false);

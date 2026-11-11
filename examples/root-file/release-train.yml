@@ -1,4 +1,4 @@
-# One root file, two projects. Merges into main collect build, lint and tests;
+# One root file, two projects. Merges into main collect tests and coverage;
 # a release also collects end-to-end results and judges the shared data more strictly.
 # Each dataset is collected and stored once, with one history; a project picks a rule set.
 schema: https://diffra.net/schemas/root-file-v1.schema.json

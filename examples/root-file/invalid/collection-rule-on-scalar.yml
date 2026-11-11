@@ -1,0 +1,12 @@
+schema: https://diffra.net/schemas/root-file-v1.schema.json
+# Invalid: collection severities apply only to a map, set or ordered collection.
+datasets:
+  warnings:
+    type: count
+    unit: warnings
+    from: { payload: "metrics.json" }
+    rules:
+      default:
+        collection: { added: warn }
+projects:
+  main: { datasets: { warnings: default } }

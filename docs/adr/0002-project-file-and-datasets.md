@@ -58,10 +58,13 @@ emitter's error never reached the pull request.
 
 `schemas/root-file-v1.schema.json` and `examples/root-file/` describe the root file in this
 record: settings, datasets with named rule sets, `required: false`, and projects that map each
-dataset to a rule set. The schema does not check that a project names a rule set or dataset that
-exists; the loader will. The file's name in a repository is not decided. No code loads the root
-file and `diffra record` does not exist.
+dataset to a rule set, or to `null` to record it without rules. The schema does not check that a
+project names a rule set or dataset that exists; the loader will. The file's name in a repository
+is not decided. The standard dataset types are those of the earlier project file; CI timing and
+the job graph (decision 6) have no type yet. No code loads the root file and `diffra record`
+does not exist.
 
 `schemas/project-v1.schema.json`, `schemas/collection-v1.schema.json` and
-`examples/project-file/` describe the earlier single-project, metric-based design. They are kept
-because the root file reuses their rule shapes and the collection root has no replacement yet.
+`examples/project-file/` describe the earlier single-project, metric-based design. The root
+schema copies their rule shapes rather than referring to them. They are kept because the
+collection root has no replacement yet.

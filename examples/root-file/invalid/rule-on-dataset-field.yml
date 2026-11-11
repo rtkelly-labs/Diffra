@@ -8,4 +8,4 @@ datasets:
       lineRate:
         check: { fail: { below: 0.8 } }
 projects:
-  main: { datasets: { coverage: default } }
+  main: { datasets: { coverage: null } }

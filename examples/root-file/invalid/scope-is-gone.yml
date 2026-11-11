@@ -7,4 +7,4 @@ datasets:
     unit: warnings
     from: { payload: "metrics.json" }
 projects:
-  main: { datasets: { warnings: default } }
+  main: { datasets: { warnings: null } }

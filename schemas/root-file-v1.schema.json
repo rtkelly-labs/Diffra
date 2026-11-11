@@ -1230,12 +1230,6 @@
       "properties": {
         "normalization": {
           "enum": ["none", "repository-path"]
-        },
-        "added": {
-          "$ref": "#/$defs/severity"
-        },
-        "removed": {
-          "$ref": "#/$defs/severity"
         }
       }
     },
@@ -1268,9 +1262,6 @@
           "properties": {
             "kind": {
               "const": "ordered"
-            },
-            "changed": {
-              "$ref": "#/$defs/severity"
             }
           }
         },
@@ -1281,12 +1272,6 @@
           "properties": {
             "kind": {
               "const": "set"
-            },
-            "added": {
-              "$ref": "#/$defs/severity"
-            },
-            "removed": {
-              "$ref": "#/$defs/severity"
             }
           }
         },
@@ -2387,7 +2372,8 @@
                     "series": {
                       "$ref": "#/$defs/seriesCount"
                     },
-                    "when": {}
+                    "when": {},
+                    "collection": {}
                   },
                   "allOf": [
                     {
@@ -2440,7 +2426,8 @@
                     "series": {
                       "$ref": "#/$defs/seriesInteger"
                     },
-                    "when": {}
+                    "when": {},
+                    "collection": {}
                   },
                   "allOf": [
                     {
@@ -2493,7 +2480,8 @@
                     "series": {
                       "$ref": "#/$defs/seriesDecimal"
                     },
-                    "when": {}
+                    "when": {},
+                    "collection": {}
                   },
                   "allOf": [
                     {
@@ -2546,7 +2534,8 @@
                     "series": {
                       "$ref": "#/$defs/seriesBytes"
                     },
-                    "when": {}
+                    "when": {},
+                    "collection": {}
                   },
                   "allOf": [
                     {
@@ -2603,7 +2592,8 @@
                     "series": {
                       "$ref": "#/$defs/seriesDuration"
                     },
-                    "when": {}
+                    "when": {},
+                    "collection": {}
                   },
                   "allOf": [
                     {
@@ -2660,7 +2650,8 @@
                     "series": {
                       "$ref": "#/$defs/seriesRatio"
                     },
-                    "when": {}
+                    "when": {},
+                    "collection": {}
                   },
                   "allOf": [
                     {
@@ -2725,7 +2716,8 @@
                       "$ref": "#/$defs/versusDatetime"
                     },
                     "series": {},
-                    "when": {}
+                    "when": {},
+                    "collection": {}
                   },
                   "allOf": [
                     {
@@ -2795,7 +2787,8 @@
                       "$ref": "#/$defs/versusEnum"
                     },
                     "series": {},
-                    "when": {}
+                    "when": {},
+                    "collection": {}
                   },
                   "allOf": [
                     {
@@ -2859,7 +2852,8 @@
                       "$ref": "#/$defs/versusEquality"
                     },
                     "series": {},
-                    "when": {}
+                    "when": {},
+                    "collection": {}
                   },
                   "allOf": [
                     {
@@ -2932,7 +2926,8 @@
                       "$ref": "#/$defs/versusEquality"
                     },
                     "series": {},
-                    "when": {}
+                    "when": {},
+                    "collection": {}
                   },
                   "allOf": [
                     {
@@ -3034,7 +3029,8 @@
                           "$ref": "#/$defs/anyFieldRules"
                         }
                       }
-                    }
+                    },
+                    "collection": {}
                   },
                   "allOf": [
                     {
@@ -3090,7 +3086,8 @@
                     "check": {},
                     "versus": {},
                     "series": {},
-                    "when": {}
+                    "when": {},
+                    "collection": {}
                   },
                   "allOf": [
                     {
@@ -3114,6 +3111,90 @@
                       }
                     }
                   ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "collection": {
+                "properties": {
+                  "kind": {
+                    "enum": ["map", "set"]
+                  }
+                },
+                "required": ["kind"]
+              }
+            },
+            "required": ["collection"]
+          },
+          "then": {
+            "properties": {
+              "rules": {
+                "additionalProperties": {
+                  "properties": {
+                    "collection": {
+                      "$ref": "#/$defs/keyedCollectionRules"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "collection": {
+                "properties": {
+                  "kind": {
+                    "enum": ["ordered"]
+                  }
+                },
+                "required": ["kind"]
+              }
+            },
+            "required": ["collection"]
+          },
+          "then": {
+            "properties": {
+              "rules": {
+                "additionalProperties": {
+                  "properties": {
+                    "collection": {
+                      "$ref": "#/$defs/orderedCollectionRules"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "properties": {
+                "collection": {
+                  "properties": {
+                    "kind": {
+                      "enum": ["map", "set", "ordered"]
+                    }
+                  },
+                  "required": ["kind"]
+                }
+              },
+              "required": ["collection"]
+            }
+          },
+          "then": {
+            "properties": {
+              "rules": {
+                "additionalProperties": {
+                  "not": {
+                    "required": ["collection"]
+                  }
                 }
               }
             }
@@ -3183,8 +3264,7 @@
             "commits": {
               "type": "integer",
               "minimum": 2,
-              "default": 20,
-              "description": "First-parent commits in the history window, ending at the comparison point."
+              "description": "Recent first-parent commits whose records are used for judging noise and for rules over time."
             }
           }
         },
@@ -3223,10 +3303,42 @@
           "propertyNames": {
             "$ref": "#/$defs/name"
           },
-          "description": "The datasets this project selects, each mapped to the name of the rule set it applies.",
+          "description": "The datasets this project selects, each mapped to the name of the rule set it applies, or to null to record and show the dataset without applying rules.",
           "additionalProperties": {
-            "$ref": "#/$defs/name"
+            "anyOf": [
+              {
+                "$ref": "#/$defs/name"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
+        }
+      }
+    },
+    "keyedCollectionRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "Severities for keys or members that appear or disappear.",
+      "properties": {
+        "added": {
+          "$ref": "#/$defs/severity"
+        },
+        "removed": {
+          "$ref": "#/$defs/severity"
+        }
+      }
+    },
+    "orderedCollectionRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "Severity for a change in order or content.",
+      "properties": {
+        "changed": {
+          "$ref": "#/$defs/severity"
         }
       }
     }

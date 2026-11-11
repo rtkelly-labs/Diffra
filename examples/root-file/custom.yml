@@ -12,10 +12,11 @@ types:
 datasets:
   schemaFixtures:
     type: fixtureCheck
-    collection: { kind: map, keys: { normalization: repository-path, removed: fail } }
+    collection: { kind: map, keys: { normalization: repository-path } }
     from: { payload: "artifacts/diffra/fixtures.json" }
     rules:
       default:
+        collection: { removed: fail }
         versus:
           fail: { transition: [{ from: accepted, to: rejected }, { from: rejected, to: accepted }] }
   compilerWarnings:
@@ -42,10 +43,27 @@ datasets:
       default:
         versus:
           needs-review: { changed: true }
+  analyzers:
+    type: text
+    collection: { kind: set }
+    from: { payload: "artifacts/diffra/metrics.json" }
+    rules:
+      default:
+        collection: { added: needs-review, removed: warn }
+  runtimeVersion:
+    type: text
+    from: { payload: "artifacts/diffra/metrics.json" }
 
 settings:
   limits: { maxKeys: 500 }
 
 projects:
   core:
-    datasets: { schemaFixtures: default, compilerWarnings: default, gcMode: default, publicApi: default }
+    datasets:
+      schemaFixtures: default
+      compilerWarnings: default
+      gcMode: default
+      publicApi: default
+      analyzers: default
+      # Recorded and shown, with no rules applied.
+      runtimeVersion: null

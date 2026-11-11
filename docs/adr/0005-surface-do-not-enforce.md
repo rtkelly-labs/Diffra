@@ -33,7 +33,9 @@ is an agent asked to make CI pass, and branch protection already decides what bl
 
 - Whether a required dataset that was not collected, a rejected entry, a first run with no history
   and a comparison that cannot be attributed count towards `fail-on`. Until this is ruled, they
-  fail the step only through the finding status they are reported with.
+  fail the step only through the finding status they are reported with. Today a comparison with
+  no usable reference is reported as `inconclusive`, so `fail-on: warn` fails the step on it and
+  `fail-on: fail` does not.
 - Whether a change to the scripts that collect the data is also surfaced, and how it is detected.
 - The fate of the promotion code and of the Baseline reference's trust fields.
 

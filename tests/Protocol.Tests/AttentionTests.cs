@@ -313,6 +313,7 @@ public static class AttentionTests
         Equal(true, Enforcement.FailsStep(FailOn.Warn, unmeasured), "warn trips on inconclusive");
         Equal(false, Enforcement.FailsStep(FailOn.Fail, review), "fail ignores needs-review");
         Equal(false, Enforcement.FailsStep(FailOn.Warn, unjudged), "a change no rule judged never fails the step");
+        Equal(false, Enforcement.FailsStep(FailOn.Fail, unjudged), "fail ignores a change no rule judged");
         Equal(false, Enforcement.FailsStep(FailOn.Warn, []), "no findings never fail the step");
         Equal(false, Enforcement.FailsStep(FailOn.Fail, unmeasured), "fail ignores inconclusive");
         Equal(false, Enforcement.FailsStep(FailOn.Never, warned), "never ignores a warning");

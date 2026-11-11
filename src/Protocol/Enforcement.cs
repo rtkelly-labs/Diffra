@@ -22,7 +22,7 @@ public enum FailOn
 /// <summary>Reads the <c>fail-on</c> setting and decides whether a result fails the step.</summary>
 public static class Enforcement
 {
-    /// <summary>The setting's name in the CI wiring.</summary>
+    /// <summary>The name of the input of Diffra's CI step.</summary>
     public const string SettingName = "fail-on";
 
     /// <summary>The value used when the adopter sets nothing.</summary>

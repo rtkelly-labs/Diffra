@@ -189,7 +189,7 @@ and sends a strict Content-Security-Policy.
 ## Self-verification
 
 Diffra runs this CLI on itself in CI. `dotnet run scripts/RunDogfood.cs` collects metrics about the
-repository, resolves the merge-base baseline Evidence document from the `diffra-baselines` branch,
+repository, resolves the comparison point Evidence document from the `diffra-baselines` branch,
 diffs candidate metrics against that baseline with the pinned judge (`Diffra.Cli`), evaluates them
 under `baselines/dogfood/rules.json`, builds a review bundle, and fails the job when `eval` exits
 non-zero. When the baseline branch or ancestor baseline does not exist yet (bootstrap), the gate

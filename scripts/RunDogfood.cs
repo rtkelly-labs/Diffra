@@ -87,7 +87,7 @@ if (args.Contains("--collect-only"))
 }
 
 // 3. Resolve merge-base and baseline evidence
-Console.WriteLine("3. Resolving merge-base baseline Evidence...");
+Console.WriteLine("3. Resolving the comparison point Evidence...");
 var baselineEvidencePath = Path.Combine(workDir, "baseline-evidence.json");
 var baselineRefPath = Path.Combine(workDir, "baseline-reference.json");
 

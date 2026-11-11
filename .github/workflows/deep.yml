@@ -388,7 +388,10 @@ jobs:
         run: dotnet tool install coverlet.console --version "$COVERLET_VERSION" --tool-path "$RUNNER_TEMP/coverlet"
 
       # The suite runs once, under coverlet, so the test count and the coverage come from the
-      # same run. Coverage is line and branch coverage of Diffra.Protocol only.
+      # same run. Coverage is line and branch coverage of Diffra.Protocol only. CI builds are
+      # deterministic (ContinuousIntegrationBuild maps source paths to /_/), so coverlet cannot
+      # find the sources on disk; --exclude-assemblies-without-sources None instruments anyway,
+      # since the counts come from the PDB, not the sources.
       - name: Run protocol and integration test suite with coverage
         id: unit-tests
         run: |
@@ -396,7 +399,8 @@ jobs:
           mkdir -p temp
           tests_dll=tests/Protocol.Tests/bin/Release/net10.0/Diffra.Protocol.Tests.dll
           "$RUNNER_TEMP/coverlet/coverlet" "$tests_dll" --target dotnet --targetargs "$tests_dll" \
-            --include "[Diffra.Protocol]*" --format cobertura --output temp/coverage.cobertura.xml \
+            --include "[Diffra.Protocol]*" --exclude-assemblies-without-sources None \
+            --format cobertura --output temp/coverage.cobertura.xml \
             | tee temp/protocol-tests.log
           test_count=$(grep -c '^PASS ' temp/protocol-tests.log || true)
           if [ -z "$test_count" ] || [ "$test_count" -le 0 ]; then

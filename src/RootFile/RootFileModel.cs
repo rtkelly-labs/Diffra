@@ -37,7 +37,8 @@ public sealed record RootFileDocument(
 
 /// <summary>
 /// The result of loading a root file: the document, or every problem found. Loading never throws
-/// on bad input, so all problems can be reported together.
+/// on bad text, so all problems can be reported together. <c>LoadFile</c> still throws when the
+/// file cannot be read.
 /// </summary>
 public sealed record RootFileLoadResult(RootFileDocument? Document, IReadOnlyList<RootFileProblem> Problems)
 {

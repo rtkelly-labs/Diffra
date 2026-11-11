@@ -24,8 +24,9 @@ code-first builder and a graph executor, which the root project file replaces.
    Diffra never picks a converter from a file extension or from the shape of the JSON.
 5. **A plugin model is future work.** If built, plugins are separate executables that write values
    in the `record` input format, which Diffra then validates.
-6. **The protocol library takes no package or framework references.** The protocol tests enforce
-   it. Other projects under `src/` keep a short list of reviewed references.
+6. **The protocol library takes no package or framework references.** The protocol tests
+   check that no project file under `src/Protocol/` declares one; a reference brought in another
+   way, such as through a project reference, is caught in review. Other projects under `src/` keep a short list of reviewed references.
 
 ## Not yet decided
 

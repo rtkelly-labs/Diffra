@@ -39,7 +39,7 @@ internal sealed record YamlMapping(long Line, long Column, IReadOnlyList<KeyValu
 /// </summary>
 internal static class YamlTree
 {
-    public const int MaxDepth = 64;
+    private const int MaxDepth = 64;
 
     public static YamlNode? Parse(string text, List<RootFileProblem> problems)
     {
@@ -72,6 +72,12 @@ internal static class YamlTree
             problems.Add(new RootFileProblem(e.Start.Line, e.Start.Column, e.Message));
             return null;
         }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException)
+        {
+            // YamlDotNet reports some malformed input, such as an empty or invalid tag, this way.
+            problems.Add(new RootFileProblem(1, 1, $"The root file is not valid YAML: {e.Message}"));
+            return null;
+        }
     }
 
     private static YamlNode ReadNode(Parser parser, ParsingEvent current, int depth)
@@ -93,7 +99,7 @@ internal static class YamlTree
                 throw Reject(current, "Anchors are not allowed in the root file.");
             }
 
-            if (!node.Tag.IsEmpty && !node.Tag.IsNonSpecific)
+            if (!node.Tag.IsEmpty)
             {
                 throw Reject(current, "Tags are not allowed in the root file.");
             }

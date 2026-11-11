@@ -31,7 +31,7 @@ public static partial class RootFileLoader
     private static readonly string[] HistoryKeys = ["commits"];
     private static readonly string[] LimitKeys = ["maxKeys", "maxStrata", "maxTextLength"];
 
-    [GeneratedRegex("^[a-z][A-Za-z0-9]*$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("^[a-z][A-Za-z0-9]*\\z", RegexOptions.CultureInvariant)]
     private static partial Regex NamePattern();
 
     public static RootFileLoadResult LoadFile(string path)
@@ -430,6 +430,12 @@ public static partial class RootFileLoader
 
     private static void CheckName(YamlScalar key, List<RootFileProblem> problems)
     {
+        if (key.Plain && key.Value is "null" or "true" or "false")
+        {
+            problems.Add(At(key, $"A plain '{key.Value}' is not text in YAML; quote it to use it as a name."));
+            return;
+        }
+
         if (!NamePattern().IsMatch(key.Value))
         {
             problems.Add(At(key, $"'{key.Value}' is not a valid name: start with a lowercase letter, then letters and digits."));

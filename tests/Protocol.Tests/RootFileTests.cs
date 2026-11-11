@@ -128,7 +128,7 @@ public static class RootFileTests
             RootFileLoader.Load(Header + Warnings + "projects:\n  main: { datasets: { warnings: \"null\" } }\n"),
             "applies rule set 'null' to dataset 'warnings'");
 
-        var named = Header + Warnings.Replace("      default:", "      null:", StringComparison.Ordinal)
+        var named = Header + Warnings.Replace("      default:", "      \"null\":", StringComparison.Ordinal)
             + "projects:\n  main: { datasets: { warnings: 'null' } }\n";
         var document = LoadsCleanly(RootFileLoader.Load(named), "rule set named null");
         Equal("null", document.Projects["main"].Datasets["warnings"]);
@@ -197,11 +197,16 @@ public static class RootFileTests
         Fails(RootFileLoader.Load(string.Empty), "empty");
         Fails(RootFileLoader.Load(Header + body + "---\n" + Header), "more than one YAML document");
         Fails(RootFileLoader.Load(Header + "settings: &s { history: { commits: 3 } }\n" + body), "Anchors are not allowed");
-        Fails(RootFileLoader.Load(Header + body + "projects2: *s\n"), string.Empty);
+        Fails(RootFileLoader.Load(Header + body + "projects2: *s\n"), "Aliases are not allowed");
         Fails(RootFileLoader.Load(Header + "settings: !!map { history: { commits: 3 } }\n" + body), "Tags are not allowed");
         Fails(RootFileLoader.Load(Header + Header + body), "appears twice");
         Fails(RootFileLoader.Load(Header + "? [a, b]\n: c\n" + body), "must be text");
-        Fails(RootFileLoader.Load(Header + body + "datasets: [\n"), string.Empty);
+        Fails(RootFileLoader.Load(Header + "datasets: [\n"), string.Empty);
+        Fails(RootFileLoader.Load(Header + "settings: !<> x\n" + body), "not valid YAML");
+        Fails(RootFileLoader.Load(Header + "settings: !!x+y x\n" + body), "not valid YAML");
+        Fails(RootFileLoader.Load(Header + Warnings + "projects:\n  main: { datasets: { warnings: ! null } }\n"), "Tags are not allowed");
+        Fails(RootFileLoader.Load(Header + Warnings + "projects:\n  main: { datasets: { warnings: true } }\n"), "quote it");
+        Fails(RootFileLoader.Load(Header + Warnings + "projects:\n  \"main\\n\": { datasets: { warnings: default } }\n"), "not a valid name");
         Fails(RootFileLoader.Load("- just\n- a list\n"), "must be a mapping");
 
         var deep = Header + "settings:\n" + string.Concat(Enumerable.Range(1, 80).Select(i => new string(' ', i * 2) + "k" + i + ":\n"));

@@ -376,7 +376,7 @@ public static class StructuredNumericComparator
     // to 28 fractional digits) in fixed-point form and is otherwise identical to "G29".
     private const string PlainDecimalFormat = "0.############################";
 
-    internal static string Format(decimal value) => value.ToString(PlainDecimalFormat, System.Globalization.CultureInfo.InvariantCulture);
+    internal static string Format(decimal value) => value.ToString(PlainDecimalFormat, CultureInfo.InvariantCulture);
 
     private static void ValidateOptions(NumericComparatorOptions options)
     {

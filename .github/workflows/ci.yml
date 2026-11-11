@@ -392,6 +392,38 @@ jobs:
             fi
           done
 
+  # Records the run's timing and job graph in the step summary. It never fails the build and is
+  # not one of the jobs that build requires. It reads the run while it is still going, so the jobs
+  # that start after it are shown as not finished.
+  ci-timing:
+    name: ci-timing
+    if: always()
+    needs: [lint, compile, schema-fixtures, jcs-differential, properties, regression-corpus, dogfood, compile-harnesses, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Record CI timing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          dotnet run scripts/CiTiming.cs --
+          --repo "${{ github.repository }}" --run "${{ github.run_id }}" --attempt "${{ github.run_attempt }}"
+          --exclude-job ci-timing --summary "$GITHUB_STEP_SUMMARY"
+
   record-baseline-collect:
     name: record-baseline-collect
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

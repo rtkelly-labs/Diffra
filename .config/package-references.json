@@ -14,6 +14,12 @@
       "reason": "Parses the root file. Read through its event parser only, with no reflection-based deserializer, and kept out of the protocol library, which takes no package references."
     },
     {
+      "project": "scripts/CiTiming.cs",
+      "kind": "PackageReference",
+      "name": "YamlDotNet",
+      "reason": "Reads the job dependencies from the workflow file, which the CI host's API does not report. The same version as the root-file library, read through its representation model only."
+    },
+    {
       "project": "tests/Protocol.Fuzz/Protocol.Fuzz.csproj",
       "kind": "PackageReference",
       "name": "SharpFuzz",

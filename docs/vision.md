@@ -22,8 +22,9 @@ pull request can merge is CI's business, and the adopter decides it. By default 
 never fails a build; an adopter who wants that turns it on in a setting, and uses CI's own
 settings to decide which jobs block a merge. Diffra has no approval step, no promotion of
 baselines and no trusted reference: a pull request is compared with the record stored for the
-commit it branched from on the target branch. When there is no such record, Diffra says it
-cannot attribute the change rather than guessing.
+commit it branched from on the target branch. When that commit has no record, Diffra uses the
+nearest earlier one in its history window and says how far back it is; when none has a record,
+it says it cannot attribute the change rather than guessing.
 
 ## What a reader sees
 

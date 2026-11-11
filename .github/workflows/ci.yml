@@ -138,6 +138,7 @@ jobs:
     env:
       CHECK_JSONSCHEMA: pipx run check-jsonschema==0.29.4
       E: examples/project-file
+      R: examples/root-file
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -147,7 +148,7 @@ jobs:
       - name: Check the schemas against the JSON Schema metaschema
         run: |
           $CHECK_JSONSCHEMA --check-metaschema schemas/project-v1.schema.json schemas/collection-v1.schema.json \
-            $E/benchmarks/payload.schema.json $E/test-results/payload.schema.json
+            $E/benchmarks/payload.schema.json $E/test-results/payload.schema.json schemas/root-file-v1.schema.json
 
       - name: Validate the valid fixtures
         run: |
@@ -155,6 +156,7 @@ jobs:
           $CHECK_JSONSCHEMA --schemafile schemas/collection-v1.schema.json $E/benchmarks/collection*.json
           $CHECK_JSONSCHEMA --schemafile $E/benchmarks/payload.schema.json $E/benchmarks/payload.json
           $CHECK_JSONSCHEMA --schemafile $E/test-results/payload.schema.json $E/test-results/payload.json
+          $CHECK_JSONSCHEMA --schemafile schemas/root-file-v1.schema.json $R/*.yml
 
       - name: Require every invalid fixture to fail validation
         run: |
@@ -171,7 +173,8 @@ jobs:
           for f in $E/invalid/collection-*.json; do expect_invalid schemas/collection-v1.schema.json "$f"; done
           for f in $E/invalid/benchmarks-payload-*.json; do expect_invalid $E/benchmarks/payload.schema.json "$f"; done
           for f in $E/invalid/test-results-payload-*.json; do expect_invalid $E/test-results/payload.schema.json "$f"; done
-          count=$(ls $E/invalid | wc -l)
+          for f in $R/invalid/*.yml; do expect_invalid schemas/root-file-v1.schema.json "$f"; done
+          count=$(( $(ls $E/invalid | wc -l) + $(ls $R/invalid | wc -l) ))
           echo "checked $count invalid fixtures"
           exit $status
 

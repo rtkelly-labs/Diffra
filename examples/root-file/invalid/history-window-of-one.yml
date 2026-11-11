@@ -1,0 +1,11 @@
+schema: https://diffra.net/schemas/root-file-v1.schema.json
+# Invalid: a history window needs at least two commits.
+settings:
+  history: { commits: 1 }
+datasets:
+  warnings:
+    type: count
+    unit: warnings
+    from: { payload: "metrics.json" }
+projects:
+  main: { datasets: { warnings: default } }

@@ -1,0 +1,51 @@
+# Custom leaf datasets and a custom variant type, read from a payload the repository
+# writes itself. The v1 custom example, rewritten for the root file.
+schema: https://diffra.net/schemas/root-file-v1.schema.json
+
+types:
+  fixtureCheck:
+    description: Whether a schema fixture was accepted or rejected by its schema.
+    variant:
+      accepted: {}
+      rejected: { message: text }
+
+datasets:
+  schemaFixtures:
+    type: fixtureCheck
+    collection: { kind: map, keys: { normalization: repository-path, removed: fail } }
+    from: { payload: "artifacts/diffra/fixtures.json" }
+    rules:
+      default:
+        versus:
+          fail: { transition: [{ from: accepted, to: rejected }, { from: rejected, to: accepted }] }
+  compilerWarnings:
+    type: count
+    unit: warnings
+    from: { payload: "artifacts/diffra/metrics.json" }
+    rules:
+      default:
+        check:
+          fail: { above: 0 }
+  gcMode:
+    type: enum
+    values: [workstation, server]
+    required: false
+    from: { payload: "artifacts/diffra/metrics.json" }
+    rules:
+      default:
+        versus:
+          fail: { changed: true }
+  publicApi:
+    type: digest
+    from: { payload: "artifacts/diffra/metrics.json" }
+    rules:
+      default:
+        versus:
+          needs-review: { changed: true }
+
+settings:
+  limits: { maxKeys: 500 }
+
+projects:
+  core:
+    datasets: { schemaFixtures: default, compilerWarnings: default, gcMode: default, publicApi: default }

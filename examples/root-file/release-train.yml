@@ -1,0 +1,80 @@
+# One root file, two projects. Merges into main collect build, lint and tests;
+# a release also collects end-to-end results and judges the shared data more strictly.
+# Each dataset is collected and stored once, with one history; a project picks a rule set.
+schema: https://diffra.net/schemas/root-file-v1.schema.json
+
+settings:
+  output: { lines: 25, findings: 5, columns: 4, agentTokens: 500 }
+  history: { commits: 20 }
+
+dimensions:
+  os: { values: [linux, windows] }
+
+datasets:
+  tests:
+    type: diffra/test-results@1
+    from: { junit: "artifacts/tests/*.junit.xml" }
+    fields:
+      results: { stratify: [os] }
+    rules:
+      main:
+        fields:
+          results:
+            versus:
+              fail: { transition: [{ from: success, to: error }] }
+            keys: { added: pass, removed: needs-review }
+      release:
+        fields:
+          results:
+            check:
+              fail: { tag: [error] }
+            versus:
+              fail: { transition: [{ from: success, to: error }, { from: success, to: skipped }] }
+            keys: { added: pass, removed: fail }
+
+  coverage:
+    type: diffra/coverage@1
+    from: { cobertura: "artifacts/coverage/coverage.cobertura.xml" }
+    rules:
+      main:
+        fields:
+          lineRate:
+            versus:
+              warn: { decrease: { above: 0.01 } }
+      release:
+        fields:
+          lineRate:
+            check:
+              fail: { below: 0.8 }
+            versus:
+              fail: { decrease: { above: 0.01 } }
+
+  windowsRegression:
+    # Optional: the Windows regression run does not happen on every commit.
+    type: diffra/test-results@1
+    required: false
+    from: { trx: "artifacts/windows/*.trx" }
+    rules:
+      default:
+        fields:
+          results:
+            versus:
+              warn: { transition: [{ from: success, to: error }] }
+
+  endToEnd:
+    type: diffra/test-results@1
+    from: { junit: "artifacts/e2e/*.junit.xml" }
+    rules:
+      release:
+        fields:
+          results:
+            check:
+              fail: { tag: [error] }
+
+projects:
+  main:
+    description: Every pull request into main.
+    datasets: { tests: main, coverage: main, windowsRegression: default }
+  release:
+    description: Release branches.
+    datasets: { tests: release, coverage: release, windowsRegression: default, endToEnd: release }

@@ -3,7 +3,8 @@
 Worked examples of the earlier single-project design: `diffra.project.yml`, typed metrics and the
 `diffra.collection.v1` root. Nothing here is implemented. [Decision record 0002](../../docs/adr/0002-project-file-and-datasets.md)
 describes the design that replaces it (one root file with several projects, datasets and named rule sets);
-these files will be rewritten to match.
+[`examples/root-file/`](../root-file/) shows it. These files are kept for the collection root and the
+payload schemas, which have no replacement yet.
 
 ## Project files
 

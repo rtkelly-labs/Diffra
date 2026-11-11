@@ -1,0 +1,3234 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diffra.net/schemas/root-file-v1.schema.json",
+  "title": "Diffra Root File v1",
+  "description": "The root file: settings, datasets with their named rule sets, and the projects that select them. See docs/adr/0002-project-file-and-datasets.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "datasets", "projects"],
+  "properties": {
+    "schema": {
+      "const": "https://diffra.net/schemas/root-file-v1.schema.json"
+    },
+    "settings": {
+      "$ref": "#/$defs/settings"
+    },
+    "dimensions": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/name"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/dimension"
+      }
+    },
+    "types": {
+      "type": "object",
+      "propertyNames": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/name"
+          },
+          {
+            "not": {
+              "enum": [
+                "count",
+                "integer",
+                "decimal",
+                "bytes",
+                "duration",
+                "ratio",
+                "datetime",
+                "enum",
+                "digest",
+                "text"
+              ]
+            }
+          }
+        ]
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/customType"
+      }
+    },
+    "datasets": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "$ref": "#/$defs/name"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/dataset"
+      }
+    },
+    "projects": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "$ref": "#/$defs/name"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/project"
+      }
+    }
+  },
+  "$defs": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][A-Za-z0-9]*$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "severity": {
+      "enum": ["pass", "warn", "needs-review", "fail"]
+    },
+    "unit": {
+      "type": "string",
+      "pattern": "^[^\\s].*[^\\s]$|^[^\\s]$"
+    },
+    "glob": {
+      "type": "string",
+      "minLength": 1
+    },
+    "enumMember": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "relative": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?%$"
+    },
+    "plainNumber": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0
+        },
+        {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+        }
+      ]
+    },
+    "signedNumber": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+        }
+      ]
+    },
+    "bytesLiteral": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)(B|KiB|MiB|GiB)$"
+    },
+    "durationLiteral": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?(ns|us|ms|s|m|h|d)$"
+    },
+    "ratioLiteral": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "type": "string",
+          "pattern": "^(0(\\.[0-9]+)?|1(\\.0+)?)$"
+        }
+      ]
+    },
+    "thresholdCount": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/plainNumber"
+        },
+        {
+          "$ref": "#/$defs/relative"
+        }
+      ]
+    },
+    "changeCount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["above"],
+      "properties": {
+        "above": {
+          "$ref": "#/$defs/thresholdCount"
+        },
+        "and": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["above"],
+          "properties": {
+            "above": {
+              "$ref": "#/$defs/thresholdCount"
+            }
+          }
+        }
+      }
+    },
+    "checkRulesCount": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "above": {
+          "$ref": "#/$defs/plainNumber"
+        },
+        "below": {
+          "$ref": "#/$defs/plainNumber"
+        }
+      }
+    },
+    "changeRulesCount": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "increase": {
+          "$ref": "#/$defs/changeCount"
+        },
+        "decrease": {
+          "$ref": "#/$defs/changeCount"
+        }
+      }
+    },
+    "checkCount": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "warn": {
+          "$ref": "#/$defs/checkRulesCount"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/checkRulesCount"
+        },
+        "fail": {
+          "$ref": "#/$defs/checkRulesCount"
+        }
+      }
+    },
+    "versusCount": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "warn": {
+          "$ref": "#/$defs/changeRulesCount"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/changeRulesCount"
+        },
+        "fail": {
+          "$ref": "#/$defs/changeRulesCount"
+        }
+      }
+    },
+    "seriesCount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["window"],
+      "properties": {
+        "window": {
+          "$ref": "#/$defs/window"
+        },
+        "minPoints": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "reference": {
+          "enum": ["median", "mean"]
+        },
+        "detect": {
+          "enum": ["none", "change-point"]
+        },
+        "suggest": {
+          "$ref": "#/$defs/suggest"
+        },
+        "warn": {
+          "$ref": "#/$defs/changeRulesCount"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/changeRulesCount"
+        }
+      }
+    },
+    "thresholdInteger": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/plainNumber"
+        },
+        {
+          "$ref": "#/$defs/relative"
+        }
+      ]
+    },
+    "changeInteger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["above"],
+      "properties": {
+        "above": {
+          "$ref": "#/$defs/thresholdInteger"
+        },
+        "and": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["above"],
+          "properties": {
+            "above": {
+              "$ref": "#/$defs/thresholdInteger"
+            }
+          }
+        }
+      }
+    },
+    "checkRulesInteger": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "above": {
+          "$ref": "#/$defs/signedNumber"
+        },
+        "below": {
+          "$ref": "#/$defs/signedNumber"
+        }
+      }
+    },
+    "changeRulesInteger": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "increase": {
+          "$ref": "#/$defs/changeInteger"
+        },
+        "decrease": {
+          "$ref": "#/$defs/changeInteger"
+        }
+      }
+    },
+    "checkInteger": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "warn": {
+          "$ref": "#/$defs/checkRulesInteger"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/checkRulesInteger"
+        },
+        "fail": {
+          "$ref": "#/$defs/checkRulesInteger"
+        }
+      }
+    },
+    "versusInteger": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "warn": {
+          "$ref": "#/$defs/changeRulesInteger"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/changeRulesInteger"
+        },
+        "fail": {
+          "$ref": "#/$defs/changeRulesInteger"
+        }
+      }
+    },
+    "seriesInteger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["window"],
+      "properties": {
+        "window": {
+          "$ref": "#/$defs/window"
+        },
+        "minPoints": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "reference": {
+          "enum": ["median", "mean"]
+        },
+        "detect": {
+          "enum": ["none", "change-point"]
+        },
+        "suggest": {
+          "$ref": "#/$defs/suggest"
+        },
+        "warn": {
+          "$ref": "#/$defs/changeRulesInteger"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/changeRulesInteger"
+        }
+      }
+    },
+    "thresholdDecimal": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/plainNumber"
+        },
+        {
+          "$ref": "#/$defs/relative"
+        }
+      ]
+    },
+    "changeDecimal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["above"],
+      "properties": {
+        "above": {
+          "$ref": "#/$defs/thresholdDecimal"
+        },
+        "and": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["above"],
+          "properties": {
+            "above": {
+              "$ref": "#/$defs/thresholdDecimal"
+            }
+          }
+        }
+      }
+    },
+    "checkRulesDecimal": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "above": {
+          "$ref": "#/$defs/signedNumber"
+        },
+        "below": {
+          "$ref": "#/$defs/signedNumber"
+        }
+      }
+    },
+    "changeRulesDecimal": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "increase": {
+          "$ref": "#/$defs/changeDecimal"
+        },
+        "decrease": {
+          "$ref": "#/$defs/changeDecimal"
+        }
+      }
+    },
+    "checkDecimal": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "warn": {
+          "$ref": "#/$defs/checkRulesDecimal"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/checkRulesDecimal"
+        },
+        "fail": {
+          "$ref": "#/$defs/checkRulesDecimal"
+        }
+      }
+    },
+    "versusDecimal": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "warn": {
+          "$ref": "#/$defs/changeRulesDecimal"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/changeRulesDecimal"
+        },
+        "fail": {
+          "$ref": "#/$defs/changeRulesDecimal"
+        }
+      }
+    },
+    "seriesDecimal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["window"],
+      "properties": {
+        "window": {
+          "$ref": "#/$defs/window"
+        },
+        "minPoints": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "reference": {
+          "enum": ["median", "mean"]
+        },
+        "detect": {
+          "enum": ["none", "change-point"]
+        },
+        "suggest": {
+          "$ref": "#/$defs/suggest"
+        },
+        "warn": {
+          "$ref": "#/$defs/changeRulesDecimal"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/changeRulesDecimal"
+        }
+      }
+    },
+    "thresholdBytes": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/bytesLiteral"
+        },
+        {
+          "$ref": "#/$defs/relative"
+        }
+      ]
+    },
+    "changeBytes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["above"],
+      "properties": {
+        "above": {
+          "$ref": "#/$defs/thresholdBytes"
+        },
+        "and": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["above"],
+          "properties": {
+            "above": {
+              "$ref": "#/$defs/thresholdBytes"
+            }
+          }
+        }
+      }
+    },
+    "checkRulesBytes": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "above": {
+          "$ref": "#/$defs/bytesLiteral"
+        },
+        "below": {
+          "$ref": "#/$defs/bytesLiteral"
+        }
+      }
+    },
+    "changeRulesBytes": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "increase": {
+          "$ref": "#/$defs/changeBytes"
+        },
+        "decrease": {
+          "$ref": "#/$defs/changeBytes"
+        }
+      }
+    },
+    "checkBytes": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "warn": {
+          "$ref": "#/$defs/checkRulesBytes"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/checkRulesBytes"
+        },
+        "fail": {
+          "$ref": "#/$defs/checkRulesBytes"
+        }
+      }
+    },
+    "versusBytes": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "warn": {
+          "$ref": "#/$defs/changeRulesBytes"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/changeRulesBytes"
+        },
+        "fail": {
+          "$ref": "#/$defs/changeRulesBytes"
+        }
+      }
+    },
+    "seriesBytes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["window"],
+      "properties": {
+        "window": {
+          "$ref": "#/$defs/window"
+        },
+        "minPoints": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "reference": {
+          "enum": ["median", "mean"]
+        },
+        "detect": {
+          "enum": ["none", "change-point"]
+        },
+        "suggest": {
+          "$ref": "#/$defs/suggest"
+        },
+        "warn": {
+          "$ref": "#/$defs/changeRulesBytes"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/changeRulesBytes"
+        }
+      }
+    },
+    "thresholdDuration": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/durationLiteral"
+        },
+        {
+          "$ref": "#/$defs/relative"
+        }
+      ]
+    },
+    "changeDuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["above"],
+      "properties": {
+        "above": {
+          "$ref": "#/$defs/thresholdDuration"
+        },
+        "and": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["above"],
+          "properties": {
+            "above": {
+              "$ref": "#/$defs/thresholdDuration"
+            }
+          }
+        }
+      }
+    },
+    "checkRulesDuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "above": {
+          "$ref": "#/$defs/durationLiteral"
+        },
+        "below": {
+          "$ref": "#/$defs/durationLiteral"
+        }
+      }
+    },
+    "changeRulesDuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "increase": {
+          "$ref": "#/$defs/changeDuration"
+        },
+        "decrease": {
+          "$ref": "#/$defs/changeDuration"
+        }
+      }
+    },
+    "checkDuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "warn": {
+          "$ref": "#/$defs/checkRulesDuration"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/checkRulesDuration"
+        },
+        "fail": {
+          "$ref": "#/$defs/checkRulesDuration"
+        }
+      }
+    },
+    "versusDuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "warn": {
+          "$ref": "#/$defs/changeRulesDuration"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/changeRulesDuration"
+        },
+        "fail": {
+          "$ref": "#/$defs/changeRulesDuration"
+        }
+      }
+    },
+    "seriesDuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["window"],
+      "properties": {
+        "window": {
+          "$ref": "#/$defs/window"
+        },
+        "minPoints": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "reference": {
+          "enum": ["median", "mean"]
+        },
+        "detect": {
+          "enum": ["none", "change-point"]
+        },
+        "suggest": {
+          "$ref": "#/$defs/suggest"
+        },
+        "warn": {
+          "$ref": "#/$defs/changeRulesDuration"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/changeRulesDuration"
+        }
+      }
+    },
+    "thresholdRatio": {
+      "$ref": "#/$defs/ratioLiteral"
+    },
+    "changeRatio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["above"],
+      "properties": {
+        "above": {
+          "$ref": "#/$defs/thresholdRatio"
+        },
+        "and": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["above"],
+          "properties": {
+            "above": {
+              "$ref": "#/$defs/thresholdRatio"
+            }
+          }
+        }
+      }
+    },
+    "checkRulesRatio": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "above": {
+          "$ref": "#/$defs/ratioLiteral"
+        },
+        "below": {
+          "$ref": "#/$defs/ratioLiteral"
+        }
+      }
+    },
+    "changeRulesRatio": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "increase": {
+          "$ref": "#/$defs/changeRatio"
+        },
+        "decrease": {
+          "$ref": "#/$defs/changeRatio"
+        }
+      }
+    },
+    "checkRatio": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "warn": {
+          "$ref": "#/$defs/checkRulesRatio"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/checkRulesRatio"
+        },
+        "fail": {
+          "$ref": "#/$defs/checkRulesRatio"
+        }
+      }
+    },
+    "versusRatio": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "warn": {
+          "$ref": "#/$defs/changeRulesRatio"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/changeRulesRatio"
+        },
+        "fail": {
+          "$ref": "#/$defs/changeRulesRatio"
+        }
+      }
+    },
+    "seriesRatio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["window"],
+      "properties": {
+        "window": {
+          "$ref": "#/$defs/window"
+        },
+        "minPoints": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "reference": {
+          "enum": ["median", "mean"]
+        },
+        "detect": {
+          "enum": ["none", "change-point"]
+        },
+        "suggest": {
+          "$ref": "#/$defs/suggest"
+        },
+        "warn": {
+          "$ref": "#/$defs/changeRulesRatio"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/changeRulesRatio"
+        }
+      }
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commits", "maxAge"],
+      "properties": {
+        "commits": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 10000
+        },
+        "maxAge": {
+          "$ref": "#/$defs/durationLiteral"
+        }
+      }
+    },
+    "suggest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["factor"],
+      "properties": {
+        "factor": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "changeDatetime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["above"],
+      "properties": {
+        "above": {
+          "$ref": "#/$defs/durationLiteral"
+        }
+      }
+    },
+    "checkRulesDatetime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["age"],
+      "properties": {
+        "age": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["above"],
+          "properties": {
+            "above": {
+              "$ref": "#/$defs/durationLiteral"
+            }
+          }
+        }
+      }
+    },
+    "changeRulesDatetime": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "increase": {
+          "$ref": "#/$defs/changeDatetime"
+        },
+        "decrease": {
+          "$ref": "#/$defs/changeDatetime"
+        }
+      }
+    },
+    "checkDatetime": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "warn": {
+          "$ref": "#/$defs/checkRulesDatetime"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/checkRulesDatetime"
+        },
+        "fail": {
+          "$ref": "#/$defs/checkRulesDatetime"
+        }
+      }
+    },
+    "versusDatetime": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "warn": {
+          "$ref": "#/$defs/changeRulesDatetime"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/changeRulesDatetime"
+        },
+        "fail": {
+          "$ref": "#/$defs/changeRulesDatetime"
+        }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "checkRulesEnum": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["is"],
+      "properties": {
+        "is": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/enumMember"
+          }
+        }
+      }
+    },
+    "changeRulesEnum": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["changed"],
+      "properties": {
+        "changed": {
+          "oneOf": [
+            {
+              "const": true
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["except"],
+              "properties": {
+                "except": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "$ref": "#/$defs/transition"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "checkEnum": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "warn": {
+          "$ref": "#/$defs/checkRulesEnum"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/checkRulesEnum"
+        },
+        "fail": {
+          "$ref": "#/$defs/checkRulesEnum"
+        }
+      }
+    },
+    "versusEnum": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "warn": {
+          "$ref": "#/$defs/changeRulesEnum"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/changeRulesEnum"
+        },
+        "fail": {
+          "$ref": "#/$defs/changeRulesEnum"
+        }
+      }
+    },
+    "changeRulesEquality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["changed"],
+      "properties": {
+        "changed": {
+          "const": true
+        }
+      }
+    },
+    "versusEquality": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "warn": {
+          "$ref": "#/$defs/changeRulesEquality"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/changeRulesEquality"
+        },
+        "fail": {
+          "$ref": "#/$defs/changeRulesEquality"
+        }
+      }
+    },
+    "checkRulesVariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tag"],
+      "properties": {
+        "tag": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/name"
+          }
+        }
+      }
+    },
+    "changeRulesVariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transition"],
+      "properties": {
+        "transition": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/transition"
+          }
+        }
+      }
+    },
+    "checkVariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "warn": {
+          "$ref": "#/$defs/checkRulesVariant"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/checkRulesVariant"
+        },
+        "fail": {
+          "$ref": "#/$defs/checkRulesVariant"
+        }
+      }
+    },
+    "versusVariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "warn": {
+          "$ref": "#/$defs/changeRulesVariant"
+        },
+        "needs-review": {
+          "$ref": "#/$defs/changeRulesVariant"
+        },
+        "fail": {
+          "$ref": "#/$defs/changeRulesVariant"
+        }
+      }
+    },
+    "anyFieldRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "check": {
+          "$ref": "#/$defs/anyCheck"
+        },
+        "versus": {
+          "$ref": "#/$defs/anyVersus"
+        },
+        "series": {
+          "$ref": "#/$defs/anySeries"
+        }
+      }
+    },
+    "anyCheck": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/checkCount"
+        },
+        {
+          "$ref": "#/$defs/checkInteger"
+        },
+        {
+          "$ref": "#/$defs/checkDecimal"
+        },
+        {
+          "$ref": "#/$defs/checkBytes"
+        },
+        {
+          "$ref": "#/$defs/checkDuration"
+        },
+        {
+          "$ref": "#/$defs/checkRatio"
+        },
+        {
+          "$ref": "#/$defs/checkDatetime"
+        },
+        {
+          "$ref": "#/$defs/checkEnum"
+        }
+      ]
+    },
+    "anyVersus": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/versusCount"
+        },
+        {
+          "$ref": "#/$defs/versusInteger"
+        },
+        {
+          "$ref": "#/$defs/versusDecimal"
+        },
+        {
+          "$ref": "#/$defs/versusBytes"
+        },
+        {
+          "$ref": "#/$defs/versusDuration"
+        },
+        {
+          "$ref": "#/$defs/versusRatio"
+        },
+        {
+          "$ref": "#/$defs/versusDatetime"
+        },
+        {
+          "$ref": "#/$defs/versusEnum"
+        },
+        {
+          "$ref": "#/$defs/versusEquality"
+        }
+      ]
+    },
+    "anySeries": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/seriesCount"
+        },
+        {
+          "$ref": "#/$defs/seriesInteger"
+        },
+        {
+          "$ref": "#/$defs/seriesDecimal"
+        },
+        {
+          "$ref": "#/$defs/seriesBytes"
+        },
+        {
+          "$ref": "#/$defs/seriesDuration"
+        },
+        {
+          "$ref": "#/$defs/seriesRatio"
+        }
+      ]
+    },
+    "keyRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "added": {
+          "$ref": "#/$defs/severity"
+        },
+        "removed": {
+          "$ref": "#/$defs/severity"
+        }
+      }
+    },
+    "mapKeys": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["normalization"],
+      "properties": {
+        "normalization": {
+          "enum": ["none", "repository-path"]
+        },
+        "added": {
+          "$ref": "#/$defs/severity"
+        },
+        "removed": {
+          "$ref": "#/$defs/severity"
+        }
+      }
+    },
+    "stratify": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/name"
+      }
+    },
+    "collection": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "keys"],
+          "properties": {
+            "kind": {
+              "const": "map"
+            },
+            "keys": {
+              "$ref": "#/$defs/mapKeys"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "const": "ordered"
+            },
+            "changed": {
+              "$ref": "#/$defs/severity"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "const": "set"
+            },
+            "added": {
+              "$ref": "#/$defs/severity"
+            },
+            "removed": {
+              "$ref": "#/$defs/severity"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "summary"],
+          "properties": {
+            "kind": {
+              "const": "distribution"
+            },
+            "summary": {
+              "enum": ["median", "mean", "min", "max", "p90", "p95", "p99"]
+            }
+          }
+        }
+      ]
+    },
+    "fieldType": {
+      "oneOf": [
+        {
+          "enum": ["bytes", "duration", "ratio", "datetime", "digest", "text"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "unit"],
+          "properties": {
+            "type": {
+              "enum": ["count", "integer", "decimal"]
+            },
+            "unit": {
+              "$ref": "#/$defs/unit"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "values"],
+          "properties": {
+            "type": {
+              "const": "enum"
+            },
+            "values": {
+              "type": "array",
+              "minItems": 2,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/enumMember"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "fields": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/name"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/fieldType"
+      }
+    },
+    "customType": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["variant"],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "variant": {
+          "type": "object",
+          "minProperties": 2,
+          "propertyNames": {
+            "$ref": "#/$defs/name"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/fields"
+          }
+        }
+      }
+    },
+    "dimension": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["values"],
+          "properties": {
+            "values": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[^\\s](.*[^\\s])?$"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["observed"],
+          "properties": {
+            "observed": {
+              "const": true
+            }
+          }
+        }
+      ]
+    },
+    "testResultWhen": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "success": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "duration": {
+              "type": "object",
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "check": {
+                  "$ref": "#/$defs/checkDuration"
+                },
+                "versus": {
+                  "$ref": "#/$defs/versusDuration"
+                },
+                "series": {
+                  "$ref": "#/$defs/seriesDuration"
+                }
+              }
+            }
+          }
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "duration": {
+              "type": "object",
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "check": {
+                  "$ref": "#/$defs/checkDuration"
+                },
+                "versus": {
+                  "$ref": "#/$defs/versusDuration"
+                },
+                "series": {
+                  "$ref": "#/$defs/seriesDuration"
+                }
+              }
+            },
+            "kind": {
+              "type": "object",
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "check": {
+                  "$ref": "#/$defs/checkEnum"
+                },
+                "versus": {
+                  "$ref": "#/$defs/versusEnum"
+                }
+              }
+            },
+            "message": {
+              "type": "object",
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "versus": {
+                  "$ref": "#/$defs/versusEquality"
+                }
+              }
+            }
+          }
+        },
+        "skipped": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "reason": {
+              "type": "object",
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "versus": {
+                  "$ref": "#/$defs/versusEquality"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "testResultTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": {
+          "enum": ["success", "error", "skipped", "*"]
+        },
+        "to": {
+          "enum": ["success", "error", "skipped", "*"]
+        }
+      }
+    },
+    "checkRulesTestResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tag"],
+      "properties": {
+        "tag": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["success", "error", "skipped"]
+          }
+        }
+      }
+    },
+    "changeRulesTestResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transition"],
+      "properties": {
+        "transition": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/testResultTransition"
+          }
+        }
+      }
+    },
+    "standardDataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "from"],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "type": {
+          "enum": [
+            "diffra/benchmark@1",
+            "diffra/coverage@1",
+            "diffra/findings@1",
+            "diffra/size@1",
+            "diffra/test-results@1"
+          ]
+        },
+        "from": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/glob"
+          }
+        },
+        "fields": {
+          "type": "object"
+        },
+        "rules": {
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "diffra/benchmark@1"
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {
+              "from": {
+                "propertyNames": {
+                  "enum": ["benchmarkdotnet"]
+                }
+              },
+              "fields": {
+                "type": "object",
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "allocatedBytes": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "stratify": {
+                        "$ref": "#/$defs/stratify"
+                      }
+                    }
+                  },
+                  "gen0PerKOps": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "stratify": {
+                        "$ref": "#/$defs/stratify"
+                      }
+                    }
+                  },
+                  "gen1PerKOps": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "stratify": {
+                        "$ref": "#/$defs/stratify"
+                      }
+                    }
+                  },
+                  "gen2PerKOps": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "stratify": {
+                        "$ref": "#/$defs/stratify"
+                      }
+                    }
+                  },
+                  "meanTime": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "stratify": {
+                        "$ref": "#/$defs/stratify"
+                      }
+                    }
+                  }
+                }
+              },
+              "rules": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {
+                  "$ref": "#/$defs/name"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "fields": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "allocatedBytes": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "minProperties": 1,
+                          "properties": {
+                            "check": {
+                              "$ref": "#/$defs/checkBytes"
+                            },
+                            "versus": {
+                              "$ref": "#/$defs/versusBytes"
+                            },
+                            "series": {
+                              "$ref": "#/$defs/seriesBytes"
+                            },
+                            "keys": {
+                              "$ref": "#/$defs/keyRules"
+                            }
+                          }
+                        },
+                        "gen0PerKOps": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "minProperties": 1,
+                          "properties": {
+                            "check": {
+                              "$ref": "#/$defs/checkDecimal"
+                            },
+                            "versus": {
+                              "$ref": "#/$defs/versusDecimal"
+                            },
+                            "series": {
+                              "$ref": "#/$defs/seriesDecimal"
+                            },
+                            "keys": {
+                              "$ref": "#/$defs/keyRules"
+                            }
+                          }
+                        },
+                        "gen1PerKOps": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "minProperties": 1,
+                          "properties": {
+                            "check": {
+                              "$ref": "#/$defs/checkDecimal"
+                            },
+                            "versus": {
+                              "$ref": "#/$defs/versusDecimal"
+                            },
+                            "series": {
+                              "$ref": "#/$defs/seriesDecimal"
+                            },
+                            "keys": {
+                              "$ref": "#/$defs/keyRules"
+                            }
+                          }
+                        },
+                        "gen2PerKOps": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "minProperties": 1,
+                          "properties": {
+                            "check": {
+                              "$ref": "#/$defs/checkDecimal"
+                            },
+                            "versus": {
+                              "$ref": "#/$defs/versusDecimal"
+                            },
+                            "series": {
+                              "$ref": "#/$defs/seriesDecimal"
+                            },
+                            "keys": {
+                              "$ref": "#/$defs/keyRules"
+                            }
+                          }
+                        },
+                        "meanTime": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "minProperties": 1,
+                          "properties": {
+                            "check": {
+                              "$ref": "#/$defs/checkDuration"
+                            },
+                            "versus": {
+                              "$ref": "#/$defs/versusDuration"
+                            },
+                            "series": {
+                              "$ref": "#/$defs/seriesDuration"
+                            },
+                            "keys": {
+                              "$ref": "#/$defs/keyRules"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": ["fields"]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "diffra/coverage@1"
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {
+              "from": {
+                "propertyNames": {
+                  "enum": ["cobertura", "opencover"]
+                }
+              },
+              "fields": {
+                "type": "object",
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "lineRate": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "stratify": {
+                        "$ref": "#/$defs/stratify"
+                      }
+                    }
+                  },
+                  "branchRate": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "stratify": {
+                        "$ref": "#/$defs/stratify"
+                      }
+                    }
+                  },
+                  "coveredLines": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "stratify": {
+                        "$ref": "#/$defs/stratify"
+                      }
+                    }
+                  },
+                  "totalLines": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "stratify": {
+                        "$ref": "#/$defs/stratify"
+                      }
+                    }
+                  },
+                  "fileLineRate": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "stratify": {
+                        "$ref": "#/$defs/stratify"
+                      }
+                    }
+                  },
+                  "fileBranchRate": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "stratify": {
+                        "$ref": "#/$defs/stratify"
+                      }
+                    }
+                  }
+                }
+              },
+              "rules": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {
+                  "$ref": "#/$defs/name"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "fields": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "lineRate": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "minProperties": 1,
+                          "properties": {
+                            "check": {
+                              "$ref": "#/$defs/checkRatio"
+                            },
+                            "versus": {
+                              "$ref": "#/$defs/versusRatio"
+                            },
+                            "series": {
+                              "$ref": "#/$defs/seriesRatio"
+                            }
+                          }
+                        },
+                        "branchRate": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "minProperties": 1,
+                          "properties": {
+                            "check": {
+                              "$ref": "#/$defs/checkRatio"
+                            },
+                            "versus": {
+                              "$ref": "#/$defs/versusRatio"
+                            },
+                            "series": {
+                              "$ref": "#/$defs/seriesRatio"
+                            }
+                          }
+                        },
+                        "coveredLines": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "minProperties": 1,
+                          "properties": {
+                            "check": {
+                              "$ref": "#/$defs/checkCount"
+                            },
+                            "versus": {
+                              "$ref": "#/$defs/versusCount"
+                            },
+                            "series": {
+                              "$ref": "#/$defs/seriesCount"
+                            }
+                          }
+                        },
+                        "totalLines": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "minProperties": 1,
+                          "properties": {
+                            "check": {
+                              "$ref": "#/$defs/checkCount"
+                            },
+                            "versus": {
+                              "$ref": "#/$defs/versusCount"
+                            },
+                            "series": {
+                              "$ref": "#/$defs/seriesCount"
+                            }
+                          }
+                        },
+                        "fileLineRate": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "minProperties": 1,
+                          "properties": {
+                            "check": {
+                              "$ref": "#/$defs/checkRatio"
+                            },
+                            "versus": {
+                              "$ref": "#/$defs/versusRatio"
+                            },
+                            "series": {
+                              "$ref": "#/$defs/seriesRatio"
+                            },
+                            "keys": {
+                              "$ref": "#/$defs/keyRules"
+                            }
+                          }
+                        },
+                        "fileBranchRate": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "minProperties": 1,
+                          "properties": {
+                            "check": {
+                              "$ref": "#/$defs/checkRatio"
+                            },
+                            "versus": {
+                              "$ref": "#/$defs/versusRatio"
+                            },
+                            "series": {
+                              "$ref": "#/$defs/seriesRatio"
+                            },
+                            "keys": {
+                              "$ref": "#/$defs/keyRules"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": ["fields"]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "diffra/findings@1"
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {
+              "from": {
+                "propertyNames": {
+                  "enum": ["sarif"]
+                }
+              },
+              "fields": {
+                "type": "object",
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "total": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "stratify": {
+                        "$ref": "#/$defs/stratify"
+                      }
+                    }
+                  },
+                  "byRule": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "stratify": {
+                        "$ref": "#/$defs/stratify"
+                      }
+                    }
+                  }
+                }
+              },
+              "rules": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {
+                  "$ref": "#/$defs/name"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "fields": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "total": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "minProperties": 1,
+                          "properties": {
+                            "check": {
+                              "$ref": "#/$defs/checkCount"
+                            },
+                            "versus": {
+                              "$ref": "#/$defs/versusCount"
+                            },
+                            "series": {
+                              "$ref": "#/$defs/seriesCount"
+                            }
+                          }
+                        },
+                        "byRule": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "minProperties": 1,
+                          "properties": {
+                            "check": {
+                              "$ref": "#/$defs/checkCount"
+                            },
+                            "versus": {
+                              "$ref": "#/$defs/versusCount"
+                            },
+                            "series": {
+                              "$ref": "#/$defs/seriesCount"
+                            },
+                            "keys": {
+                              "$ref": "#/$defs/keyRules"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": ["fields"]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "diffra/size@1"
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {
+              "from": {
+                "propertyNames": {
+                  "enum": ["files"]
+                }
+              },
+              "fields": {
+                "type": "object",
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "total": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "stratify": {
+                        "$ref": "#/$defs/stratify"
+                      }
+                    }
+                  },
+                  "files": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "stratify": {
+                        "$ref": "#/$defs/stratify"
+                      }
+                    }
+                  }
+                }
+              },
+              "rules": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {
+                  "$ref": "#/$defs/name"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "fields": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "total": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "minProperties": 1,
+                          "properties": {
+                            "check": {
+                              "$ref": "#/$defs/checkBytes"
+                            },
+                            "versus": {
+                              "$ref": "#/$defs/versusBytes"
+                            },
+                            "series": {
+                              "$ref": "#/$defs/seriesBytes"
+                            }
+                          }
+                        },
+                        "files": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "minProperties": 1,
+                          "properties": {
+                            "check": {
+                              "$ref": "#/$defs/checkBytes"
+                            },
+                            "versus": {
+                              "$ref": "#/$defs/versusBytes"
+                            },
+                            "series": {
+                              "$ref": "#/$defs/seriesBytes"
+                            },
+                            "keys": {
+                              "$ref": "#/$defs/keyRules"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": ["fields"]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "diffra/test-results@1"
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {
+              "from": {
+                "propertyNames": {
+                  "enum": ["junit", "trx"]
+                }
+              },
+              "fields": {
+                "type": "object",
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "results": {
+                    "$ref": "#/$defs/testResultsFieldData"
+                  }
+                }
+              },
+              "rules": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {
+                  "$ref": "#/$defs/name"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "fields": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "results": {
+                          "$ref": "#/$defs/testResultsFieldRules"
+                        }
+                      }
+                    }
+                  },
+                  "required": ["fields"]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "testResultsFieldData": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "stratify": {
+          "$ref": "#/$defs/stratify"
+        }
+      }
+    },
+    "testResultsFieldRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "check": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "warn": {
+              "$ref": "#/$defs/checkRulesTestResult"
+            },
+            "needs-review": {
+              "$ref": "#/$defs/checkRulesTestResult"
+            },
+            "fail": {
+              "$ref": "#/$defs/checkRulesTestResult"
+            }
+          }
+        },
+        "versus": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "warn": {
+              "$ref": "#/$defs/changeRulesTestResult"
+            },
+            "needs-review": {
+              "$ref": "#/$defs/changeRulesTestResult"
+            },
+            "fail": {
+              "$ref": "#/$defs/changeRulesTestResult"
+            }
+          }
+        },
+        "keys": {
+          "$ref": "#/$defs/keyRules"
+        },
+        "when": {
+          "$ref": "#/$defs/testResultWhen"
+        }
+      }
+    },
+    "customDataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "from"],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "enum": [
+                "count",
+                "integer",
+                "decimal",
+                "bytes",
+                "duration",
+                "ratio",
+                "datetime",
+                "enum",
+                "digest",
+                "text"
+              ]
+            },
+            {
+              "$ref": "#/$defs/name"
+            }
+          ]
+        },
+        "unit": {
+          "$ref": "#/$defs/unit"
+        },
+        "values": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/enumMember"
+          }
+        },
+        "collection": {
+          "$ref": "#/$defs/collection"
+        },
+        "from": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["payload"],
+          "properties": {
+            "payload": {
+              "$ref": "#/$defs/glob"
+            }
+          }
+        },
+        "stratify": {
+          "$ref": "#/$defs/stratify"
+        },
+        "rules": {
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "count"
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {
+              "rules": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {
+                  "$ref": "#/$defs/name"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "check": {
+                      "$ref": "#/$defs/checkCount"
+                    },
+                    "versus": {
+                      "$ref": "#/$defs/versusCount"
+                    },
+                    "series": {
+                      "$ref": "#/$defs/seriesCount"
+                    },
+                    "when": {}
+                  },
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["when"]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["unit"],
+            "allOf": [
+              {
+                "not": {
+                  "required": ["values"]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "integer"
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {
+              "rules": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {
+                  "$ref": "#/$defs/name"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "check": {
+                      "$ref": "#/$defs/checkInteger"
+                    },
+                    "versus": {
+                      "$ref": "#/$defs/versusInteger"
+                    },
+                    "series": {
+                      "$ref": "#/$defs/seriesInteger"
+                    },
+                    "when": {}
+                  },
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["when"]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["unit"],
+            "allOf": [
+              {
+                "not": {
+                  "required": ["values"]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "decimal"
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {
+              "rules": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {
+                  "$ref": "#/$defs/name"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "check": {
+                      "$ref": "#/$defs/checkDecimal"
+                    },
+                    "versus": {
+                      "$ref": "#/$defs/versusDecimal"
+                    },
+                    "series": {
+                      "$ref": "#/$defs/seriesDecimal"
+                    },
+                    "when": {}
+                  },
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["when"]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["unit"],
+            "allOf": [
+              {
+                "not": {
+                  "required": ["values"]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "bytes"
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {
+              "rules": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {
+                  "$ref": "#/$defs/name"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "check": {
+                      "$ref": "#/$defs/checkBytes"
+                    },
+                    "versus": {
+                      "$ref": "#/$defs/versusBytes"
+                    },
+                    "series": {
+                      "$ref": "#/$defs/seriesBytes"
+                    },
+                    "when": {}
+                  },
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["when"]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "allOf": [
+              {
+                "not": {
+                  "required": ["unit"]
+                }
+              },
+              {
+                "not": {
+                  "required": ["values"]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "duration"
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {
+              "rules": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {
+                  "$ref": "#/$defs/name"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "check": {
+                      "$ref": "#/$defs/checkDuration"
+                    },
+                    "versus": {
+                      "$ref": "#/$defs/versusDuration"
+                    },
+                    "series": {
+                      "$ref": "#/$defs/seriesDuration"
+                    },
+                    "when": {}
+                  },
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["when"]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "allOf": [
+              {
+                "not": {
+                  "required": ["unit"]
+                }
+              },
+              {
+                "not": {
+                  "required": ["values"]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "ratio"
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {
+              "rules": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {
+                  "$ref": "#/$defs/name"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "check": {
+                      "$ref": "#/$defs/checkRatio"
+                    },
+                    "versus": {
+                      "$ref": "#/$defs/versusRatio"
+                    },
+                    "series": {
+                      "$ref": "#/$defs/seriesRatio"
+                    },
+                    "when": {}
+                  },
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["when"]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "allOf": [
+              {
+                "not": {
+                  "required": ["unit"]
+                }
+              },
+              {
+                "not": {
+                  "required": ["values"]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "datetime"
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {
+              "collection": {
+                "not": {
+                  "properties": {
+                    "kind": {
+                      "const": "distribution"
+                    }
+                  },
+                  "required": ["kind"]
+                }
+              },
+              "rules": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {
+                  "$ref": "#/$defs/name"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "check": {
+                      "$ref": "#/$defs/checkDatetime"
+                    },
+                    "versus": {
+                      "$ref": "#/$defs/versusDatetime"
+                    },
+                    "series": {},
+                    "when": {}
+                  },
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["series"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["when"]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "allOf": [
+              {
+                "not": {
+                  "required": ["unit"]
+                }
+              },
+              {
+                "not": {
+                  "required": ["values"]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "enum"
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {
+              "collection": {
+                "not": {
+                  "properties": {
+                    "kind": {
+                      "const": "distribution"
+                    }
+                  },
+                  "required": ["kind"]
+                }
+              },
+              "rules": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {
+                  "$ref": "#/$defs/name"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "check": {
+                      "$ref": "#/$defs/checkEnum"
+                    },
+                    "versus": {
+                      "$ref": "#/$defs/versusEnum"
+                    },
+                    "series": {},
+                    "when": {}
+                  },
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["series"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["when"]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["values"],
+            "allOf": [
+              {
+                "not": {
+                  "required": ["unit"]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "digest"
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {
+              "collection": {
+                "not": {
+                  "properties": {
+                    "kind": {
+                      "const": "distribution"
+                    }
+                  },
+                  "required": ["kind"]
+                }
+              },
+              "rules": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {
+                  "$ref": "#/$defs/name"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "check": {},
+                    "versus": {
+                      "$ref": "#/$defs/versusEquality"
+                    },
+                    "series": {},
+                    "when": {}
+                  },
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["check"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["series"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["when"]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "allOf": [
+              {
+                "not": {
+                  "required": ["unit"]
+                }
+              },
+              {
+                "not": {
+                  "required": ["values"]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "text"
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {
+              "collection": {
+                "not": {
+                  "properties": {
+                    "kind": {
+                      "const": "distribution"
+                    }
+                  },
+                  "required": ["kind"]
+                }
+              },
+              "rules": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {
+                  "$ref": "#/$defs/name"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "check": {},
+                    "versus": {
+                      "$ref": "#/$defs/versusEquality"
+                    },
+                    "series": {},
+                    "when": {}
+                  },
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["check"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["series"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["when"]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "allOf": [
+              {
+                "not": {
+                  "required": ["unit"]
+                }
+              },
+              {
+                "not": {
+                  "required": ["values"]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "not": {
+                  "enum": [
+                    "count",
+                    "integer",
+                    "decimal",
+                    "bytes",
+                    "duration",
+                    "ratio",
+                    "datetime",
+                    "enum",
+                    "digest",
+                    "text"
+                  ]
+                }
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {
+              "collection": {
+                "not": {
+                  "properties": {
+                    "kind": {
+                      "enum": ["distribution", "set", "ordered"]
+                    }
+                  },
+                  "required": ["kind"]
+                }
+              },
+              "rules": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {
+                  "$ref": "#/$defs/name"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "check": {
+                      "$ref": "#/$defs/checkVariant"
+                    },
+                    "versus": {
+                      "$ref": "#/$defs/versusVariant"
+                    },
+                    "series": {},
+                    "when": {
+                      "type": "object",
+                      "propertyNames": {
+                        "$ref": "#/$defs/name"
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "propertyNames": {
+                          "$ref": "#/$defs/name"
+                        },
+                        "additionalProperties": {
+                          "$ref": "#/$defs/anyFieldRules"
+                        }
+                      }
+                    }
+                  },
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["series"]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "allOf": [
+              {
+                "not": {
+                  "required": ["unit"]
+                }
+              },
+              {
+                "not": {
+                  "required": ["values"]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "collection": {
+                "properties": {
+                  "kind": {
+                    "enum": ["set", "ordered"]
+                  }
+                },
+                "required": ["kind"]
+              }
+            },
+            "required": ["collection"]
+          },
+          "then": {
+            "properties": {
+              "rules": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {
+                  "$ref": "#/$defs/name"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "check": {},
+                    "versus": {},
+                    "series": {},
+                    "when": {}
+                  },
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["check"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["versus"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["series"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["when"]
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "dataset": {
+      "if": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "pattern": "^diffra/"
+          }
+        },
+        "required": ["type"]
+      },
+      "then": {
+        "$ref": "#/$defs/standardDataset"
+      },
+      "else": {
+        "$ref": "#/$defs/customDataset"
+      }
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "description": "One-screen limits for the pull request comment and the agent-facing Markdown.",
+          "properties": {
+            "lines": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 25,
+              "description": "Rendered lines outside collapsed sections."
+            },
+            "findings": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 5,
+              "description": "Findings listed before the rest go to the full report."
+            },
+            "columns": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 4,
+              "description": "Table columns."
+            },
+            "agentTokens": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 500,
+              "description": "Approximate size of the agent-facing Markdown, in tokens."
+            }
+          }
+        },
+        "history": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "commits": {
+              "type": "integer",
+              "minimum": 2,
+              "default": 20,
+              "description": "First-parent commits in the history window, ending at the comparison point."
+            }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "maxKeys": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxStrata": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxTextLength": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["datasets"],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "datasets": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "$ref": "#/$defs/name"
+          },
+          "description": "The datasets this project selects, each mapped to the name of the rule set it applies.",
+          "additionalProperties": {
+            "$ref": "#/$defs/name"
+          }
+        }
+      }
+    }
+  }
+}

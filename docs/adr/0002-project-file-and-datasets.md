@@ -56,7 +56,12 @@ emitter's error never reached the pull request.
 
 ## Current code
 
+`schemas/root-file-v1.schema.json` and `examples/root-file/` describe the root file in this
+record: settings, datasets with named rule sets, `required: false`, and projects that map each
+dataset to a rule set. The schema does not check that a project names a rule set or dataset that
+exists; the loader will. The file's name in a repository is not decided. No code loads the root
+file and `diffra record` does not exist.
+
 `schemas/project-v1.schema.json`, `schemas/collection-v1.schema.json` and
-`examples/project-file/` describe the earlier single-project, metric-based design. No code loads
-the project file and `diffra record` does not exist. Those files will be replaced to match this
-record.
+`examples/project-file/` describe the earlier single-project, metric-based design. They are kept
+because the root file reuses their rule shapes and the collection root has no replacement yet.

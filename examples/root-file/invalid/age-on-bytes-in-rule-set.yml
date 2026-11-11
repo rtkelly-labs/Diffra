@@ -1,0 +1,12 @@
+schema: https://diffra.net/schemas/root-file-v1.schema.json
+# Invalid: `age` is a datetime rule; a bytes dataset cannot use it in any rule set.
+datasets:
+  packageSize:
+    type: bytes
+    from: { payload: "size.json" }
+    rules:
+      release:
+        check:
+          warn: { age: { above: 60d } }
+projects:
+  release: { datasets: { packageSize: release } }

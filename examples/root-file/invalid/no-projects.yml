@@ -1,0 +1,7 @@
+schema: https://diffra.net/schemas/root-file-v1.schema.json
+# Invalid: a root file names at least one project.
+datasets:
+  warnings:
+    type: count
+    unit: warnings
+    from: { payload: "metrics.json" }

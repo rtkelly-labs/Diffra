@@ -91,8 +91,15 @@ public static class PackageReferenceTests
         return references;
     }
 
+    // Build output, tool caches and local scratch directories. Most are gitignored, so a stray
+    // project file in one of them is not part of the repository.
     private static readonly HashSet<string> IgnoredDirectories =
-        new(["bin", "obj", ".git", "temp", "node_modules", "StrykerOutput"], StringComparer.Ordinal);
+        new(
+            [
+                "bin", "obj", "Bin", "Obj", ".git", "temp", ".temp", "artifacts", ".tools-cache", "dogfood-run",
+                "TestResults", "node_modules", "StrykerOutput", "stryker-output",
+            ],
+            StringComparer.Ordinal);
 
     private static IEnumerable<Reference> ReferencesInProject(string project, XDocument document) =>
         document.Descendants()

@@ -37,6 +37,11 @@ No project under `src/` has a package reference; the CLI has one framework refer
 ASP.NET Core, for `present`. Every package and framework reference in the repository, including
 those in test projects and script directives, is listed with a reason in
 `.config/package-references.json`. The protocol tests fail on a reference that is not listed
-and on a listed entry that no project uses, so adding a reference means editing that list. The graph data model and validator live in
-`src/Graph/`, outside the protocol library, and nothing outside the tests calls them yet. They
-still describe the earlier composition graph and have not been reworked for the CI job graph.
+and on a listed entry that no project uses, so adding a reference means editing that list. The
+check reads `PackageReference` and `FrameworkReference` items in project, `.props` and `.targets`
+files and `#:package` directives in `scripts/`; it does not read tool manifests or workflow
+files.
+
+The graph data model and validator live in `src/Graph/`, outside the protocol library, and
+nothing outside the tests calls them yet. They still describe the earlier composition graph and
+have not been reworked for the CI job graph.

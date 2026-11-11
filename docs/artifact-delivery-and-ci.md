@@ -198,7 +198,7 @@ Diffra tests itself in three tiers. The plan and its order of work are in
 | Tier | When | Gate |
 | --- | --- | --- |
 | Shallow | Every pull request and push to `main` (`ci.yml`) | Required. The `build` check passes only when every shallow job passes. |
-| Deep | Nightly on `main`, on demand, and before a release (`deep.yml`) | Five-platform archive smoke matrix, full-scope Protocol mutation testing (floor 57 ratcheting upward, 80 gate on Comparison and Assessment), fuzzing across all targets, 100k property runs, and unit/e2e checks. Aggregated into `deep-summary.json`. Will be required for release (release gate). |
+| Deep | Nightly on `main`, on demand, and before a release (`deep.yml`) | Five-platform archive smoke matrix, full-scope Protocol mutation testing (floor 57 ratcheting upward, 80 gate on Comparison and Assessment), fuzzing across all targets, 100k property runs, and unit/e2e checks with coverage. Aggregated into `deep-summary.json`, then collected as Diffra Evidence and gated against main's deep baseline (see [Deep test strength as Evidence](#deep-test-strength-as-evidence)). Will be required for release (release gate). |
 | Regression | Nightly on `main` and before a release | Frozen corpora from earlier releases must reproduce, and the released and candidate tools must agree. A release requires it on the tagged commit. |
 
 The shallow tier is the build and unit tests, the schema fixtures, the
@@ -245,6 +245,115 @@ unintended changes to metrics or policies.
   verified Baseline Reference, and evaluate the Delta. If no baseline exists for the
   merge-base (such as in new repositories or bootstrap runs), the gate reports the
   assessment outcome as `inconclusive` in the step summary without failing the build.
+
+### Deep test strength as Evidence
+
+The deep tier also records how strong the tests are, so that weaker tests count as a
+regression even when every test still passes. The `test` job runs the suite once under
+coverlet (`COVERLET_VERSION`), giving the test count and the line and branch coverage of
+`Diffra.Protocol` from the same run. `scripts/DeepSummary.cs` adds the coverage and the
+mutant counts to `deep-summary.json`. The final `deep` job then runs
+`scripts/DeepEvidence.cs`:
+
+1. **Payloads.** `payloads` turns the summary into three structured numeric payloads, one per
+   facet, valid against [`baselines/deep/payload.schema.json`](../baselines/deep/payload.schema.json).
+   The workflow checks them against that schema.
+2. **Self-check.** `evidence` first proves, with the pinned judge, that the encodings below
+   survive a real comparison. It takes this run's payloads as a synthetic baseline. It moves
+   every metric by the smallest step its encoding allows, up and down, and applies a clear
+   regression to each facet. It then collects, diffs and evaluates each case, and requires the
+   expected outcome. Any judge error fails the step. The table is in the job summary.
+3. **Collect.** It collects one Evidence document per facet with the pinned judge (type
+   `diffra.metrics.deep-<facet>`, subject `diffra/deep`).
+4. **Record or judge.**
+   - **Record.** The nightly run of `deep.yml` on `main` records its Evidence and does not judge
+     it. The separate `deep-baseline.yml` workflow then publishes it (see below).
+   - **Judge.** Every other run looks for main deep Evidence. It walks first-parent history
+     back from the run's commit (excluding the commit itself, up to 1000 commits) and takes
+     the nearest ancestor that has Evidence on `diffra-baselines` at
+     `evidence/deep/<sha>/<facet>.json`. It builds an `approved-main` Baseline Reference, then
+     diffs and evaluates each facet with `baselines/deep/<facet>.rules.json`.
+   - **No baseline.** If the branch or any ancestor's Evidence is missing, the verdict is
+     `inconclusive`. The step summary says so and the run does not fail.
+
+The verdict is the most severe facet outcome, in the evaluator's order: `fail`, `inconclusive`,
+`needs-review`, `warn`, `pass`. It is written to the job summary with each facet's Markdown
+report, and is a `deep.yml` output (`evidence-verdict`). The `deep` aggregate job fails on
+`fail`, and when the Evidence cannot be built, collected or judged. Every other verdict is
+reported without failing the run. `needs-review` means the set of metrics changed, for example
+a new fuzz target or platform. The `deep-evidence` artifact holds the payloads, the Evidence,
+each facet's Delta and Assessment, and a `manifest.json`.
+
+The pinned evaluator applies one threshold set to every path in a Delta, and only an
+increase is a regression. Every gated metric is therefore stored so that weaker is higher,
+and metrics that need different thresholds are separate facets:
+
+| Facet | Metric (path) | Encoding | Rule |
+| --- | --- | --- | --- |
+| strength | `/tests/negatedCount` | minus the number of passing tests | fail on any increase (`failAboveAbsoluteIncrease` `0`) |
+| strength | `/mutation/{protocol,comparison,assessment}SurvivedBasisPoints` | survived plus no-coverage mutants, in basis points of scored mutants (10000 minus the mutation score) | fail on any increase |
+| strength | `/coverage/uncovered{Line,Branch}BasisPoints` | uncovered lines and branches of `Diffra.Protocol`, in basis points | fail on any increase |
+| strength | `/fuzz/findings` | total fuzz findings | fail on any increase, so a finding above a zero baseline fails |
+| throughput | `/fuzz/<target>/nanosecondsPerExecution` | 10^9 / execs per second, three significant figures | warn above +25%, fail above +100% (execs/sec halved) |
+| size | `/archives/<platform>`, `/cliToolPackage` | bytes, three significant figures | warn above +5%, fail above +20% |
+
+- **Zero baselines.** Strength uses absolute thresholds only, so a zero baseline (no
+  findings) still compares. Throughput and size values are never zero.
+- **Methodology.** Each methodology starts with `deep-v1`; a change of encoding bumps it. The
+  throughput methodology also names the fuzz budget per target. A short ad hoc run is then
+  incompatible with a nightly baseline and reports `inconclusive`, not a slowdown. Fuzz
+  execution totals are budget times rate, so they stay in `deep-summary.json` and are not gated.
+
+**Decimal-formatting bound.** The pinned judge (0.0.1-alpha.1) writes a Delta `relative` value
+below 1e-4 in exponent form, and its own `eval` then rejects it as an invalid decimal string.
+The encodings keep every real change at a relative change of at least 1e-4:
+
+- Exact metrics (tests, findings, basis points) are integers within ±10000, so a change of
+  one is at least 1e-4.
+- Throughput and size are integers of at least 100 rounded to three significant figures, so
+  their smallest step is about 1e-3. This also keeps run-to-run jitter of a few bytes out of
+  the size gate.
+
+The schema and `DeepEvidence.cs` both enforce these bounds. The self-check exercises them at
+the edges: 10000 to 10001, -10000 to -9999, and the step across a power of ten. It also runs an
+informational control with a 1e-5 change, which this judge rejects. Once the judge pin moves to
+a release with the decimal-formatting fix, the control is accepted and the job prints a
+notice. The bounds, the `AssertJudgeSafe` check and the rounding can then be relaxed to finer
+units, with a methodology bump.
+
+**Publishing main baselines.** `deep.yml` keeps no job with write access, because
+`release.yml` calls it as a reusable workflow with read-only permissions. A run records only
+when all of these hold:
+
+- it is strict;
+- the event is `schedule`;
+- the ref is `refs/heads/main`;
+- `github.workflow_ref` is this repository's own `deep.yml` on `main`.
+
+A called run, a dispatch, a branch and a fork never record. When such a run succeeds,
+`deep-baseline.yml` publishes it. It is triggered by `workflow_run` and runs only for a
+successful scheduled Deep run on `main` of this repository. Its one job has `contents: write`
+and `actions: read`. It:
+
+1. downloads that run's `deep-evidence` artifact;
+2. checks that the manifest is a record for exactly the run's head commit;
+3. commits `evidence/deep/<sha>/{strength,throughput,size}.json` to `diffra-baselines`, with
+   the same clone, orphan-bootstrap and retrying push as `ci.yml`'s `record-baseline-publish`.
+
+The nightly run repeats on an unchanged `main` and fuzz throughput varies, so the first
+Evidence recorded for a commit is kept and later runs leave it alone. Deep Evidence lives
+under `evidence/deep/`, beside the dogfood Evidence at `evidence/<sha>.json`. The two never
+collide.
+
+**Verifying the main write.** After merge, the first nightly Deep run on `main` (or the next
+one after any change to this flow) should show:
+
+- a `recorded` verdict in its job summary;
+- a successful `Deep baseline` run that commits `evidence/deep/<sha>/` to `diffra-baselines`
+  (check with `git ls-tree origin/diffra-baselines evidence/deep/`).
+
+The next deep run on a branch, a dispatch or a release then reports a real verdict against
+that commit instead of `inconclusive`.
 
 ## Acceptance checks
 

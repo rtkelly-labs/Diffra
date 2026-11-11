@@ -40,6 +40,9 @@ on:
       result:
         description: 'Overall result of the deep tier workflow'
         value: ${{ jobs.deep.outputs.result }}
+      evidence-verdict:
+        description: 'Deep Evidence verdict against the main baseline (pass, warn, needs-review, inconclusive or fail)'
+        value: ${{ jobs.deep.outputs.evidence-verdict }}
 
 permissions:
   contents: read
@@ -77,6 +80,7 @@ env:
   # budget must leave room for setup, the kill grace period and artifact upload.
   MAX_FUZZ_SECONDS: "3000"
   ALL_FUZZ_TARGETS: "canonical evidence document delivery-index payloads line-ranges bundle bundle-zip"
+  COVERLET_VERSION: "10.1.0"
 
 jobs:
   # 0. Resolve and validate the run parameters once. Every other job needs this one, so a
@@ -380,18 +384,41 @@ jobs:
       - name: Build solution
         run: dotnet build Diffra.slnx --configuration Release
 
-      - name: Run protocol and integration test suite
+      - name: Install coverlet
+        run: dotnet tool install coverlet.console --version "$COVERLET_VERSION" --tool-path "$RUNNER_TEMP/coverlet"
+
+      # The suite runs once, under coverlet, so the test count and the coverage come from the
+      # same run. Coverage is line and branch coverage of Diffra.Protocol only.
+      - name: Run protocol and integration test suite with coverage
         id: unit-tests
         run: |
           set -euo pipefail
           mkdir -p temp
-          dotnet run --project tests/Protocol.Tests/Protocol.Tests.csproj --configuration Release --no-build | tee temp/protocol-tests.log
+          tests_dll=tests/Protocol.Tests/bin/Release/net10.0/Diffra.Protocol.Tests.dll
+          "$RUNNER_TEMP/coverlet/coverlet" "$tests_dll" --target dotnet --targetargs "$tests_dll" \
+            --include "[Diffra.Protocol]*" --format cobertura --output temp/coverage.cobertura.xml \
+            | tee temp/protocol-tests.log
           test_count=$(grep -c '^PASS ' temp/protocol-tests.log || true)
           if [ -z "$test_count" ] || [ "$test_count" -le 0 ]; then
             echo "::error::No passing tests detected in Protocol.Tests output"
             exit 1
           fi
           echo "TEST_COUNT=$test_count" >> "$GITHUB_ENV"
+
+          coverage_root=$(grep -m1 -o '<coverage [^>]*>' temp/coverage.cobertura.xml)
+          attr() { printf '%s' "$coverage_root" | sed -n "s/.* $1=\"\([0-9]*\)\".*/\1/p"; }
+          lines_covered=$(attr lines-covered)
+          lines_valid=$(attr lines-valid)
+          branches_covered=$(attr branches-covered)
+          branches_valid=$(attr branches-valid)
+          for value in "$lines_covered" "$lines_valid" "$branches_covered" "$branches_valid"; do
+            if ! [[ "$value" =~ ^[0-9]+$ ]]; then
+              echo "::error::Could not read line and branch counts from the coverage report."
+              exit 1
+            fi
+          done
+          echo "COVERAGE_JSON={\"linesCovered\": $lines_covered, \"linesValid\": $lines_valid, \"branchesCovered\": $branches_covered, \"branchesValid\": $branches_valid}" >> "$GITHUB_ENV"
+          echo "Diffra.Protocol coverage: lines $lines_covered/$lines_valid, branches $branches_covered/$branches_valid"
 
       - name: Pack CLI tool package
         id: pack-cli
@@ -466,6 +493,7 @@ jobs:
             "testsPassed": $tests_passed,
             "testsFailed": $tests_failed,
             "testCount": ${TEST_COUNT:-null},
+            "coverage": ${COVERAGE_JSON:-null},
             "packageSizeBytes": $pkg_size,
             "packageName": $pkg_json
           }
@@ -767,13 +795,16 @@ jobs:
     if: always()
     needs: [validate, platform, test, fuzz, mutation, properties]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     outputs:
       result: ${{ steps.aggregate.outputs.result || 'failure' }}
+      evidence-verdict: ${{ steps.evidence.outputs.verdict }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          # Full first-parent history, to find the nearest ancestor with main deep Evidence.
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up .NET SDK
@@ -810,18 +841,78 @@ jobs:
           path: deep-summary.json
           if-no-files-found: ignore
 
+      # Test strength as Evidence. The summary becomes three Diffra payloads (strength,
+      # throughput, size), collected with the pinned judge. A nightly run of this workflow on
+      # main records them; the Deep baseline workflow then publishes them to diffra-baselines.
+      # Every other run diffs them against the nearest ancestor's main deep Evidence and
+      # evaluates them with baselines/deep/*.rules.json. A missing baseline is inconclusive.
+      - name: Install pinned Diffra judge
+        if: steps.summary.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: dotnet run scripts/InstallJudge.cs
+
+      - name: Build deep Evidence payloads
+        id: payloads
+        if: steps.summary.outcome == 'success'
+        run: dotnet run scripts/DeepEvidence.cs -- payloads deep-summary.json temp/deep-evidence
+
+      - name: Validate payloads against the committed payload schema
+        if: steps.payloads.outcome == 'success'
+        env:
+          CHECK_JSONSCHEMA: pipx run check-jsonschema==0.29.4
+        run: |
+          $CHECK_JSONSCHEMA --check-metaschema baselines/deep/payload.schema.json
+          $CHECK_JSONSCHEMA --schemafile baselines/deep/payload.schema.json temp/deep-evidence/payload-*.json
+
+      - name: Collect and judge deep Evidence
+        id: evidence
+        if: steps.payloads.outcome == 'success'
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+          # Record (no judging) only for the nightly run of this repository's own deep.yml on
+          # main. A called run's workflow_ref names the caller, so a release or any other
+          # caller never records; nor does a dispatch, a branch or a fork.
+          DEEP_EVIDENCE_RECORD: ${{ needs.validate.outputs.strict == 'true' && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && github.workflow_ref == 'rtkelly-labs/Diffra/.github/workflows/deep.yml@refs/heads/main' }}
+        run: dotnet run scripts/DeepEvidence.cs -- evidence temp/deep-evidence
+
+      - name: Upload deep Evidence artifact
+        if: always() && steps.payloads.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: deep-evidence
+          path: |
+            temp/deep-evidence/payload-*.json
+            temp/deep-evidence/evidence/
+            temp/deep-evidence/judge/
+            temp/deep-evidence/manifest.json
+          if-no-files-found: ignore
+
       - name: Require every deep-tier job to pass
         id: aggregate
         if: always()
         env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
           SUMMARY_OUTCOME: ${{ steps.summary.outcome }}
+          EVIDENCE_OUTCOME: ${{ steps.evidence.outcome }}
+          EVIDENCE_VERDICT: ${{ steps.evidence.outputs.verdict }}
         run: |
           echo "Deep-tier results: $RESULTS"
           echo "Summary step outcome: $SUMMARY_OUTCOME"
+          echo "Evidence step outcome: $EVIDENCE_OUTCOME (verdict: ${EVIDENCE_VERDICT:-none})"
           if [ "$SUMMARY_OUTCOME" != "success" ]; then
             echo "result=failure" >> "$GITHUB_OUTPUT"
             echo "::error::Deep summary generation failed."
+            exit 1
+          fi
+          if [ "$EVIDENCE_OUTCOME" != "success" ]; then
+            echo "result=failure" >> "$GITHUB_OUTPUT"
+            echo "::error::Deep Evidence could not be collected or judged."
+            exit 1
+          fi
+          if [ "$EVIDENCE_VERDICT" = "fail" ]; then
+            echo "result=failure" >> "$GITHUB_OUTPUT"
+            echo "::error::Deep test strength regressed against the main baseline (verdict: fail)."
             exit 1
           fi
           for result in $RESULTS; do

@@ -78,6 +78,7 @@ Each step is one PR.
    Status: implemented in `.github/workflows/deep.yml` with five-platform native archive smoke matrix (Linux x64/arm64, macOS arm64/x64, Windows x64), long-budget parallel fuzzing, full-scope Protocol mutation testing (floor 57 for all of Protocol, ratcheting upward over time; 80 gate on Comparison and Assessment), 100k property checks, and machine-readable `deep-summary.json`.
 5. **Release gate.** `release.yml` requires the deep and regression workflows on the tagged commit.
 6. **Test strength as Evidence.** Turn the deep-run results into Evidence and gate on them.
+   Status: implemented. `scripts/DeepEvidence.cs` turns `deep-summary.json` into strength, throughput and size Evidence (payload schema in `baselines/deep/payload.schema.json`, rules in `baselines/deep/*.rules.json`), and the test job now collects coverage. The nightly run on `main` records the Evidence, and `deep-baseline.yml` publishes it to `diffra-baselines` at `evidence/deep/<sha>/`. Every other deep run is judged against the nearest ancestor's Evidence with the pinned judge, and a `fail` verdict fails the `deep` job. With no baseline the verdict is `inconclusive`. See `docs/artifact-delivery-and-ci.md`.
 
 ## Done when
 

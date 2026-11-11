@@ -21,6 +21,7 @@ internal static class ComparisonTests
         TypesScopeAndMethodologyMustMatch();
         NumericChangesIncludeAbsoluteAndRelativeValues();
         ZeroBaselineHasExplicitUndefinedRelativeValue();
+        SmallMagnitudesUsePlainDecimalStrings();
         AbsoluteFailOutranksZeroBaselineReview();
         ModifiedChangeWithoutAfterIsInconclusive();
         UnitChangesAreIncompatible();
@@ -77,6 +78,37 @@ internal static class ComparisonTests
         Equal("4", change.Value.Absolute);
         Equal(null, change.Value.Relative);
         Equal("undefined-zero-baseline", change.Value.RelativeStatus);
+    }
+
+    private static void SmallMagnitudesUsePlainDecimalStrings()
+    {
+        // A relative change below 1e-4 must not use exponent notation, which readers reject.
+        var tiny = Compare(Evidence("{\"size\":184125}"), Evidence("{\"size\":184126}", CandidateEvidenceId)).Changes.Single();
+        Equal("1", tiny.Value.Absolute);
+        Equal("0.0000054310930074677528852682", tiny.Value.Relative);
+        Equal("defined", tiny.Value.RelativeStatus);
+
+        var shrink = Compare(Evidence("{\"size\":184125}"), Evidence("{\"size\":184124}", CandidateEvidenceId)).Changes.Single();
+        Equal("-0.0000054310930074677528852682", shrink.Value.Relative);
+
+        // The exponent boundary itself, and decimal-string measurements at the smallest scale.
+        Equal("0.0001", Compare(Evidence("{\"x\":10000}"), Evidence("{\"x\":10001}", CandidateEvidenceId)).Changes.Single().Value.Relative);
+        Equal("0.00001", Compare(Evidence("{\"x\":100000}"), Evidence("{\"x\":100001}", CandidateEvidenceId)).Changes.Single().Value.Relative);
+        var smallest = Compare(
+            Evidence("{\"x\":{\"value\":\"0.0000000000000000000000000001\"}}"),
+            Evidence("{\"x\":{\"value\":\"0.0000000000000000000000000003\"}}", CandidateEvidenceId)).Changes.Single();
+        Equal("0.0000000000000000000000000001", smallest.Value.Before);
+        Equal("0.0000000000000000000000000003", smallest.Value.After);
+        Equal("0.0000000000000000000000000002", smallest.Value.Absolute);
+        Equal("2", smallest.Value.Relative);
+
+        // Policy limits echoed into an Assessment use the same plain form.
+        var assessment = AssessmentEvaluator.Evaluate(
+            Compare(Evidence("{\"size\":100000}"), Evidence("{\"size\":100002}", CandidateEvidenceId)),
+            RelativePolicy(warnRelative: 0.00001m));
+        Equal("warn", assessment.Outcome);
+        var expected = JsonSerializer.Serialize(assessment.Findings.Single().Expected, SerializerOptions);
+        Equal("{\"relative\":\"0.00001\"}", expected);
     }
 
     private static void AbsoluteFailOutranksZeroBaselineReview()

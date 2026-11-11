@@ -293,7 +293,7 @@ jobs:
           dotnet tool install Diffra.Cli --add-source artifacts/package --tool-path runner-bin --version "$version"
 
       - name: Run frozen regression corpora against candidate build
-        run: dotnet run --project tests/regression/Diffra.Regression.csproj --configuration Release --no-build -- --tool runner-bin/diffra
+        run: dotnet run --project tests/regression/Diffra.Regression.csproj --configuration Release --no-build -- --tool runner-bin/diffra --strict
 
   # The required check. It passes only when every shallow-tier job passes, so a new
   # shallow job is added to this list rather than to the repository ruleset.

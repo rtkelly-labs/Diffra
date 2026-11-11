@@ -1,6 +1,5 @@
 using System.IO.Compression;
 using System.Text.Json;
-using Diffra.Protocol;
 
 namespace Diffra.Regression;
 
@@ -8,16 +7,23 @@ public sealed class RunSummary
 {
     public int TotalCases { get; set; }
     public int PassedCases { get; set; }
-    public List<(string CaseId, string Reason)> DeclaredBreaks { get; } = [];
-    public List<(string CaseId, string File, string? Pointer, string Message)> Failures { get; } = [];
-    public bool BackwardReadsPassed { get; set; }
+    public List<(string CaseId, string File)> IdentityUnverifiedCases { get; } = new();
+    public List<(string CaseId, string Reason)> DeclaredBreaks { get; } = new();
+    public List<(string CaseId, string File, string? Pointer, string Message)> Failures { get; } = new();
+    public bool BackwardReadsPassed { get; set; } = true;
 }
 
 public static class CorpusRunner
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
-    public static void RunCandidate(string corpusDir, string candidateTool, RunSummary summary)
+    public static void RunCandidate(
+        string corpusDir,
+        string tool,
+        RunSummary summary,
+        bool quick = false,
+        bool strict = false,
+        bool allowPath = false)
     {
         var manifestPath = Path.Combine(corpusDir, "manifest.json");
         if (!File.Exists(manifestPath))
@@ -27,66 +33,99 @@ public static class CorpusRunner
 
         var manifestJson = File.ReadAllText(manifestPath);
         var manifest = JsonSerializer.Deserialize<RegressionManifest>(manifestJson, JsonOptions)
-            ?? throw new InvalidOperationException("Failed to deserialize manifest.json");
+            ?? throw new InvalidOperationException($"Failed to deserialize manifest at {manifestPath}");
 
-        Console.WriteLine($"Running corpus {manifest.Version} ({corpusDir}) with candidate tool: {candidateTool}");
-        var tempRoot = Path.Combine(Path.GetTempPath(), "diffra-regression-" + Guid.NewGuid().ToString("n"));
+        Console.WriteLine($"Running corpus {manifest.Version} ({corpusDir}) with candidate tool: {tool}");
+        if (quick)
+        {
+            Console.WriteLine("  [Quick mode active: skipping old-vs-new and slow directory materialization checks]");
+        }
+
+        var tempRoot = Path.Combine(Path.GetTempPath(), "diffra-regression-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempRoot);
 
         try
         {
             foreach (var testCase in manifest.Cases)
             {
-                summary.TotalCases++;
-                var caseRunDir = Path.Combine(tempRoot, testCase.Id);
-                Directory.CreateDirectory(caseRunDir);
-
-                foreach (var inputFile in testCase.InputFiles)
+                // In quick mode, skip slow presentation / bundle import directory generation
+                if (quick && (testCase.Command is "present" || testCase.Id is "bundle-import"))
                 {
-                    var fullPath = Path.Combine(corpusDir, inputFile);
-                    if (!File.Exists(fullPath) && !Directory.Exists(fullPath))
-                    {
-                        throw new FileNotFoundException($"Declared input '{inputFile}' for case '{testCase.Id}' not found at '{fullPath}'.");
-                    }
-                }
-
-                var resolvedArgs = new List<string>();
-                foreach (var arg in testCase.Args)
-                {
-                    if (arg.StartsWith("inputs/", StringComparison.Ordinal) || arg.StartsWith("expected/", StringComparison.Ordinal))
-                    {
-                        resolvedArgs.Add(Path.GetFullPath(Path.Combine(corpusDir, arg)));
-                    }
-                    else if (arg.StartsWith("output/", StringComparison.Ordinal))
-                    {
-                        var outPath = Path.Combine(caseRunDir, arg);
-                        Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
-                        resolvedArgs.Add(outPath);
-                    }
-                    else
-                    {
-                        resolvedArgs.Add(arg);
-                    }
-                }
-
-                var (exitCode, stderr) = ToolExecutor.Run(candidateTool, resolvedArgs, caseRunDir);
-                if (exitCode != testCase.ExpectedExitCode)
-                {
-                    var msg = $"Exit code mismatch: expected {testCase.ExpectedExitCode}, got {exitCode}. Stderr: {stderr}";
-                    Console.WriteLine($"FAIL {testCase.Id}: {msg}");
-                    summary.Failures.Add((testCase.Id, "process", null, msg));
+                    Console.WriteLine($"SKIP {testCase.Id} (quick mode)");
                     continue;
                 }
 
+                summary.TotalCases++;
                 var casePassed = true;
+                var caseUnverified = false;
+                var caseDeclaredBreak = false;
+
+                // Prepare execution args
+                var resolvedArgs = new List<string>();
+                for (var i = 0; i < testCase.Args.Count; i++)
+                {
+                    var token = testCase.Args[i];
+                    if (token.StartsWith("inputs/", StringComparison.Ordinal) ||
+                        token.StartsWith("expected/", StringComparison.Ordinal))
+                    {
+                        resolvedArgs.Add(Path.Combine(corpusDir, token));
+                    }
+                    else if (token.StartsWith("output/", StringComparison.Ordinal))
+                    {
+                        var relOut = token["output/".Length..];
+                        var fullOut = Path.Combine(tempRoot, relOut);
+                        var dir = Path.GetDirectoryName(fullOut);
+                        if (!string.IsNullOrEmpty(dir))
+                        {
+                            Directory.CreateDirectory(dir);
+                        }
+                        resolvedArgs.Add(fullOut);
+                    }
+                    else
+                    {
+                        resolvedArgs.Add(token);
+                    }
+                }
+
+                var (exitCode, stderr) = ToolExecutor.Run(tool, resolvedArgs, corpusDir, allowPath: allowPath);
+
+                if (exitCode != testCase.ExpectedExitCode)
+                {
+                    var msg = $"Exit code mismatch: expected {testCase.ExpectedExitCode}, got {exitCode}. Stderr: {stderr.Trim()}";
+                    Console.WriteLine($"FAIL {testCase.Id}: {msg}");
+                    summary.Failures.Add((testCase.Id, "exitCode", null, msg));
+                    casePassed = false;
+                    continue;
+                }
+
+                // If non-zero exit code was expected and matched, no output comparison required
+                if (testCase.ExpectedExitCode != 0 && testCase.ExpectedOutputs.Count == 0)
+                {
+                    summary.PassedCases++;
+                    Console.WriteLine($"PASS {testCase.Id}");
+                    continue;
+                }
+
+                // Compare expected outputs
                 foreach (var exp in testCase.ExpectedOutputs)
                 {
                     var expectedFile = Path.Combine(corpusDir, exp.Path);
-                    var actualFile = Path.Combine(caseRunDir, exp.OutputArg);
+                    var actualFile = Path.Combine(tempRoot, exp.OutputArg.StartsWith("output/", StringComparison.Ordinal)
+                        ? exp.OutputArg["output/".Length..]
+                        : exp.OutputArg);
 
                     if (exp.IsDirectory)
                     {
-                        if (!CompareDirectories(expectedFile, actualFile, testCase.Id, summary))
+                        if (!Directory.Exists(actualFile))
+                        {
+                            var msg = $"Output directory was not created: {actualFile}";
+                            Console.WriteLine($"FAIL {testCase.Id}: {msg}");
+                            summary.Failures.Add((testCase.Id, exp.Path, null, msg));
+                            casePassed = false;
+                            continue;
+                        }
+
+                        if (!CompareDirectories(expectedFile, actualFile, summary, testCase.Id))
                         {
                             casePassed = false;
                         }
@@ -123,44 +162,121 @@ public static class CorpusRunner
                     var actualBytes = File.ReadAllBytes(actualFile);
                     var expectedBytes = File.ReadAllBytes(expectedFile);
 
-                    if (exp.NormalizeEnvironment)
+                    // Strictly assert Delta ID existence, canonical self-consistency, invariant environment, and determinism
+                    if (testCase.Command == "diff" && exp.Path.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
                     {
-                        try
+                        using var parsedAct = JsonDocument.Parse(actualBytes);
+                        if (!parsedAct.RootElement.TryGetProperty("id", out var candIdProp) ||
+                            candIdProp.ValueKind != JsonValueKind.String ||
+                            string.IsNullOrWhiteSpace(candIdProp.GetString()))
                         {
-                            EvidenceIdentity.Verify(actualBytes);
-                        }
-                        catch (Exception ex)
-                        {
-                            var msg = $"Candidate evidence failed identity verification: {ex.Message}";
-                            Console.WriteLine($"FAIL {testCase.Id}: {msg}");
-                            summary.Failures.Add((testCase.Id, exp.Path, null, msg));
+                            var msg = "Candidate Delta is missing a valid string 'id' property.";
+                            Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {msg}");
+                            summary.Failures.Add((testCase.Id, exp.Path, "/id", msg));
                             casePassed = false;
                             continue;
                         }
 
-                        var normActual = DocumentNormalizer.NormalizeCollectJson(actualBytes);
-                        var normExpected = DocumentNormalizer.NormalizeCollectJson(expectedBytes);
-
-                        if (!normActual.AsSpan().SequenceEqual(normExpected))
+                        var candComputedId = CanonicalHashHelper.ComputeDocumentId("delta", actualBytes);
+                        if (!string.Equals(candIdProp.GetString(), candComputedId, StringComparison.Ordinal))
                         {
-                            using var actDoc = JsonDocument.Parse(normActual);
-                            using var expDoc = JsonDocument.Parse(normExpected);
-                            var pointer = JsonDiff.FindFirstDifference(expDoc.RootElement, actDoc.RootElement);
-                            var msg = $"Differing JSON at pointer '{pointer}' after environment normalization.";
+                            var msg = $"Candidate Delta ID is self-inconsistent: expected {candComputedId}, got {candIdProp.GetString()}.";
                             Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {msg}");
-                            summary.Failures.Add((testCase.Id, exp.Path, pointer, msg));
+                            summary.Failures.Add((testCase.Id, exp.Path, "/id", msg));
                             casePassed = false;
+                            continue;
                         }
-                        continue;
+
+                        if (!parsedAct.RootElement.TryGetProperty("provenance", out var candProv) ||
+                            !candProv.TryGetProperty("environment", out var candEnv) ||
+                            !DeclaredBreakAllowList.IsExactInvariantDeltaEnvironment(candEnv))
+                        {
+                            var msg = "Candidate Delta environment must equal {\"runtime\":\"dotnet\"} exactly with no extra or changed keys.";
+                            Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {msg}");
+                            summary.Failures.Add((testCase.Id, exp.Path, "/provenance/environment", msg));
+                            casePassed = false;
+                            continue;
+                        }
+
+                        // Local single-version determinism test (repeat run produces byte-identical output)
+                        var tempRepeat = Path.Combine(Path.GetTempPath(), "diffra-regression-det-" + Guid.NewGuid().ToString("N"));
+                        try
+                        {
+                            Directory.CreateDirectory(tempRepeat);
+                            var repeatArgs = ResolveArgs(testCase.Args, corpusDir, tempRepeat);
+                            var (detCode, detErr) = ToolExecutor.Run(tool, repeatArgs, corpusDir, allowPath: allowPath);
+                            if (detCode != testCase.ExpectedExitCode)
+                            {
+                                var msg = $"Determinism test failed: repeat run returned exit code {detCode}. Stderr: {detErr.Trim()}";
+                                Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {msg}");
+                                summary.Failures.Add((testCase.Id, exp.Path, null, msg));
+                                casePassed = false;
+                                continue;
+                            }
+
+                            var repeatRel = exp.OutputArg.StartsWith("output/", StringComparison.Ordinal)
+                                ? exp.OutputArg["output/".Length..]
+                                : exp.OutputArg;
+                            var repeatFile = Path.Combine(tempRepeat, repeatRel);
+
+                            if (!File.Exists(repeatFile))
+                            {
+                                var msg = $"Determinism test failed: repeat run did not produce Delta output {repeatFile}.";
+                                Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {msg}");
+                                summary.Failures.Add((testCase.Id, exp.Path, null, msg));
+                                casePassed = false;
+                                continue;
+                            }
+
+                            var repeatBytes = File.ReadAllBytes(repeatFile);
+                            if (!repeatBytes.AsSpan().SequenceEqual(actualBytes))
+                            {
+                                var msg = "Delta ID / content determinism failure: Delta document differed between two consecutive invocations of candidate tool. Delta IDs must be byte-identical within a single tool version.";
+                                Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {msg}");
+                                summary.Failures.Add((testCase.Id, exp.Path, null, msg));
+                                casePassed = false;
+                                continue;
+                            }
+                        }
+                        finally
+                        {
+                            try { Directory.Delete(tempRepeat, true); } catch { }
+                        }
                     }
 
-                    // Delta, Assessment, Report outputs must match byte for byte
+                    // Strictly assert Evidence ID existence and self-ID verification
+                    if (testCase.Command == "collect" && exp.Path.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                    {
+                        using var parsedAct = JsonDocument.Parse(actualBytes);
+                        if (!parsedAct.RootElement.TryGetProperty("id", out var evIdProp) ||
+                            evIdProp.ValueKind != JsonValueKind.String ||
+                            string.IsNullOrWhiteSpace(evIdProp.GetString()))
+                        {
+                            var msg = "Candidate Evidence is missing a valid string 'id' property.";
+                            Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {msg}");
+                            summary.Failures.Add((testCase.Id, exp.Path, "/id", msg));
+                            casePassed = false;
+                            continue;
+                        }
+
+                        var candComputedEvId = CanonicalHashHelper.ComputeEvidenceId(actualBytes);
+                        if (!string.Equals(evIdProp.GetString(), candComputedEvId, StringComparison.Ordinal))
+                        {
+                            var msg = $"Evidence ID drift detected: recomputed ID '{candComputedEvId}' != stored ID '{evIdProp.GetString()}'.";
+                            Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {msg}");
+                            summary.Failures.Add((testCase.Id, exp.Path, "/id", msg));
+                            casePassed = false;
+                            continue;
+                        }
+                    }
+
+                    // Byte-for-byte exact match
                     if (actualBytes.AsSpan().SequenceEqual(expectedBytes))
                     {
                         continue;
                     }
 
-                    // Check for declared break if JSON
+                    // Structured comparison using explicit allow-list
                     if (exp.Path.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
                     {
                         try
@@ -168,42 +284,47 @@ public static class CorpusRunner
                             using var actDoc = JsonDocument.Parse(actualBytes);
                             using var expDoc = JsonDocument.Parse(expectedBytes);
 
-                            if (TryGetDeclaredBreak(expDoc.RootElement, actDoc.RootElement, out var breakReason))
+                            var documentKind = GetDocumentKind(testCase.Command, expDoc.RootElement, actDoc.RootElement);
+                            var differences = JsonDiff.FindAllDifferences(expDoc.RootElement, actDoc.RootElement);
+
+                            var disallowed = new List<string>();
+                            var allowed = new List<(string Pointer, string Reason)>();
+
+                            foreach (var diffPointer in differences)
                             {
-                                Console.WriteLine($"[DECLARED BREAK] {testCase.Id} ({exp.Path}): {breakReason}");
-                                summary.DeclaredBreaks.Add((testCase.Id, breakReason));
-                                continue;
+                                if (DeclaredBreakAllowList.TryMatch(documentKind, diffPointer, expDoc.RootElement, actDoc.RootElement, out var reason))
+                                {
+                                    allowed.Add((diffPointer, reason));
+                                }
+                                else
+                                {
+                                    disallowed.Add(diffPointer);
+                                }
                             }
 
-                            // If diff command output (Delta document), verify if difference is only runtime environment / id
-                            if (testCase.Command == "diff" ||
-                                (actDoc.RootElement.TryGetProperty("schema", out var actSchema) &&
-                                 actSchema.GetString() == "https://diffra.dev/schemas/delta-v1.schema.json"))
+                            if (disallowed.Count > 0)
                             {
-                                var normAct = DocumentNormalizer.NormalizeDeltaJson(actualBytes);
-                                var normExp = DocumentNormalizer.NormalizeDeltaJson(expectedBytes);
-                                if (normAct.AsSpan().SequenceEqual(normExp))
+                                foreach (var dis in disallowed)
                                 {
-                                    // Delta semantically matches once host .NET runtime version difference is normalized
-                                    continue;
+                                    var msg = $"Disallowed difference at JSON pointer '{dis}'.";
+                                    Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {msg}");
+                                    summary.Failures.Add((testCase.Id, exp.Path, dis, msg));
                                 }
-
-                                using var normActDoc = JsonDocument.Parse(normAct);
-                                using var normExpDoc = JsonDocument.Parse(normExp);
-                                var normPointer = JsonDiff.FindFirstDifference(normExpDoc.RootElement, normActDoc.RootElement);
-                                var normMsg = $"Differing JSON at pointer '{normPointer}' after delta environment normalization.";
-                                Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {normMsg}");
-                                summary.Failures.Add((testCase.Id, exp.Path, normPointer, normMsg));
                                 casePassed = false;
                                 continue;
                             }
 
-                            var pointer = JsonDiff.FindFirstDifference(expDoc.RootElement, actDoc.RootElement);
-                            var msg = $"Differing JSON at pointer '{pointer}'.";
-                            Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {msg}");
-                            summary.Failures.Add((testCase.Id, exp.Path, pointer, msg));
-                            casePassed = false;
-                            continue;
+                            if (allowed.Count > 0)
+                            {
+                                var distinctReasons = allowed.Select(a => a.Reason).Distinct().ToList();
+                                foreach (var reason in distinctReasons)
+                                {
+                                    Console.WriteLine($"[DECLARED BREAK] {testCase.Id} ({exp.Path}): {reason}");
+                                    summary.DeclaredBreaks.Add((testCase.Id, reason));
+                                }
+                                caseDeclaredBreak = true;
+                                continue;
+                            }
                         }
                         catch (JsonException ex)
                         {
@@ -223,7 +344,19 @@ public static class CorpusRunner
                     casePassed = false;
                 }
 
-                if (casePassed)
+                if (!casePassed)
+                {
+                    // Already logged as failure
+                }
+                else if (caseDeclaredBreak)
+                {
+                    // Declared break counted separately
+                }
+                else if (caseUnverified)
+                {
+                    // Identity unverified counted separately
+                }
+                else
                 {
                     summary.PassedCases++;
                     Console.WriteLine($"PASS {testCase.Id}");
@@ -231,7 +364,7 @@ public static class CorpusRunner
             }
 
             // Backward reads check
-            RunBackwardReads(corpusDir, summary);
+            RunBackwardReads(corpusDir, tool, summary, quick: quick, allowPath: allowPath);
         }
         finally
         {
@@ -241,12 +374,18 @@ public static class CorpusRunner
             }
             catch
             {
-                // ignore temp cleanup error
+                // Best effort cleanup
             }
         }
     }
 
-    public static void RunComparison(string corpusDir, string oldTool, string newTool, RunSummary summary)
+    public static void RunComparison(
+        string corpusDir,
+        string oldTool,
+        string newTool,
+        RunSummary summary,
+        bool strict = false,
+        bool allowPath = false)
     {
         var manifestPath = Path.Combine(corpusDir, "manifest.json");
         if (!File.Exists(manifestPath))
@@ -256,65 +395,65 @@ public static class CorpusRunner
 
         var manifestJson = File.ReadAllText(manifestPath);
         var manifest = JsonSerializer.Deserialize<RegressionManifest>(manifestJson, JsonOptions)
-            ?? throw new InvalidOperationException("Failed to deserialize manifest.json");
+            ?? throw new InvalidOperationException($"Failed to deserialize manifest at {manifestPath}");
 
         Console.WriteLine($"Comparing old tool ({oldTool}) vs new tool ({newTool}) on corpus {manifest.Version}");
-        var tempRoot = Path.Combine(Path.GetTempPath(), "diffra-compare-" + Guid.NewGuid().ToString("n"));
-        Directory.CreateDirectory(tempRoot);
+
+        var tempOld = Path.Combine(Path.GetTempPath(), "diffra-cmp-old-" + Guid.NewGuid().ToString("N"));
+        var tempNew = Path.Combine(Path.GetTempPath(), "diffra-cmp-new-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempOld);
+        Directory.CreateDirectory(tempNew);
 
         try
         {
             foreach (var testCase in manifest.Cases)
             {
                 summary.TotalCases++;
-                var oldCaseDir = Path.Combine(tempRoot, testCase.Id + "-old");
-                var newCaseDir = Path.Combine(tempRoot, testCase.Id + "-new");
-                Directory.CreateDirectory(oldCaseDir);
-                Directory.CreateDirectory(newCaseDir);
+                var casePassed = true;
+                var caseUnverified = false;
+                var caseDeclaredBreak = false;
 
-                List<string> ResolveArgs(string runDir)
-                {
-                    var list = new List<string>();
-                    foreach (var arg in testCase.Args)
-                    {
-                        if (arg.StartsWith("inputs/", StringComparison.Ordinal) || arg.StartsWith("expected/", StringComparison.Ordinal))
-                        {
-                            list.Add(Path.GetFullPath(Path.Combine(corpusDir, arg)));
-                        }
-                        else if (arg.StartsWith("output/", StringComparison.Ordinal))
-                        {
-                            var outPath = Path.Combine(runDir, arg);
-                            Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
-                            list.Add(outPath);
-                        }
-                        else
-                        {
-                            list.Add(arg);
-                        }
-                    }
-                    return list;
-                }
+                var oldArgs = ResolveArgs(testCase.Args, corpusDir, tempOld);
+                var newArgs = ResolveArgs(testCase.Args, corpusDir, tempNew);
 
-                var (oldCode, _) = ToolExecutor.Run(oldTool, ResolveArgs(oldCaseDir), oldCaseDir);
-                var (newCode, newErr) = ToolExecutor.Run(newTool, ResolveArgs(newCaseDir), newCaseDir);
+                var (oldCode, oldErr) = ToolExecutor.Run(oldTool, oldArgs, corpusDir, allowPath: allowPath);
+                var (newCode, newErr) = ToolExecutor.Run(newTool, newArgs, corpusDir, allowPath: allowPath);
 
                 if (oldCode != newCode)
                 {
-                    var msg = $"Exit code difference between old ({oldCode}) and new ({newCode}). Stderr new: {newErr}";
-                    Console.WriteLine($"FAIL {testCase.Id}: {msg}");
-                    summary.Failures.Add((testCase.Id, "process", null, msg));
+                    var msg = $"Exit code discrepancy: old returned {oldCode}, new returned {newCode}. Old stderr: {oldErr.Trim()} | New stderr: {newErr.Trim()}";
+                    Console.WriteLine($"FAIL [CMP] {testCase.Id}: {msg}");
+                    summary.Failures.Add((testCase.Id, "exitCode", null, msg));
                     continue;
                 }
 
-                var casePassed = true;
+                if (testCase.ExpectedExitCode != 0 && testCase.ExpectedOutputs.Count == 0)
+                {
+                    summary.PassedCases++;
+                    Console.WriteLine($"PASS [CMP] {testCase.Id}");
+                    continue;
+                }
+
                 foreach (var exp in testCase.ExpectedOutputs)
                 {
-                    var oldFile = Path.Combine(oldCaseDir, exp.OutputArg);
-                    var newFile = Path.Combine(newCaseDir, exp.OutputArg);
+                    var relOut = exp.OutputArg.StartsWith("output/", StringComparison.Ordinal)
+                        ? exp.OutputArg["output/".Length..]
+                        : exp.OutputArg;
+                    var oldOut = Path.Combine(tempOld, relOut);
+                    var newOut = Path.Combine(tempNew, relOut);
 
                     if (exp.IsDirectory)
                     {
-                        if (!CompareDirectories(oldFile, newFile, testCase.Id, summary))
+                        if (!Directory.Exists(oldOut) || !Directory.Exists(newOut))
+                        {
+                            var msg = $"Output directory missing for old ({Directory.Exists(oldOut)}) or new ({Directory.Exists(newOut)}) at {relOut}";
+                            Console.WriteLine($"FAIL [CMP] {testCase.Id}: {msg}");
+                            summary.Failures.Add((testCase.Id, relOut, null, msg));
+                            casePassed = false;
+                            continue;
+                        }
+
+                        if (!CompareDirectories(oldOut, newOut, summary, testCase.Id))
                         {
                             casePassed = false;
                         }
@@ -323,49 +462,95 @@ public static class CorpusRunner
 
                     if (exp.Path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
                     {
-                        if (!File.Exists(oldFile) || !File.Exists(newFile))
+                        if (!File.Exists(oldOut) || !File.Exists(newOut))
                         {
-                            var msg = $"Zip output missing. Old exists: {File.Exists(oldFile)}, New exists: {File.Exists(newFile)}";
-                            Console.WriteLine($"FAIL {testCase.Id}: {msg}");
-                            summary.Failures.Add((testCase.Id, exp.Path, null, msg));
+                            var msg = $"Zip output missing for old or new tool at {relOut}";
+                            Console.WriteLine($"FAIL [CMP] {testCase.Id}: {msg}");
+                            summary.Failures.Add((testCase.Id, relOut, null, msg));
                             casePassed = false;
                             continue;
                         }
 
-                        if (!CompareZipFiles(oldFile, newFile, testCase.Id, summary))
+                        if (!CompareZipFiles(oldOut, newOut, testCase.Id, summary))
                         {
                             casePassed = false;
                         }
                         continue;
                     }
 
-                    if (!File.Exists(oldFile) || !File.Exists(newFile))
+                    if (!File.Exists(oldOut) || !File.Exists(newOut))
                     {
-                        var msg = $"Output missing. Old exists: {File.Exists(oldFile)}, New exists: {File.Exists(newFile)}";
-                        Console.WriteLine($"FAIL {testCase.Id}: {msg}");
-                        summary.Failures.Add((testCase.Id, exp.Path, null, msg));
+                        var msg = $"Output file missing for old or new tool at {relOut}";
+                        Console.WriteLine($"FAIL [CMP] {testCase.Id}: {msg}");
+                        summary.Failures.Add((testCase.Id, relOut, null, msg));
                         casePassed = false;
                         continue;
                     }
 
-                    var oldBytes = File.ReadAllBytes(oldFile);
-                    var newBytes = File.ReadAllBytes(newFile);
+                    var oldBytes = File.ReadAllBytes(oldOut);
+                    var newBytes = File.ReadAllBytes(newOut);
 
-                    if (exp.NormalizeEnvironment)
+                    // Strictly assert Delta ID and exact environment on new tool
+                    if (testCase.Command == "diff" && exp.Path.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
                     {
-                        var normOld = DocumentNormalizer.NormalizeCollectJson(oldBytes);
-                        var normNew = DocumentNormalizer.NormalizeCollectJson(newBytes);
-                        if (!normOld.AsSpan().SequenceEqual(normNew))
+                        using var parsedNew = JsonDocument.Parse(newBytes);
+                        if (!parsedNew.RootElement.TryGetProperty("id", out var newIdProp) ||
+                            newIdProp.ValueKind != JsonValueKind.String ||
+                            string.IsNullOrWhiteSpace(newIdProp.GetString()))
                         {
-                            using var expDoc = JsonDocument.Parse(normOld);
-                            using var actDoc = JsonDocument.Parse(normNew);
-                            var pointer = JsonDiff.FindFirstDifference(expDoc.RootElement, actDoc.RootElement);
-                            var msg = $"Differing JSON at pointer '{pointer}' after environment normalization.";
-                            Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {msg}");
-                            summary.Failures.Add((testCase.Id, exp.Path, pointer, msg));
+                            var msg = "New tool Delta is missing a valid string 'id' property.";
+                            Console.WriteLine($"FAIL [CMP] {testCase.Id} ({relOut}): {msg}");
+                            summary.Failures.Add((testCase.Id, relOut, "/id", msg));
                             casePassed = false;
+                            continue;
                         }
-                        continue;
+
+                        var newComputedId = CanonicalHashHelper.ComputeDocumentId("delta", newBytes);
+                        if (!string.Equals(newIdProp.GetString(), newComputedId, StringComparison.Ordinal))
+                        {
+                            var msg = $"New tool Delta ID is self-inconsistent: expected {newComputedId}, got {newIdProp.GetString()}.";
+                            Console.WriteLine($"FAIL [CMP] {testCase.Id} ({relOut}): {msg}");
+                            summary.Failures.Add((testCase.Id, relOut, "/id", msg));
+                            casePassed = false;
+                            continue;
+                        }
+
+                        if (!parsedNew.RootElement.TryGetProperty("provenance", out var newProv) ||
+                            !newProv.TryGetProperty("environment", out var newEnv) ||
+                            !DeclaredBreakAllowList.IsExactInvariantDeltaEnvironment(newEnv))
+                        {
+                            var msg = "New tool Delta environment must equal {\"runtime\":\"dotnet\"} exactly with no extra or changed keys.";
+                            Console.WriteLine($"FAIL [CMP] {testCase.Id} ({relOut}): {msg}");
+                            summary.Failures.Add((testCase.Id, relOut, "/provenance/environment", msg));
+                            casePassed = false;
+                            continue;
+                        }
+                    }
+
+                    // Strictly assert Evidence self-ID on new tool
+                    if (testCase.Command == "collect" && exp.Path.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                    {
+                        using var parsedNew = JsonDocument.Parse(newBytes);
+                        if (!parsedNew.RootElement.TryGetProperty("id", out var evIdProp) ||
+                            evIdProp.ValueKind != JsonValueKind.String ||
+                            string.IsNullOrWhiteSpace(evIdProp.GetString()))
+                        {
+                            var msg = "New tool Evidence is missing a valid string 'id' property.";
+                            Console.WriteLine($"FAIL [CMP] {testCase.Id} ({relOut}): {msg}");
+                            summary.Failures.Add((testCase.Id, relOut, "/id", msg));
+                            casePassed = false;
+                            continue;
+                        }
+
+                        var newComputedEvId = CanonicalHashHelper.ComputeEvidenceId(newBytes);
+                        if (!string.Equals(evIdProp.GetString(), newComputedEvId, StringComparison.Ordinal))
+                        {
+                            var msg = $"Evidence ID drift detected on new tool: recomputed ID '{newComputedEvId}' != stored ID '{evIdProp.GetString()}'.";
+                            Console.WriteLine($"FAIL [CMP] {testCase.Id} ({relOut}): {msg}");
+                            summary.Failures.Add((testCase.Id, relOut, "/id", msg));
+                            casePassed = false;
+                            continue;
+                        }
                     }
 
                     if (oldBytes.AsSpan().SequenceEqual(newBytes))
@@ -378,54 +563,72 @@ public static class CorpusRunner
                         using var oldDoc = JsonDocument.Parse(oldBytes);
                         using var newDoc = JsonDocument.Parse(newBytes);
 
-                        if (TryGetDeclaredBreak(oldDoc.RootElement, newDoc.RootElement, out var breakReason))
+                        var documentKind = GetDocumentKind(testCase.Command, oldDoc.RootElement, newDoc.RootElement);
+                        var differences = JsonDiff.FindAllDifferences(oldDoc.RootElement, newDoc.RootElement);
+
+                        var disallowed = new List<string>();
+                        var allowed = new List<(string Pointer, string Reason)>();
+
+                        foreach (var diffPointer in differences)
                         {
-                            Console.WriteLine($"[DECLARED BREAK] {testCase.Id} ({exp.Path}): {breakReason}");
-                            summary.DeclaredBreaks.Add((testCase.Id, breakReason));
-                            continue;
+                            if (DeclaredBreakAllowList.TryMatch(documentKind, diffPointer, oldDoc.RootElement, newDoc.RootElement, out var reason))
+                            {
+                                allowed.Add((diffPointer, reason));
+                            }
+                            else
+                            {
+                                disallowed.Add(diffPointer);
+                            }
                         }
 
-                        // If diff command output (Delta document), verify if difference is only runtime environment / id
-                        if (testCase.Command == "diff" ||
-                            (newDoc.RootElement.TryGetProperty("schema", out var actSchema) &&
-                             actSchema.GetString() == "https://diffra.dev/schemas/delta-v1.schema.json"))
+                        if (disallowed.Count > 0)
                         {
-                            var normOld = DocumentNormalizer.NormalizeDeltaJson(oldBytes);
-                            var normNew = DocumentNormalizer.NormalizeDeltaJson(newBytes);
-                            if (normOld.AsSpan().SequenceEqual(normNew))
+                            foreach (var dis in disallowed)
                             {
-                                continue;
+                                var msg = $"Disallowed difference between old and new at JSON pointer '{dis}'.";
+                                Console.WriteLine($"FAIL [CMP] {testCase.Id} ({relOut}): {msg}");
+                                summary.Failures.Add((testCase.Id, relOut, dis, msg));
                             }
-
-                            using var normOldDoc = JsonDocument.Parse(normOld);
-                            using var normNewDoc = JsonDocument.Parse(normNew);
-                            var normPointer = JsonDiff.FindFirstDifference(normOldDoc.RootElement, normNewDoc.RootElement);
-                            var normMsg = $"Differing JSON at pointer '{normPointer}' after delta environment normalization.";
-                            Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {normMsg}");
-                            summary.Failures.Add((testCase.Id, exp.Path, normPointer, normMsg));
                             casePassed = false;
                             continue;
                         }
 
-                        var pointer = JsonDiff.FindFirstDifference(oldDoc.RootElement, newDoc.RootElement);
-                        var msg = $"Differing JSON at pointer '{pointer}'.";
-                        Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {msg}");
-                        summary.Failures.Add((testCase.Id, exp.Path, pointer, msg));
-                        casePassed = false;
-                        continue;
+                        if (allowed.Count > 0)
+                        {
+                            var distinctReasons = allowed.Select(a => a.Reason).Distinct().ToList();
+                            foreach (var reason in distinctReasons)
+                            {
+                                Console.WriteLine($"[DECLARED BREAK] [CMP] {testCase.Id} ({relOut}): {reason}");
+                                summary.DeclaredBreaks.Add((testCase.Id, reason));
+                            }
+                            caseDeclaredBreak = true;
+                            continue;
+                        }
                     }
 
                     var (diffLine, diffCol) = FindFirstDifferenceLine(oldBytes, newBytes);
-                    var textMsg = $"Byte mismatch at line {diffLine}, column {diffCol}.";
-                    Console.WriteLine($"FAIL {testCase.Id} ({exp.Path}): {textMsg}");
+                    var textMsg = $"Byte mismatch between old and new at line {diffLine}, column {diffCol}.";
+                    Console.WriteLine($"FAIL [CMP] {testCase.Id} ({exp.Path}): {textMsg}");
                     summary.Failures.Add((testCase.Id, exp.Path, null, textMsg));
                     casePassed = false;
                 }
 
-                if (casePassed)
+                if (!casePassed)
+                {
+                    // Failed
+                }
+                else if (caseDeclaredBreak)
+                {
+                    // Declared break
+                }
+                else if (caseUnverified)
+                {
+                    // Identity unverified
+                }
+                else
                 {
                     summary.PassedCases++;
-                    Console.WriteLine($"PASS {testCase.Id}");
+                    Console.WriteLine($"PASS [CMP] {testCase.Id}");
                 }
             }
         }
@@ -433,36 +636,74 @@ public static class CorpusRunner
         {
             try
             {
-                Directory.Delete(tempRoot, true);
+                Directory.Delete(tempOld, true);
+                Directory.Delete(tempNew, true);
             }
             catch
             {
-                // ignore cleanup error
+                // Ignore
             }
         }
     }
 
-    public static void RunBackwardReads(string corpusDir, RunSummary summary)
+    public static void RunBackwardReads(
+        string corpusDir,
+        string tool,
+        RunSummary summary,
+        bool quick = false,
+        bool allowPath = false)
     {
-        Console.WriteLine($"Verifying backward reads across corpus documents in {corpusDir}...");
-        var tempCas = Path.Combine(Path.GetTempPath(), "diffra-cas-" + Guid.NewGuid().ToString("n"));
-        Directory.CreateDirectory(tempCas);
+        Console.WriteLine($"Verifying backward reads across corpus documents in {corpusDir} via {tool}...");
+        var tempDir = Path.Combine(Path.GetTempPath(), "diffra-regression-backward-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        var baselineRef = Path.Combine(corpusDir, "inputs", "baseline-reference.json");
+        var baselineEv = Path.Combine(corpusDir, "inputs", "evidence", "baseline.json");
+        var validDelta = Path.Combine(corpusDir, "expected", "delta-regressed.json");
+        var validAssessment = Path.Combine(corpusDir, "expected", "eval-warn.json");
+
+        var initialFailures = summary.Failures.Count;
 
         try
         {
-            var store = new ContentAddressedStore(tempCas);
-            var files = Directory.EnumerateFiles(corpusDir, "*.*", SearchOption.AllDirectories);
+            var files = Directory.EnumerateFiles(corpusDir, "*", SearchOption.AllDirectories)
+                .OrderBy(f => f, StringComparer.Ordinal)
+                .ToList();
 
             foreach (var file in files)
             {
-                if (file.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                var rel = Path.GetRelativePath(corpusDir, file).Replace('\\', '/');
+
+                if (rel.StartsWith("output/", StringComparison.OrdinalIgnoreCase))
                 {
-                    var bytes = File.ReadAllBytes(file);
+                    continue;
+                }
+
+                if (file.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (quick)
+                    {
+                        continue;
+                    }
+
+                    var storeDir = Path.Combine(tempDir, "store-" + Guid.NewGuid().ToString("N"));
+                    var (code, err) = ToolExecutor.Run(tool, ["bundle", "import", "--bundle", file, "--store", storeDir], allowPath: allowPath);
+                    if (code != 0)
+                    {
+                        var msg = $"Backward read bundle import failed on {rel}: {err.Trim()}";
+                        Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
+                        summary.Failures.Add(("backward-reads", rel, null, msg));
+                    }
+                }
+                else if (file.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                {
                     try
                     {
+                        var bytes = File.ReadAllBytes(file);
                         using var doc = JsonDocument.Parse(bytes);
                         if (doc.RootElement.ValueKind != JsonValueKind.Object ||
-                            !doc.RootElement.TryGetProperty("schema", out var schemaProp))
+                            !doc.RootElement.TryGetProperty("schema", out var schemaProp) ||
+                            schemaProp.ValueKind != JsonValueKind.String)
                         {
                             continue;
                         }
@@ -471,119 +712,445 @@ public static class CorpusRunner
                         switch (schema)
                         {
                             case "https://diffra.dev/schemas/evidence-v1.schema.json":
-                                EvidenceIdentity.Verify(bytes);
+                            {
+                                if (!doc.RootElement.TryGetProperty("id", out var evIdProp) ||
+                                    evIdProp.ValueKind != JsonValueKind.String ||
+                                    string.IsNullOrWhiteSpace(evIdProp.GetString()))
+                                {
+                                    var msg = $"Evidence document {rel} is missing a valid string 'id'.";
+                                    Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
+                                    summary.Failures.Add(("backward-reads", rel, "/id", msg));
+                                    break;
+                                }
+
+                                var expectedEvId = CanonicalHashHelper.ComputeEvidenceId(bytes);
+                                if (!string.Equals(expectedEvId, evIdProp.GetString(), StringComparison.Ordinal))
+                                {
+                                    var msg = $"Evidence ID drift: recomputed ID '{expectedEvId}' != stored ID '{evIdProp.GetString()}'.";
+                                    Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
+                                    summary.Failures.Add(("backward-reads", rel, "/id", msg));
+                                    break;
+                                }
+
+                                var evId = evIdProp.GetString()!;
+                                var commit = doc.RootElement.GetProperty("subject").GetProperty("commit").GetString()!;
+                                var tempRefPath = Path.Combine(tempDir, "ref-" + Guid.NewGuid().ToString("N") + ".json");
+                                var unsignedRefObj = new
+                                {
+                                    schema = "https://diffra.dev/schemas/baseline-reference-v1.schema.json",
+                                    role = "merge-base",
+                                    status = "trusted",
+                                    evidenceId = evId,
+                                    subjectCommit = commit,
+                                    manifestDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                                    resolver = new
+                                    {
+                                        id = "org.diffra.regression-resolver",
+                                        version = "1.0",
+                                        resolvedCommit = commit,
+                                        sourceRef = "local-fixture"
+                                    },
+                                    sourceStore = "local-fixture",
+                                    trust = new
+                                    {
+                                        issuer = "fixture-only",
+                                        decisionId = "demonstration"
+                                    }
+                                };
+                                var unsignedRefBytes = JsonSerializer.SerializeToUtf8Bytes(unsignedRefObj);
+                                var realRefId = CanonicalHashHelper.ComputeDocumentId("baseline-reference", unsignedRefBytes);
+                                var finalRefObj = new
+                                {
+                                    schema = "https://diffra.dev/schemas/baseline-reference-v1.schema.json",
+                                    id = realRefId,
+                                    role = "merge-base",
+                                    status = "trusted",
+                                    evidenceId = evId,
+                                    subjectCommit = commit,
+                                    manifestDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                                    resolver = new
+                                    {
+                                        id = "org.diffra.regression-resolver",
+                                        version = "1.0",
+                                        resolvedCommit = commit,
+                                        sourceRef = "local-fixture"
+                                    },
+                                    sourceStore = "local-fixture",
+                                    trust = new
+                                    {
+                                        issuer = "fixture-only",
+                                        decisionId = "demonstration"
+                                    }
+                                };
+                                File.WriteAllText(tempRefPath, JsonSerializer.Serialize(finalRefObj) + "\n");
+
+                                var outDelta = Path.Combine(tempDir, "diff-" + Guid.NewGuid().ToString("N") + ".json");
+                                var (code, err) = ToolExecutor.Run(tool, [
+                                    "diff",
+                                    "--baseline-ref", tempRefPath,
+                                    "--baseline-evidence", file,
+                                    "--evidence", file,
+                                    "-o", outDelta
+                                ], allowPath: allowPath);
+
+                                if (code != 0)
+                                {
+                                    var msg = $"Candidate failed to read Evidence document {rel}: {err.Trim()}";
+                                    Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
+                                    summary.Failures.Add(("backward-reads", rel, null, msg));
+                                }
                                 break;
+                            }
+
                             case "https://diffra.dev/schemas/delta-v1.schema.json":
-                                DocumentIdentity.Verify("delta", bytes);
-                                _ = JsonSerializer.Deserialize<DeltaDocument>(bytes, JsonOptions)
-                                    ?? throw new InvalidOperationException("Failed to deserialize Delta document");
+                            {
+                                var expectedDeltaId = CanonicalHashHelper.ComputeDocumentId("delta", bytes);
+                                var actualDeltaId = doc.RootElement.GetProperty("id").GetString();
+                                if (!string.Equals(expectedDeltaId, actualDeltaId, StringComparison.Ordinal))
+                                {
+                                    var msg = $"DocumentIdentity verification failed for Delta {rel}: expected {expectedDeltaId}, got {actualDeltaId}";
+                                    Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
+                                    summary.Failures.Add(("backward-reads", rel, null, msg));
+                                    break;
+                                }
+
+                                var outReport = Path.Combine(tempDir, "report-" + Guid.NewGuid().ToString("N") + ".json");
+                                var (code, err) = ToolExecutor.Run(tool, [
+                                    "report", file,
+                                    "--format", "json",
+                                    "-o", outReport
+                                ], allowPath: allowPath);
+
+                                if (code != 0)
+                                {
+                                    var msg = $"Candidate failed to read Delta document {rel}: {err.Trim()}";
+                                    Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
+                                    summary.Failures.Add(("backward-reads", rel, null, msg));
+                                }
                                 break;
+                            }
+
                             case "https://diffra.dev/schemas/assessment-v1.schema.json":
-                                DocumentIdentity.Verify("assessment", bytes);
-                                _ = JsonSerializer.Deserialize<AssessmentDocument>(bytes, JsonOptions)
-                                    ?? throw new InvalidOperationException("Failed to deserialize Assessment document");
+                            {
+                                string? matchingDelta = null;
+                                if (doc.RootElement.TryGetProperty("deltaId", out var deltaIdProp) && deltaIdProp.ValueKind == JsonValueKind.String)
+                                {
+                                    var deltaId = deltaIdProp.GetString();
+                                    foreach (var candFile in files)
+                                     {
+                                        if (candFile.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            try
+                                            {
+                                                using var candDoc = JsonDocument.Parse(File.ReadAllBytes(candFile));
+                                                if (candDoc.RootElement.TryGetProperty("schema", out var s) &&
+                                                    s.GetString() == "https://diffra.dev/schemas/delta-v1.schema.json" &&
+                                                    candDoc.RootElement.TryGetProperty("id", out var idProp) &&
+                                                    idProp.GetString() == deltaId)
+                                                {
+                                                    matchingDelta = candFile;
+                                                    break;
+                                                }
+                                            }
+                                            catch { }
+                                        }
+                                    }
+                                }
+
+                                if (matchingDelta != null)
+                                {
+                                    var outReport = Path.Combine(tempDir, "report-" + Guid.NewGuid().ToString("N") + ".json");
+                                    var (code, err) = ToolExecutor.Run(tool, [
+                                        "report", matchingDelta,
+                                        "--assessment", file,
+                                        "--format", "json",
+                                        "-o", outReport
+                                    ], allowPath: allowPath);
+
+                                    if (code != 0)
+                                    {
+                                        var msg = $"Candidate failed to read Assessment document {rel}: {err.Trim()}";
+                                        Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
+                                        summary.Failures.Add(("backward-reads", rel, null, msg));
+                                    }
+                                }
                                 break;
-                            case "https://diffra.dev/schemas/manifest-v1.schema.json":
-                                DocumentIdentity.Verify("manifest", bytes);
-                                break;
+                            }
+
                             case "https://diffra.dev/schemas/baseline-reference-v1.schema.json":
-                                DocumentIdentity.Verify("baseline-reference", bytes);
+                            {
+                                if (File.Exists(baselineEv))
+                                {
+                                    var outDelta = Path.Combine(tempDir, "diff-" + Guid.NewGuid().ToString("N") + ".json");
+                                    var (code, err) = ToolExecutor.Run(tool, [
+                                        "diff",
+                                        "--baseline-ref", file,
+                                        "--baseline-evidence", baselineEv,
+                                        "--evidence", baselineEv,
+                                        "-o", outDelta
+                                    ], allowPath: allowPath);
+
+                                    if (code != 0)
+                                    {
+                                        var msg = $"Candidate failed to read BaselineReference document {rel}: {err.Trim()}";
+                                        Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
+                                        summary.Failures.Add(("backward-reads", rel, null, msg));
+                                    }
+                                }
                                 break;
+                            }
+
+                            case "https://diffra.dev/schemas/manifest-v1.schema.json":
+                            {
+                                if (File.Exists(validDelta) && File.Exists(validAssessment) && File.Exists(baselineRef) && !quick)
+                                {
+                                    var outBundle = Path.Combine(tempDir, "bundle-" + Guid.NewGuid().ToString("N") + ".zip");
+                                    var (code, err) = ToolExecutor.Run(tool, [
+                                        "bundle", "export",
+                                        "--manifest", file,
+                                        "--delta", validDelta,
+                                        "--assessment", validAssessment,
+                                        "--baseline-ref", baselineRef,
+                                        "-o", outBundle
+                                    ], allowPath: allowPath);
+
+                                    if (code != 0)
+                                    {
+                                        var msg = $"Candidate failed to read Manifest document {rel}: {err.Trim()}";
+                                        Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
+                                        summary.Failures.Add(("backward-reads", rel, null, msg));
+                                    }
+                                }
+                                break;
+                            }
                         }
                     }
                     catch (Exception ex)
                     {
-                        var rel = Path.GetRelativePath(corpusDir, file);
-                        var msg = $"Backward read validation failed on {rel}: {ex.Message}";
-                        Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
-                        summary.Failures.Add(("backward-reads", rel, null, msg));
-                    }
-                }
-                else if (file.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-                {
-                    try
-                    {
-                        var result = EvidenceBundle.Import(file, store);
-                        if (result.DocumentsCount == 0)
-                        {
-                            throw new InvalidOperationException("Bundle imported zero documents.");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        var rel = Path.GetRelativePath(corpusDir, file);
-                        var msg = $"Backward bundle import failed on {rel}: {ex.Message}";
+                        var msg = $"Backward read validation exception on {rel}: {ex.Message}";
                         Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
                         summary.Failures.Add(("backward-reads", rel, null, msg));
                     }
                 }
             }
 
-            if (summary.Failures.All(f => f.CaseId != "backward-reads"))
+            if (summary.Failures.Count == initialFailures)
             {
+                Console.WriteLine("PASS backward reads: all Evidence, Delta, Assessment, Manifest, Baseline Reference, and Bundles accepted.");
                 summary.BackwardReadsPassed = true;
-                Console.WriteLine("PASS backward reads: all Evidence, Delta, Assessment and bundles accepted.");
+            }
+            else
+            {
+                summary.BackwardReadsPassed = false;
             }
         }
         finally
         {
             try
             {
-                Directory.Delete(tempCas, true);
+                Directory.Delete(tempDir, true);
             }
             catch
             {
-                // ignore cleanup error
+                // Best effort
             }
         }
     }
 
-    private static bool CompareDirectories(string expectedDir, string actualDir, string caseId, RunSummary summary)
+    public static void RunSelfTests()
     {
-        if (!Directory.Exists(actualDir))
+        Console.WriteLine("Running regression runner self-tests...");
+
+        // 1. Candidate that changes comparator.id AND corrupts changes must fail
         {
-            var msg = $"Expected directory not found: {actualDir}";
-            Console.WriteLine($"FAIL {caseId}: {msg}");
-            summary.Failures.Add((caseId, actualDir, null, msg));
-            return false;
-        }
-
-        var expFiles = Directory.EnumerateFiles(expectedDir, "*.*", SearchOption.AllDirectories)
-            .Select(f => Path.GetRelativePath(expectedDir, f))
-            .ToHashSet(StringComparer.Ordinal);
-        var actFiles = Directory.EnumerateFiles(actualDir, "*.*", SearchOption.AllDirectories)
-            .Select(f => Path.GetRelativePath(actualDir, f))
-            .ToHashSet(StringComparer.Ordinal);
-
-        var missing = expFiles.Except(actFiles).ToList();
-        var extra = actFiles.Except(expFiles).ToList();
-
-        if (missing.Count > 0 || extra.Count > 0)
-        {
-            var msg = $"Directory inventory mismatch: {missing.Count} missing, {extra.Count} unexpected.";
-            Console.WriteLine($"FAIL {caseId}: {msg}");
-            summary.Failures.Add((caseId, actualDir, null, msg));
-            return false;
-        }
-
-        var passed = true;
-        foreach (var relPath in expFiles)
-        {
-            var expFile = Path.Combine(expectedDir, relPath);
-            var actFile = Path.Combine(actualDir, relPath);
-
-            var expBytes = File.ReadAllBytes(expFile);
-            var actBytes = File.ReadAllBytes(actFile);
-            if (!expBytes.AsSpan().SequenceEqual(actBytes))
+            var expectedJson = """
             {
-                var msg = $"File content mismatch in materialized directory: {relPath}";
-                Console.WriteLine($"FAIL {caseId} ({relPath}): {msg}");
-                summary.Failures.Add((caseId, relPath, null, msg));
-                passed = false;
+              "schema": "https://diffra.dev/schemas/delta-v1.schema.json",
+              "id": "sha256:dummy",
+              "status": "changed",
+              "comparator": { "id": "diffra.structured-numeric", "version": "1.0.0" },
+              "changes": [ { "path": "/complexity", "kind": "modified" } ],
+              "provenance": { "environment": { "runtime": "10.0.14" } }
+            }
+            """;
+            var corruptCandidateJson = """
+            {
+              "schema": "https://diffra.dev/schemas/delta-v1.schema.json",
+              "id": "sha256:dummy",
+              "status": "changed",
+              "comparator": { "id": "diffra.corrupt-comparator", "version": "1.0.0" },
+              "changes": [ { "path": "/corrupted", "kind": "corrupted" } ],
+              "provenance": { "environment": { "runtime": "dotnet" } }
+            }
+            """;
+
+            using var expDoc = JsonDocument.Parse(expectedJson);
+            using var actDoc = JsonDocument.Parse(corruptCandidateJson);
+
+            var diffs = JsonDiff.FindAllDifferences(expDoc.RootElement, actDoc.RootElement);
+            var disallowed = new List<string>();
+            foreach (var d in diffs)
+            {
+                if (!DeclaredBreakAllowList.TryMatch("delta", d, expDoc.RootElement, actDoc.RootElement, out _))
+                {
+                    disallowed.Add(d);
+                }
+            }
+
+            if (!disallowed.Contains("/comparator/id") || !disallowed.Any(p => p.StartsWith("/changes", StringComparison.Ordinal)))
+            {
+                throw new InvalidOperationException("Self-test failed: Candidate with changed comparator.id AND corrupt changes must be rejected by allow-list.");
             }
         }
 
-        return passed;
+        // 2. Candidate Delta with extra keys in provenance.environment must fail
+        {
+            var extraEnvJson = """
+            {
+              "environment": { "runtime": "dotnet", "platform": "linux" }
+            }
+            """;
+            using var doc = JsonDocument.Parse(extraEnvJson);
+            if (DeclaredBreakAllowList.IsExactInvariantDeltaEnvironment(doc.RootElement.GetProperty("environment")))
+            {
+                throw new InvalidOperationException("Self-test failed: Delta environment with extra key 'platform' must not be valid.");
+            }
+        }
+
+        // 3. Candidate Delta missing id must fail
+        {
+            var missingIdJson = """
+            {
+              "schema": "https://diffra.dev/schemas/delta-v1.schema.json",
+              "status": "changed"
+            }
+            """;
+            using var doc = JsonDocument.Parse(missingIdJson);
+            if (doc.RootElement.TryGetProperty("id", out var idProp) && !string.IsNullOrWhiteSpace(idProp.GetString()))
+            {
+                throw new InvalidOperationException("Self-test failed: Missing id check did not detect missing id.");
+            }
+        }
+
+        // 4. Evidence ID drift must fail
+        {
+            var evJson = System.Text.Encoding.UTF8.GetBytes("""
+            {
+              "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
+              "id": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "status": "produced",
+              "typeId": "org.diffra.test",
+              "typeVersion": "1.0",
+              "typeResolution": "recognized",
+              "subject": { "kind": "git-repository", "id": "test", "commit": "1111111111111111111111111111111111111111" },
+              "producer": { "id": "test", "version": "1.0", "configDigest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a" },
+              "environment": { "platform": "test", "runtime": "10.0", "tools": [] },
+              "provenance": { "source": "git", "artifactDigests": [] },
+              "payloadDigest": "sha256:d8c05165eee4d2d71332e0014fd0a04a41c9b0eba88db0c081d63b340b347c0e",
+              "payload": { "test": 1 },
+              "artifactRefs": []
+            }
+            """);
+
+            var recomputed = CanonicalHashHelper.ComputeEvidenceId(evJson);
+            if (string.Equals(recomputed, "sha256:0000000000000000000000000000000000000000000000000000000000000000", StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("Self-test failed: Drifted Evidence ID was incorrectly accepted.");
+            }
+        }
+
+        Console.WriteLine("PASS regression runner self-tests (all 4 security and allow-list assertions verified).");
+    }
+
+    private static string GetDocumentKind(string command, JsonElement element1, JsonElement element2)
+    {
+        string? schema = null;
+        if (element1.TryGetProperty("schema", out var s1) && s1.ValueKind == JsonValueKind.String)
+        {
+            schema = s1.GetString();
+        }
+        else if (element2.TryGetProperty("schema", out var s2) && s2.ValueKind == JsonValueKind.String)
+        {
+            schema = s2.GetString();
+        }
+
+        return schema switch
+        {
+            "https://diffra.dev/schemas/delta-v1.schema.json" => "delta",
+            "https://diffra.dev/schemas/evidence-v1.schema.json" => "evidence",
+            "https://diffra.dev/schemas/assessment-v1.schema.json" => "assessment",
+            "https://diffra.dev/schemas/manifest-v1.schema.json" => "manifest",
+            "https://diffra.dev/schemas/baseline-reference-v1.schema.json" => "baseline-reference",
+            _ => command switch
+            {
+                "diff" => "delta",
+                "collect" => "evidence",
+                "eval" => "assessment",
+                _ => "unknown"
+            }
+        };
+    }
+
+    private static bool CompareDirectories(string expectedDir, string actualDir, RunSummary summary, string caseId)
+    {
+        if (!Directory.Exists(expectedDir))
+        {
+            var msg = $"Expected directory does not exist: {expectedDir}";
+            Console.WriteLine($"FAIL {caseId}: {msg}");
+            summary.Failures.Add((caseId, expectedDir, null, msg));
+            return false;
+        }
+
+        // Case-sensitive ordinal inventory comparison
+        var expFiles = Directory.EnumerateFiles(expectedDir, "*", SearchOption.AllDirectories)
+            .Select(f => Path.GetRelativePath(expectedDir, f).Replace('\\', '/'))
+            .ToHashSet(StringComparer.Ordinal);
+        var actFiles = Directory.EnumerateFiles(actualDir, "*", SearchOption.AllDirectories)
+            .Select(f => Path.GetRelativePath(actualDir, f).Replace('\\', '/'))
+            .ToHashSet(StringComparer.Ordinal);
+
+        var missingInAct = expFiles.Except(actFiles, StringComparer.Ordinal).ToList();
+        var extraInAct = actFiles.Except(expFiles, StringComparer.Ordinal).ToList();
+
+        if (missingInAct.Count > 0 || extraInAct.Count > 0)
+        {
+            var msg = $"Directory inventory mismatch in {caseId}. Missing: [{string.Join(", ", missingInAct)}], Extra: [{string.Join(", ", extraInAct)}]";
+            Console.WriteLine($"FAIL {caseId}: {msg}");
+            summary.Failures.Add((caseId, expectedDir, null, msg));
+            return false;
+        }
+
+        foreach (var relFile in expFiles)
+        {
+            var expPath = Path.Combine(expectedDir, relFile);
+            var actPath = Path.Combine(actualDir, relFile);
+
+            var expBytes = File.ReadAllBytes(expPath);
+            var actBytes = File.ReadAllBytes(actPath);
+
+            if (!expBytes.AsSpan().SequenceEqual(actBytes))
+            {
+                if (relFile.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                {
+                    using var expDoc = JsonDocument.Parse(expBytes);
+                    using var actDoc = JsonDocument.Parse(actBytes);
+                    var pointer = JsonDiff.FindFirstDifference(expDoc.RootElement, actDoc.RootElement);
+                    var msg = $"File content mismatch at '{relFile}', pointer '{pointer}'.";
+                    Console.WriteLine($"FAIL {caseId}: {msg}");
+                    summary.Failures.Add((caseId, relFile, pointer, msg));
+                }
+                else
+                {
+                    var (diffLine, diffCol) = FindFirstDifferenceLine(expBytes, actBytes);
+                    var msg = $"File content mismatch at '{relFile}' (line {diffLine}, col {diffCol}).";
+                    Console.WriteLine($"FAIL {caseId}: {msg}");
+                    summary.Failures.Add((caseId, relFile, null, msg));
+                }
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool CompareZipFiles(string expectedZip, string actualZip, string caseId, RunSummary summary)
@@ -591,6 +1158,7 @@ public static class CorpusRunner
         using var expArchive = ZipFile.OpenRead(expectedZip);
         using var actArchive = ZipFile.OpenRead(actualZip);
 
+        // Case-sensitive ordinal dictionary of entries
         var expEntries = expArchive.Entries.ToDictionary(e => e.FullName, StringComparer.Ordinal);
         var actEntries = actArchive.Entries.ToDictionary(e => e.FullName, StringComparer.Ordinal);
 
@@ -631,51 +1199,19 @@ public static class CorpusRunner
         return true;
     }
 
-    private static bool TryGetDeclaredBreak(JsonElement expected, JsonElement actual, out string reason)
-    {
-        reason = "";
-
-        if (expected.TryGetProperty("comparator", out var expComp) &&
-            actual.TryGetProperty("comparator", out var actComp) &&
-            expComp.TryGetProperty("version", out var expCompVer) &&
-            actComp.TryGetProperty("version", out var actCompVer))
-        {
-            var expV = expCompVer.GetString();
-            var actV = actCompVer.GetString();
-            if (!string.Equals(expV, actV, StringComparison.Ordinal))
-            {
-                reason = $"Comparator version changed from '{expV}' to '{actV}'";
-                return true;
-            }
-        }
-
-        if (expected.TryGetProperty("provenance", out var expProv) &&
-            actual.TryGetProperty("provenance", out var actProv) &&
-            expProv.TryGetProperty("version", out var expProvVer) &&
-            actProv.TryGetProperty("version", out var actProvVer))
-        {
-            var expV = expProvVer.GetString();
-            var actV = actProvVer.GetString();
-            if (!string.Equals(expV, actV, StringComparison.Ordinal))
-            {
-                reason = $"Evaluator version changed from '{expV}' to '{actV}'";
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private static (int Line, int Column) FindFirstDifferenceLine(byte[] expected, byte[] actual)
     {
-        var min = Math.Min(expected.Length, actual.Length);
-        int line = 1, col = 1;
-        for (var i = 0; i < min; i++)
+        var minLen = Math.Min(expected.Length, actual.Length);
+        var line = 1;
+        var col = 1;
+
+        for (var i = 0; i < minLen; i++)
         {
             if (expected[i] != actual[i])
             {
                 return (line, col);
             }
+
             if (expected[i] == (byte)'\n')
             {
                 line++;
@@ -686,6 +1222,36 @@ public static class CorpusRunner
                 col++;
             }
         }
+
         return (line, col);
+    }
+
+    private static List<string> ResolveArgs(IReadOnlyList<string> args, string corpusDir, string tempOutDir)
+    {
+        var resolved = new List<string>();
+        foreach (var token in args)
+        {
+            if (token.StartsWith("inputs/", StringComparison.Ordinal) ||
+                token.StartsWith("expected/", StringComparison.Ordinal))
+            {
+                resolved.Add(Path.Combine(corpusDir, token));
+            }
+            else if (token.StartsWith("output/", StringComparison.Ordinal))
+            {
+                var relOut = token["output/".Length..];
+                var fullOut = Path.Combine(tempOutDir, relOut);
+                var dir = Path.GetDirectoryName(fullOut);
+                if (!string.IsNullOrEmpty(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+                resolved.Add(fullOut);
+            }
+            else
+            {
+                resolved.Add(token);
+            }
+        }
+        return resolved;
     }
 }

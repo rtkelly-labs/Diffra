@@ -1,8 +1,15 @@
 namespace Diffra.Regression;
 
+public sealed record CorpusProvenance(
+    string Asset,
+    string Sha256,
+    string Tool,
+    string Version);
+
 public sealed record RegressionManifest(
     string Version,
-    IReadOnlyList<RegressionCase> Cases);
+    IReadOnlyList<RegressionCase> Cases,
+    CorpusProvenance? Provenance = null);
 
 public sealed record RegressionCase(
     string Id,

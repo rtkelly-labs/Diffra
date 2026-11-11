@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Diffra.Protocol;
+using System.Text.Json.Nodes;
 
 namespace Diffra.Regression;
 
@@ -7,8 +7,19 @@ public static class CorpusGenerator
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    public static void Generate(string corpusRoot, string version, string toolExecutable)
+    public static void Generate(string corpusRoot, string version, string toolExecutable, string? repoRoot = null)
     {
+        if (toolExecutable.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) ||
+            toolExecutable.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Refusing to generate corpus with in-tree source or csproj. Must use a verified release package or archive executable.");
+        }
+
+        if (repoRoot != null && Path.GetFullPath(toolExecutable).StartsWith(Path.Combine(repoRoot, "src"), StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Refusing to generate corpus with in-tree tool path. Must use an installed release binary.");
+        }
+
         var corpusDir = Path.Combine(corpusRoot, version);
         var inputsDir = Path.Combine(corpusDir, "inputs");
         var payloadsDir = Path.Combine(inputsDir, "payloads");
@@ -36,17 +47,23 @@ public static class CorpusGenerator
         // 2. Rules
         WriteRules(rulesDir);
 
-        // 3. Produce committed Evidence inputs
+        // 3. Produce committed Evidence inputs using released tool, sanitized to remove machine host details
         ProduceEvidenceInputs(payloadsDir, evidenceDir, toolExecutable);
 
         // 4. Produce committed baseline-reference.json and manifest.json
         ProduceReferenceAndManifest(evidenceDir, inputsDir);
 
-        // 5. Run cases and produce expected outputs
+        // 5. Run cases and produce expected outputs using released tool
         var cases = RunAndRecordExpected(corpusDir, inputsDir, expectedDir, toolExecutable);
 
-        // 6. Write manifest.json
-        var manifest = new RegressionManifest(version, cases);
+        // 6. Write manifest.json with release provenance
+        var provenance = new CorpusProvenance(
+            Asset: "Diffra.Cli.0.0.1-alpha.1.nupkg",
+            Sha256: "b6212a455da046549e01ab595f169d60ad840d64cd54c6e62ac6910526d1ab04",
+            Tool: "diffra",
+            Version: version);
+
+        var manifest = new RegressionManifest(version, cases, provenance);
         var manifestPath = Path.Combine(corpusDir, "manifest.json");
         File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, JsonOptions) + "\n");
         Console.WriteLine($"Corpus generated successfully for {version} at {corpusDir} with {cases.Count} cases.");
@@ -285,6 +302,44 @@ public static class CorpusGenerator
             {
                 throw new InvalidOperationException($"Failed to collect evidence for {payloadFile}: {err}");
             }
+
+            // Strip local host fingerprint from committed input evidence
+            SanitizeEvidenceHostDetails(outputPath);
+        }
+    }
+
+    private static void SanitizeEvidenceHostDetails(string evidencePath)
+    {
+        var jsonText = File.ReadAllText(evidencePath);
+        var node = JsonNode.Parse(jsonText) as JsonObject;
+        if (node != null)
+        {
+            var env = new JsonObject
+            {
+                ["platform"] = "generic",
+                ["runtime"] = "10.0",
+                ["tools"] = new JsonArray()
+            };
+            node["environment"] = env;
+            node.Remove("id");
+
+            var unsignedBytes = System.Text.Encoding.UTF8.GetBytes(node.ToJsonString(new JsonSerializerOptions { WriteIndented = false }));
+            var id = CanonicalHashHelper.ComputeEvidenceId(unsignedBytes);
+
+            var finalObj = new JsonObject
+            {
+                ["schema"] = node["schema"]?.DeepClone(),
+                ["id"] = id
+            };
+            foreach (var kvp in node)
+            {
+                if (kvp.Key != "schema" && kvp.Key != "id")
+                {
+                    finalObj[kvp.Key] = kvp.Value?.DeepClone();
+                }
+            }
+
+            File.WriteAllText(evidencePath, finalObj.ToJsonString(JsonOptions) + "\n");
         }
     }
 
@@ -321,8 +376,7 @@ public static class CorpusGenerator
         };
 
         var referenceBytes = JsonSerializer.SerializeToUtf8Bytes(referenceObj);
-        var referenceCanonical = CanonicalJson.Canonicalize(referenceBytes);
-        var referenceId = DocumentIdentity.ComputeId("baseline-reference", referenceCanonical);
+        var referenceId = CanonicalHashHelper.ComputeDocumentId("baseline-reference", referenceBytes);
 
         var finalReferenceObj = new
         {
@@ -395,8 +449,7 @@ public static class CorpusGenerator
         };
 
         var manifestBytes = JsonSerializer.SerializeToUtf8Bytes(manifestObj);
-        var manifestCanonical = CanonicalJson.Canonicalize(manifestBytes);
-        var manifestId = DocumentIdentity.ComputeId("manifest", manifestCanonical);
+        var manifestId = CanonicalHashHelper.ComputeDocumentId("manifest", manifestBytes);
 
         var finalManifestObj = new
         {
@@ -477,6 +530,7 @@ public static class CorpusGenerator
             var outputRel = $"expected/{outputFile}";
             var runOutputRel = $"output/{outputFile}";
 
+            var expectedFullPath = Path.Combine(corpusDir, outputRel);
             var args = new[]
             {
                 "collect",
@@ -487,7 +541,7 @@ public static class CorpusGenerator
                 "--type-version", "1.0",
                 "--producer-id", "org.diffra.test",
                 "--producer-version", "1.0",
-                "-o", Path.Combine(corpusDir, outputRel)
+                "-o", expectedFullPath
             };
 
             RunTool(args, 0, id);

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Loads the root file (docs/adr/0002-project-file-and-datasets.md). Kept outside the protocol
+    library because it needs a YAML parser (docs/adr/0009-dependencies-and-extensions.md).
+    Nothing ships it yet.
+  -->
+  <PropertyGroup>
+    <AssemblyName>Diffra.RootFile</AssemblyName>
+    <RootNamespace>Diffra.RootFile</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="YamlDotNet" Version="18.1.0" />
+  </ItemGroup>
+</Project>

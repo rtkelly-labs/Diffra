@@ -46,7 +46,7 @@ built.
 | CloudEvents envelope | Library | `CloudEvents.cs`, `schemas/cloudevent-diffra-v1.schema.json` | [0008](adr/0008-optional-events-and-telemetry.md) |
 | Graph data model and validation, to be reworked for the CI job graph | Library, in the separate `Diffra.Graph` project | `src/Graph/` | [0009](adr/0009-dependencies-and-extensions.md) |
 | External command producers | Library | `ExternalCommandAdapter.cs`, `EvidenceDocumentBuilder.cs` | |
-| Root file: settings, datasets, named rule sets and projects | Planned; schema and examples only | `schemas/root-file-v1.schema.json`, `examples/root-file/` | [0002](adr/0002-project-file-and-datasets.md) |
+| Root file: settings, datasets, named rule sets and projects | Schema, examples and a loader that checks cross-references; nothing calls the loader yet | `schemas/root-file-v1.schema.json`, `examples/root-file/`, `src/RootFile/` | [0002](adr/0002-project-file-and-datasets.md) |
 | Earlier project file, typed metrics and collection root | Project file superseded by the root file; collection root kept, with no replacement yet | `schemas/project-v1.schema.json`, `schemas/collection-v1.schema.json`, `examples/project-file/` | [0002](adr/0002-project-file-and-datasets.md) |
 | `baseline verify`, `baseline update`, promotion commands | Not planned: approval and promotion are not part of the open tool | | [0005](adr/0005-surface-do-not-enforce.md) |
 | Cross-version migrations | Not planned during alpha: unreadable records are skipped and counted | | [0004](adr/0004-records-integrity-and-storage.md) |

@@ -24,17 +24,18 @@ code-first builder and a graph executor, which the root project file replaces.
    Diffra never picks a converter from a file extension or from the shape of the JSON.
 5. **A plugin model is future work.** If built, plugins are separate executables that write values
    in the `record` input format, which Diffra then validates.
+6. **The protocol library takes no package or framework references.** The protocol tests enforce
+   it. Other projects under `src/` keep a short list of reviewed references.
 
 ## Not yet decided
 
-- Whether the protocol library takes zero package references, enforced in CI, and the CLI keeps
-  a short allow-list (proposed).
 - Where a Parquet reader would live.
 
 ## Current code
 
-No project under `src/` has a package reference; the CLI has one framework reference, to
-ASP.NET Core, for `present`. Every package and framework reference in the repository, including
+The protocol library has no references. The root file loader in `src/RootFile/` has one package
+reference, YamlDotNet, read through its event parser only; the CLI has one framework reference,
+to ASP.NET Core, for `present`. Every package and framework reference in the repository, including
 those in test projects and script directives, is listed with a reason in
 `.config/package-references.json`. The protocol tests fail on a reference that is not listed
 and on a listed entry that no project uses, so adding a reference means editing that list. The

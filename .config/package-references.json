@@ -8,6 +8,12 @@
       "reason": "The web server behind `present`. The plan moves it out of the CI build into a local build."
     },
     {
+      "project": "src/RootFile/Diffra.RootFile.csproj",
+      "kind": "PackageReference",
+      "name": "YamlDotNet",
+      "reason": "Parses the root file. Read through its event parser only, with no reflection-based deserializer, and kept out of the protocol library, which takes no package references."
+    },
+    {
       "project": "tests/Protocol.Fuzz/Protocol.Fuzz.csproj",
       "kind": "PackageReference",
       "name": "SharpFuzz",

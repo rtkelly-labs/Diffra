@@ -2,7 +2,8 @@
 
 Worked examples of the root file described in
 [decision record 0002](../../docs/adr/0002-project-file-and-datasets.md), validated against
-[`schemas/root-file-v1.schema.json`](../../schemas/root-file-v1.schema.json). Nothing loads the
+[`schemas/root-file-v1.schema.json`](../../schemas/root-file-v1.schema.json), and loaded by the
+protocol tests through the loader in [`src/RootFile/`](../../src/RootFile/). Nothing else loads the
 root file yet. The file's name in a repository is not decided, so these examples are named by
 what they show.
 
@@ -24,7 +25,9 @@ rules sit and what a project is:
   in the schema yet.
 
 The schema cannot check that a project names a rule set the dataset defines, or a dataset the
-file declares. The loader will.
+file declares. The loader does, and also checks that custom types and `stratify` dimensions are
+declared. Those cases are schema-valid, so they are tested inline in
+`tests/Protocol.Tests/RootFileTests.cs` rather than kept under `invalid/`.
 
 ## Examples
 

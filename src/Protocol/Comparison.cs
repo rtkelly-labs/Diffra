@@ -368,7 +368,15 @@ public static class StructuredNumericComparator
             out number);
     }
 
-    internal static string Format(decimal value) => value.ToString("G29", System.Globalization.CultureInfo.InvariantCulture);
+    // Delta and Assessment decimal strings are plain invariant decimals: an optional leading
+    // '-', digits, and an optional fraction, with no exponent and no trailing fractional zeros.
+    // Readers parse them with AllowLeadingSign | AllowDecimalPoint only, so a single spelling per
+    // value keeps identity deterministic. "G29" would switch to exponent notation below 1e-4
+    // (for example "5.4310930074677528852682E-06"); this pattern prints every decimal scale (up
+    // to 28 fractional digits) in fixed-point form and is otherwise identical to "G29".
+    private const string PlainDecimalFormat = "0.############################";
+
+    internal static string Format(decimal value) => value.ToString(PlainDecimalFormat, CultureInfo.InvariantCulture);
 
     private static void ValidateOptions(NumericComparatorOptions options)
     {

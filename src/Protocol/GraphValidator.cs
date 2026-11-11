@@ -51,7 +51,7 @@ public static class GraphValidator
             }
         }
 
-        // 3. Incompatible types between connected nodes. V1 requires equal type ID and version (ADR 0002).
+        // 3. Incompatible types between connected nodes. V1 requires equal type ID and version.
         foreach (var (id, node) in graph.Nodes)
         {
             if (!string.IsNullOrEmpty(node.InputType))

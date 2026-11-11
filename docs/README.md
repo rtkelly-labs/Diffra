@@ -12,13 +12,13 @@ differential testing. The [repository README](../README.md) has a runnable local
 | [Trust and identity](trust-and-identity.md) | The hash rules, baseline roles and promotion requirements the current code implements |
 | [Publication](publication.md) | The route into `docs.ryankelly.dev` and its build dependencies |
 | [Artifact delivery and CI](artifact-delivery-and-ci.md) | Private and large artifact retrieval, local hosting, CLI packages, and release flow |
-| [Parquet.SourceGenerator adopter](adopters/parquet-source-generator.md) | The proposed first integration |
+| [Parquet.SourceGenerator adopter](adopters/parquet-source-generator.md) | An earlier integration plan; the repository is now second in the rollout |
 | [Glossary](glossary.md) | The words Diffra's documents, settings and output use |
 | [Decision records](adr/) | The design Diffra is moving to, and how far the code is from it |
 
-The original [handover vision](../VISION.md) and [plan](../PLAN.md) preserve the
-project brief. The pages in this directory describe the repository as it stands
-and the work still planned.
+The [plan](../PLAN.md) gives the order of work. The original
+[handover vision](../VISION.md) preserves the first project brief. The pages in
+this directory describe the repository as it stands and the work still planned.
 
 ## Feature status
 

@@ -16,7 +16,9 @@ is an agent asked to make CI pass, and branch protection already decides what bl
    findings is a setting the adopter turns on.
 2. **The setting is `fail-on: never | fail | warn`, default `never`.** It names the lowest finding
    status that fails the step: `fail` fails it on any finding with the status `fail`, and `warn` on
-   any finding with the status `fail` or `warn`.
+   `fail`, `warn`, `needs-review` or `inconclusive`, which rank above `warn`. A change that no rule
+   judged (`changed`) never fails the step. The setting is an input of Diffra's CI step, not a
+   root-file setting, and a value other than the three is an error rather than the default.
 3. **Changes to Diffra's own inputs are surfaced.** When a pull request changes the project file
    or Diffra's version pin, the output says so above other findings.
 4. **Untrusted runs still get output.** Runs with a read-only token, such as pull requests from
@@ -29,14 +31,9 @@ is an agent asked to make CI pass, and branch protection already decides what bl
 
 ## Not yet decided
 
-- Whether the statuses `needs-review`, `inconclusive` and `changed` count towards `fail-on`, and
-  whether a required dataset that was not collected, a rejected entry, a first run with no history
-  and a comparison that cannot be attributed do. Until this is ruled, none of them fails the step;
-  only the statuses `fail` and `warn` do. `eval` today treats `needs-review` and `inconclusive` as
-  more severe than `warn`.
-- Where `fail-on` is set. The proposal is an input of Diffra's step in the CI wiring rather than a
-  root-file setting, following "a CI option". A value other than the three is proposed to be an
-  error rather than the default, so a misspelt setting does not silently turn enforcement off.
+- Whether a required dataset that was not collected, a rejected entry, a first run with no history
+  and a comparison that cannot be attributed count towards `fail-on`. Until this is ruled, they
+  fail the step only through the finding status they are reported with.
 - Whether a change to the scripts that collect the data is also surfaced, and how it is detected.
 - The fate of the promotion code and of the Baseline reference's trust fields.
 

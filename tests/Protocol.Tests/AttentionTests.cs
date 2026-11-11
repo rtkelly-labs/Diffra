@@ -299,7 +299,9 @@ public static class AttentionTests
     {
         RankedFinding[] failed = [Finding("pass", "a"), Finding("fail", "b")];
         RankedFinding[] warned = [Finding("warn", "a"), Finding("pass", "b")];
-        RankedFinding[] unjudged = [Finding("needs-review", "a"), Finding("inconclusive", "b"), Finding("changed", "c")];
+        RankedFinding[] review = [Finding("needs-review", "a"), Finding("pass", "b")];
+        RankedFinding[] unmeasured = [Finding("inconclusive", "a")];
+        RankedFinding[] unjudged = [Finding("changed", "a"), Finding("pass", "b")];
 
         Equal(FailOn.Never, Enforcement.Default, "The default never fails the step.");
         Equal(false, Enforcement.FailsStep(FailOn.Never, failed), "never ignores a failed rule");
@@ -307,9 +309,12 @@ public static class AttentionTests
         Equal(false, Enforcement.FailsStep(FailOn.Fail, warned), "fail ignores warn");
         Equal(true, Enforcement.FailsStep(FailOn.Warn, warned), "warn trips on warn");
         Equal(true, Enforcement.FailsStep(FailOn.Warn, failed), "warn trips on fail");
-        Equal(false, Enforcement.FailsStep(FailOn.Warn, unjudged), "statuses other than fail and warn never fail the step");
+        Equal(true, Enforcement.FailsStep(FailOn.Warn, review), "warn trips on needs-review");
+        Equal(true, Enforcement.FailsStep(FailOn.Warn, unmeasured), "warn trips on inconclusive");
+        Equal(false, Enforcement.FailsStep(FailOn.Fail, review), "fail ignores needs-review");
+        Equal(false, Enforcement.FailsStep(FailOn.Warn, unjudged), "a change no rule judged never fails the step");
         Equal(false, Enforcement.FailsStep(FailOn.Warn, []), "no findings never fail the step");
-        Equal(false, Enforcement.FailsStep(FailOn.Fail, unjudged), "fail ignores unjudged statuses");
+        Equal(false, Enforcement.FailsStep(FailOn.Fail, unmeasured), "fail ignores inconclusive");
         Equal(false, Enforcement.FailsStep(FailOn.Never, warned), "never ignores a warning");
         Throws<ArgumentOutOfRangeException>(() => Enforcement.FailsStep((FailOn)7, failed));
         Throws<ArgumentNullException>(() => Enforcement.FailsStep(FailOn.Fail, null!));

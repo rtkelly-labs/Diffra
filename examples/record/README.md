@@ -11,6 +11,6 @@ Each `.json` file here is one line of a job's entries file, as `diffra record` w
 | `replaced.json` | A value recorded with `--replace`. |
 | `from-file.json` | Typed data read from two files by the dataset's converter. |
 | `skipped.json`, `failed.json` | A dataset not collected, and a collector that broke. |
-| `rejected.json`, `rejected-value.json` | Entries kept with what was given and why it was rejected, including a project the root file does not declare. |
+| `rejected.json`, `rejected-value.json` | Entries kept with what was given and why it was rejected, including a project the root file does not declare, a padded dimension value and a repeated option. |
 
 Every file in [`invalid/`](invalid/) must fail validation; its name says why. CI checks both sets.

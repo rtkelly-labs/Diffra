@@ -5,7 +5,14 @@
   "description": "One line of a job's entries file, written by `diffra record`. An entry states a value for one dataset, or that the dataset was skipped, that its collector failed, or that what was given was rejected. See docs/record.md.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "project", "dataset", "commit", "job", "status"],
+  "required": [
+    "schema",
+    "project",
+    "dataset",
+    "commit",
+    "job",
+    "status"
+  ],
   "properties": {
     "schema": {
       "const": "https://diffra.net/schemas/record-entry-v1.schema.json"
@@ -26,22 +33,33 @@
       "$ref": "#/$defs/job"
     },
     "dimensions": {
-      "description": "The value of each dimension for this job. Omitted when there are none, never empty.",
+      "description": "The value of each dimension for this job. Omitted when there are none, never empty. A rejected entry keeps the values as given.",
       "type": "object",
       "minProperties": 1,
       "propertyNames": {
         "$ref": "#/$defs/given"
       },
       "additionalProperties": {
-        "$ref": "#/$defs/trimmed"
+        "type": "string",
+        "maxLength": 1000
       }
     },
     "key": {
       "description": "The member of a keyed dataset that a `--value` belongs to.",
-      "allOf": [{ "$ref": "#/$defs/trimmed" }, { "maxLength": 1000 }]
+      "allOf": [
+        {
+          "$ref": "#/$defs/trimmed"
+        }
+      ],
+      "maxLength": 1000
     },
     "status": {
-      "enum": ["recorded", "skipped", "failed", "rejected"]
+      "enum": [
+        "recorded",
+        "skipped",
+        "failed",
+        "rejected"
+      ]
     },
     "replaces": {
       "description": "Present when `--replace` was given: this entry replaces an earlier recorded entry for the same project, dataset, key and dimensions in the same job and attempt.",
@@ -62,13 +80,16 @@
     },
     "data": {
       "description": "The typed values the converter read from the sources, in the shape of the dataset's type.",
-      "type": ["object", "array"]
+      "type": [
+        "object",
+        "array"
+      ]
     },
     "reason": {
       "$ref": "#/$defs/text"
     },
     "input": {
-      "description": "What a rejected entry was given, as raw text: option name to value, such as {\"value\": \"abc\"}.",
+      "description": "Every option a rejected entry was given, as raw text by option name. An option given more than once is a list in the order given.",
       "type": "object",
       "minProperties": 1,
       "maxProperties": 50,
@@ -78,8 +99,19 @@
         "maxLength": 64
       },
       "additionalProperties": {
-        "type": "string",
-        "maxLength": 2000
+        "oneOf": [
+          {
+            "$ref": "#/$defs/raw"
+          },
+          {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/$defs/raw"
+            }
+          }
+        ]
       }
     },
     "problems": {
@@ -93,35 +125,186 @@
   },
   "allOf": [
     {
-      "if": { "properties": { "status": { "const": "rejected" } }, "required": ["status"] },
+      "if": {
+        "properties": {
+          "status": {
+            "const": "rejected"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
       "then": {
-        "required": ["problems"],
-        "not": { "anyOf": [{ "required": ["value"] }, { "required": ["data"] }, { "required": ["reason"] }, { "required": ["replaces"] }] }
+        "required": [
+          "input",
+          "problems"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "value"
+              ]
+            },
+            {
+              "required": [
+                "data"
+              ]
+            },
+            {
+              "required": [
+                "reason"
+              ]
+            },
+            {
+              "required": [
+                "replaces"
+              ]
+            }
+          ]
+        }
       },
       "else": {
         "properties": {
-          "project": { "$ref": "#/$defs/name" },
-          "dataset": { "$ref": "#/$defs/name" },
-          "dimensions": { "propertyNames": { "$ref": "#/$defs/name" } }
+          "project": {
+            "$ref": "#/$defs/name"
+          },
+          "dataset": {
+            "$ref": "#/$defs/name"
+          },
+          "dimensions": {
+            "propertyNames": {
+              "$ref": "#/$defs/name"
+            },
+            "additionalProperties": {
+              "$ref": "#/$defs/trimmed"
+            }
+          }
         },
-        "not": { "anyOf": [{ "required": ["input"] }, { "required": ["problems"] }] }
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "input"
+              ]
+            },
+            {
+              "required": [
+                "problems"
+              ]
+            }
+          ]
+        }
       }
     },
     {
-      "if": { "properties": { "status": { "const": "recorded" } }, "required": ["status"] },
+      "if": {
+        "properties": {
+          "status": {
+            "const": "recorded"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
       "then": {
-        "not": { "required": ["reason"] },
+        "not": {
+          "required": [
+            "reason"
+          ]
+        },
         "oneOf": [
-          { "required": ["value"], "not": { "anyOf": [{ "required": ["sources"] }, { "required": ["data"] }] } },
-          { "required": ["sources", "data"], "not": { "anyOf": [{ "required": ["value"] }, { "required": ["key"] }] } }
+          {
+            "required": [
+              "value"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "sources"
+                  ]
+                },
+                {
+                  "required": [
+                    "data"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "required": [
+              "sources",
+              "data"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "value"
+                  ]
+                },
+                {
+                  "required": [
+                    "key"
+                  ]
+                }
+              ]
+            }
+          }
         ]
       }
     },
     {
-      "if": { "properties": { "status": { "enum": ["skipped", "failed"] } }, "required": ["status"] },
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "skipped",
+              "failed"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
       "then": {
-        "required": ["reason"],
-        "not": { "anyOf": [{ "required": ["value"] }, { "required": ["sources"] }, { "required": ["data"] }, { "required": ["replaces"] }, { "required": ["key"] }] }
+        "required": [
+          "reason"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "value"
+              ]
+            },
+            {
+              "required": [
+                "sources"
+              ]
+            },
+            {
+              "required": [
+                "data"
+              ]
+            },
+            {
+              "required": [
+                "replaces"
+              ]
+            },
+            {
+              "required": [
+                "key"
+              ]
+            }
+          ]
+        }
       }
     }
   ],
@@ -139,7 +322,7 @@
       "description": "Non-empty text with no leading or trailing whitespace and no control characters.",
       "type": "string",
       "minLength": 1,
-      "maxLength": 200,
+      "maxLength": 1000,
       "pattern": "^[^\\s\\x00-\\x1f\\x7f]([^\\x00-\\x1f\\x7f]*[^\\s\\x00-\\x1f\\x7f])?$"
     },
     "text": {
@@ -151,10 +334,18 @@
       "description": "Which CI job wrote the entry. The CLI takes it from the command line or the environment and does not ask the CI host.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "attempt"],
+      "required": [
+        "name",
+        "attempt"
+      ],
       "properties": {
         "name": {
-          "$ref": "#/$defs/trimmed"
+          "allOf": [
+            {
+              "$ref": "#/$defs/trimmed"
+            }
+          ],
+          "maxLength": 200
         },
         "attempt": {
           "description": "The attempt number. 1 unless the CI host re-ran the job.",
@@ -167,7 +358,9 @@
       "description": "One number given with `--value`, in canonical form: a decimal string with no exponent, no plus sign, no leading zeros, no trailing zeros after the point, and no negative zero.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["value"],
+      "required": [
+        "value"
+      ],
       "properties": {
         "value": {
           "type": "string",
@@ -175,7 +368,12 @@
           "pattern": "^(0|-?[1-9][0-9]*(\\.[0-9]*[1-9])?|-?0\\.[0-9]*[1-9])$"
         },
         "unit": {
-          "allOf": [{ "$ref": "#/$defs/trimmed" }, { "maxLength": 64 }]
+          "allOf": [
+            {
+              "$ref": "#/$defs/trimmed"
+            }
+          ],
+          "maxLength": 200
         }
       }
     },
@@ -183,15 +381,21 @@
       "description": "One file a converter read.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "format", "sha256"],
+      "required": [
+        "path",
+        "format",
+        "sha256"
+      ],
       "properties": {
         "path": {
-          "description": "Relative to the working directory, with single forward slashes and no `.` or `..` segments.",
+          "description": "Relative to the repository root, with single forward slashes, no `.` or `..` segments and no trailing slash.",
           "type": "string",
           "minLength": 1,
           "maxLength": 1000,
-          "pattern": "^[^/\\\\~\\x00-\\x1f\\x7f:][^\\\\\\x00-\\x1f\\x7f:]*$",
-          "not": { "pattern": "(^|/)\\.{1,2}(/|$)|//|/$" }
+          "pattern": "^[^/\\\\~\\x00-\\x1f\\x7f][^\\\\\\x00-\\x1f\\x7f]*$",
+          "not": {
+            "pattern": "(^|/)\\.{1,2}(/|$)|//|/$"
+          }
         },
         "format": {
           "description": "The converter that read it, as named in the dataset's `from`.",
@@ -204,6 +408,11 @@
           "pattern": "^[0-9a-f]{64}$"
         }
       }
+    },
+    "raw": {
+      "description": "Raw text as given, cut to its first 2000 characters.",
+      "type": "string",
+      "maxLength": 2000
     }
   }
 }

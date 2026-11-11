@@ -13,6 +13,7 @@ public static class DiffEvalTests
     public static void RunAll()
     {
         DiffAndEvalWriteVerifiedDocuments();
+        EvalAcceptsTinyRelativeChangesFromDiff();
         OpaqueEvidenceDiffIsUnsupported();
         CaseOnlyOutputPathIsRejected();
         UntrustedBaselineIsRejected();
@@ -59,6 +60,36 @@ public static class DiffEvalTests
         var failAssessment = ReadAssessment(failPath, "fail");
         Equal(warnAssessment.DeltaId, failAssessment.DeltaId, "Changing rules must reuse the Delta.");
         True(warnAssessment.Id != failAssessment.Id, "Changing rules must produce a new Assessment identity.");
+    }
+
+    private static void EvalAcceptsTinyRelativeChangesFromDiff()
+    {
+        // A one-byte change on a 184125-byte package is a relative change below 1e-4. The Delta
+        // that diff writes for it must be readable by eval from the same release.
+        using var scratch = new ScratchDirectory();
+        var baseline = WriteEvidence(scratch.FilePath("baseline.json"), "baseline-commit", 184125);
+        var candidate = WriteEvidence(scratch.FilePath("candidate.json"), "candidate-commit", 184126);
+        var baselineReferencePath = scratch.FilePath("baseline-reference.json");
+        WriteBaselineReference(baselineReferencePath, baseline, "trusted");
+        var deltaPath = scratch.FilePath("delta.json");
+
+        var diff = RunCli("diff",
+            "--baseline-ref", baselineReferencePath,
+            "--baseline-evidence", baseline,
+            "--evidence", candidate,
+            "-o", deltaPath);
+        Equal(0, diff.ExitCode, $"diff failed: {diff.StandardError}");
+        using (var delta = JsonDocument.Parse(File.ReadAllBytes(deltaPath)))
+        {
+            var value = delta.RootElement.GetProperty("changes")[0].GetProperty("value");
+            Equal("0.0000054310930074677528852682", value.GetProperty("relative").GetString(), "Relative delta must be a plain decimal string.");
+        }
+
+        var rules = WriteRules(scratch.FilePath("rules.json"), "20000", "50000");
+        var assessmentPath = scratch.FilePath("assessment.json");
+        var eval = RunCli("eval", "--rules", rules, "--delta", deltaPath, "-o", assessmentPath);
+        Equal(0, eval.ExitCode, $"eval must accept the Delta that diff wrote: {eval.StandardError}");
+        ReadAssessment(assessmentPath, "pass");
     }
 
     private static void OpaqueEvidenceDiffIsUnsupported()

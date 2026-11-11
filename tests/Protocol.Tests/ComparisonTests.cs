@@ -21,6 +21,8 @@ internal static class ComparisonTests
         TypesScopeAndMethodologyMustMatch();
         NumericChangesIncludeAbsoluteAndRelativeValues();
         ZeroBaselineHasExplicitUndefinedRelativeValue();
+        SmallMagnitudesUsePlainDecimalStrings();
+        PlainDecimalStringsMatchG29WithoutExponents();
         AbsoluteFailOutranksZeroBaselineReview();
         ModifiedChangeWithoutAfterIsInconclusive();
         UnitChangesAreIncompatible();
@@ -77,6 +79,99 @@ internal static class ComparisonTests
         Equal("4", change.Value.Absolute);
         Equal(null, change.Value.Relative);
         Equal("undefined-zero-baseline", change.Value.RelativeStatus);
+    }
+
+    private static void PlainDecimalStringsMatchG29WithoutExponents()
+    {
+        // Delta identity must not move for values that "G29" already wrote without an exponent.
+        // Draw seeded decimals across the full 96-bit range and every scale, and compare the
+        // written baseline value with "G29" whenever "G29" has no exponent.
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+        var random = new Random(20261111);
+        var compared = 0;
+        for (var i = 0; i < 400; i++)
+        {
+            var value = new decimal(random.Next(int.MinValue, int.MaxValue), random.Next(0, 4) == 0 ? 0 : random.Next(int.MinValue, int.MaxValue),
+                random.Next(0, 2) == 0 ? 0 : random.Next(int.MinValue, int.MaxValue), random.Next(0, 2) == 0, (byte)random.Next(0, 29));
+            if (value == 0 || value == decimal.MaxValue || value == decimal.MinValue) continue;
+            var expected = value.ToString("G29", culture);
+            var candidate = value > 0 ? value - 1 : value + 1;
+            var change = Compare(
+                Evidence($"{{\"x\":{{\"value\":\"{value.ToString(culture)}\"}}}}"),
+                Evidence($"{{\"x\":{{\"value\":\"{candidate.ToString(culture)}\"}}}}", CandidateEvidenceId)).Changes.Single();
+            if (expected.Contains('E', StringComparison.Ordinal))
+            {
+                True(!change.Value.Before!.Contains('E', StringComparison.Ordinal));
+                Equal(value, decimal.Parse(change.Value.Before!, System.Globalization.NumberStyles.AllowLeadingSign | System.Globalization.NumberStyles.AllowDecimalPoint, culture));
+                continue;
+            }
+
+            Equal(expected, change.Value.Before);
+            compared++;
+        }
+
+        True(compared >= 200);
+    }
+
+    private static void SmallMagnitudesUsePlainDecimalStrings()
+    {
+        // A relative change below 1e-4 must not use exponent notation, which readers reject.
+        var tiny = Compare(Evidence("{\"size\":184125}"), Evidence("{\"size\":184126}", CandidateEvidenceId)).Changes.Single();
+        Equal("1", tiny.Value.Absolute);
+        Equal("0.0000054310930074677528852682", tiny.Value.Relative);
+        Equal("defined", tiny.Value.RelativeStatus);
+
+        var shrink = Compare(Evidence("{\"size\":184125}"), Evidence("{\"size\":184124}", CandidateEvidenceId)).Changes.Single();
+        Equal("-0.0000054310930074677528852682", shrink.Value.Relative);
+
+        // The exponent boundary itself, and decimal-string measurements at the smallest scale.
+        Equal("0.0001", Compare(Evidence("{\"x\":10000}"), Evidence("{\"x\":10001}", CandidateEvidenceId)).Changes.Single().Value.Relative);
+        Equal("0.00001", Compare(Evidence("{\"x\":100000}"), Evidence("{\"x\":100001}", CandidateEvidenceId)).Changes.Single().Value.Relative);
+        var smallest = Compare(
+            Evidence("{\"x\":{\"value\":\"0.0000000000000000000000000001\"}}"),
+            Evidence("{\"x\":{\"value\":\"0.0000000000000000000000000003\"}}", CandidateEvidenceId)).Changes.Single();
+        Equal("0.0000000000000000000000000001", smallest.Value.Before);
+        Equal("0.0000000000000000000000000003", smallest.Value.After);
+        Equal("0.0000000000000000000000000002", smallest.Value.Absolute);
+        Equal("2", smallest.Value.Relative);
+
+        // Zero and negative zero, at any scale, are written as "0".
+        foreach (var zero in new[] { "0", "-0", "0.000", "-0.000" })
+        {
+            var fromZero = Compare(Evidence($"{{\"x\":{{\"value\":\"{zero}\"}}}}"), Evidence("{\"x\":{\"value\":\"4\"}}", CandidateEvidenceId)).Changes.Single();
+            Equal("0", fromZero.Value.Before);
+            Equal("undefined-zero-baseline", fromZero.Value.RelativeStatus);
+        }
+
+        // Trailing fractional zeros are dropped.
+        var trailing = Compare(Evidence("{\"x\":{\"value\":\"1.500\"}}"), Evidence("{\"x\":{\"value\":\"2.250\"}}", CandidateEvidenceId)).Changes.Single();
+        Equal("1.5", trailing.Value.Before);
+        Equal("2.25", trailing.Value.After);
+        Equal("0.75", trailing.Value.Absolute);
+        Equal("0.5", trailing.Value.Relative);
+
+        // The decimal range limits keep every digit, and a relative change that rounds to zero is "0".
+        var max = decimal.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var belowMax = (decimal.MaxValue - 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var atMax = Compare(Evidence($"{{\"x\":{{\"value\":\"{max}\"}}}}"), Evidence($"{{\"x\":{{\"value\":\"{belowMax}\"}}}}", CandidateEvidenceId)).Changes.Single();
+        Equal("79228162514264337593543950335", atMax.Value.Before);
+        Equal("79228162514264337593543950334", atMax.Value.After);
+        Equal("-1", atMax.Value.Absolute);
+        Equal("0", atMax.Value.Relative);
+        var min = decimal.MinValue.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var aboveMin = (decimal.MinValue + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var atMin = Compare(Evidence($"{{\"x\":{{\"value\":\"{min}\"}}}}"), Evidence($"{{\"x\":{{\"value\":\"{aboveMin}\"}}}}", CandidateEvidenceId)).Changes.Single();
+        Equal("-79228162514264337593543950335", atMin.Value.Before);
+        Equal("-79228162514264337593543950334", atMin.Value.After);
+        Equal("1", atMin.Value.Absolute);
+
+        // Policy limits echoed into an Assessment use the same plain form.
+        var assessment = AssessmentEvaluator.Evaluate(
+            Compare(Evidence("{\"size\":100000}"), Evidence("{\"size\":100002}", CandidateEvidenceId)),
+            RelativePolicy(warnRelative: 0.00001m));
+        Equal("warn", assessment.Outcome);
+        var expected = JsonSerializer.Serialize(assessment.Findings.Single().Expected, SerializerOptions);
+        Equal("{\"relative\":\"0.00001\"}", expected);
     }
 
     private static void AbsoluteFailOutranksZeroBaselineReview()

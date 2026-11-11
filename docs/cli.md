@@ -92,6 +92,12 @@ supplied baseline Evidence and its commit, and then compares measurements by pat
 | Path only in the candidate | `added` |
 | Path only in the baseline | `removed` |
 
+`diff` writes `before`, `after`, `absolute` and `relative` in one canonical form: a plain
+invariant decimal string with an optional leading `-`, digits, and an optional fraction with no
+trailing zeros. It never uses exponent notation, so a one-byte change on a 184125-byte package is
+written as `"0.0000054310930074677528852682"`, not `"5.43...E-06"`. `eval` rejects decimal
+strings in exponent notation.
+
 `diff` checks the Baseline reference's structure and identity but **does not authenticate its
 issuer**. Do not gate a build on a reference supplied by the pull request under test; see
 [trust and identity](trust-and-identity.md).

@@ -37,6 +37,7 @@ documented need.
      - `docs/<doc-update>`
      - `chore/<maintenance-task>`
    - Submit changes through a pull request.
+   - Add tests with behavior changes, and update the phase documentation when a design decision changes the protocol, identity rules, trust model, or public command contract.
    - All pull requests are merged exclusively via **Squash and Merge**.
 
 2. **Linear History & Rebase**:

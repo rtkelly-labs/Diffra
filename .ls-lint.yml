@@ -45,14 +45,9 @@ ls:
 
 ignore:
   - .git
-  - .venv
-  - "**/.venv"
-  - node_modules
-  - "**/node_modules"
   - temp
   - .temp
   - "**/temp"
-  - .worktrees
   - bin
   - obj
   - dist

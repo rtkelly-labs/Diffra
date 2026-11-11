@@ -73,6 +73,9 @@ env:
   MUTATION_THRESHOLD: "57"
   COMPONENT_MUTATION_FLOOR: "80"
   STRICT_FUZZ_FLOOR_SECONDS: "1800"
+  # Upper bound on the per-target budget. The fuzz job has timeout-minutes: 60, and the
+  # budget must leave room for setup, the kill grace period and artifact upload.
+  MAX_FUZZ_SECONDS: "3000"
   ALL_FUZZ_TARGETS: "canonical evidence document delivery-index payloads line-ranges bundle bundle-zip"
 
 jobs:
@@ -111,6 +114,10 @@ jobs:
           fuzz_seconds=$((10#$fuzz_seconds))
           if [ "$fuzz_seconds" -le 0 ]; then
             echo "::error::fuzz_seconds must be positive (got $fuzz_seconds)."
+            exit 1
+          fi
+          if [ "$fuzz_seconds" -gt "$MAX_FUZZ_SECONDS" ]; then
+            echo "::error::fuzz_seconds must be at most ${MAX_FUZZ_SECONDS}s so the run fits the 60-minute fuzz job timeout (got ${fuzz_seconds}s)."
             exit 1
           fi
 

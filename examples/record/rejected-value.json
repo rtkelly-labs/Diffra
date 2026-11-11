@@ -1,0 +1,1 @@
+{"schema":"https://diffra.net/schemas/record-entry-v1.schema.json","project":"Main App","dataset":"packageSize","commit":"0123456789abcdef0123456789abcdef01234567","job":{"name":"pack","attempt":2},"status":"rejected","input":{"project":"Main App","value":"ten"},"problems":["The root file declares no project 'Main App'.","'ten' is not a number."]}

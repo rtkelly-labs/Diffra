@@ -1,1 +1,1 @@
-{"schema":"https://diffra.net/schemas/record-entry-v1.schema.json","project":"main","dataset":"windowsRegression","commit":"0123456789abcdef0123456789abcdef01234567","job":{"name":"regression"},"status":"skipped","reason":"Runs nightly only."}
+{"schema":"https://diffra.net/schemas/record-entry-v1.schema.json","project":"main","dataset":"windowsRegression","commit":"0123456789abcdef0123456789abcdef01234567","job":{"name":"regression","attempt":1},"status":"skipped","reason":"Runs nightly only."}

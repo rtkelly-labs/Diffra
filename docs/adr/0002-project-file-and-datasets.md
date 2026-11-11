@@ -68,8 +68,8 @@ under `dimensions`. It reads datasets, rule-set names, projects and settings, an
 part of YAML (one document, no anchors, aliases or tags, no duplicate keys). It does not validate
 the file against the schema, so rule bodies are checked only by the schema. Nothing calls the
 loader yet, and `diffra record` does not exist. [Recording a run](../record.md) specifies the
-command and `schemas/record-entry-v1.schema.json` the entries it writes; both take both a
-`--value` and the dataset's `from` source, with `from` preferred.
+command and `schemas/record-entry-v1.schema.json` the entries it writes. Both cover a `--value`
+and the dataset's `from` source, with `from` preferred.
 
 `schemas/project-v1.schema.json`, `schemas/collection-v1.schema.json` and
 `examples/project-file/` describe the earlier single-project, metric-based design. The root

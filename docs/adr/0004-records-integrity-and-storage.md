@@ -45,9 +45,11 @@ the open tool can reach.
 
 - The storage interface.
 - Whether the wire documents are renamed to the glossary's terms now.
-- How the collecting job merges bundles that disagree (proposed: identical duplicates are dropped,
-  a later attempt of the same job replaces an earlier one, and two different values for the same
-  dataset, key and dimensions are reported as a finding).
+- How the collecting job merges bundles that disagree. The proposed rules are in
+  [Recording a run](../record.md#merging-the-jobs-entries): identical duplicates are kept once, a
+  later attempt of the same job replaces an earlier one, and two different values for the same
+  project, dataset, key and dimensions are reported as a finding. A job's entries file is the
+  first form of the job-stage bundle.
 - What the output says when a stored binary file has expired.
 
 ## Current code

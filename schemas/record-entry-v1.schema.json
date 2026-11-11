@@ -11,13 +11,12 @@
       "const": "https://diffra.net/schemas/record-entry-v1.schema.json"
     },
     "project": {
-      "$ref": "#/$defs/name"
+      "description": "The project as given. Every status except `rejected` requires a declared project name.",
+      "$ref": "#/$defs/given"
     },
     "dataset": {
-      "description": "The dataset name as the command line gave it. A rejected entry may name a dataset the root file does not declare.",
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 200
+      "description": "The dataset as given. Every status except `rejected` requires a declared dataset name.",
+      "$ref": "#/$defs/given"
     },
     "commit": {
       "type": "string",
@@ -27,63 +26,94 @@
       "$ref": "#/$defs/job"
     },
     "dimensions": {
-      "description": "The value of each dimension the dataset is stratified by, for this job.",
+      "description": "The value of each dimension for this job. Omitted when there are none, never empty.",
       "type": "object",
+      "minProperties": 1,
       "propertyNames": {
-        "$ref": "#/$defs/name"
+        "$ref": "#/$defs/given"
       },
       "additionalProperties": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 200
+        "$ref": "#/$defs/trimmed"
       }
     },
     "key": {
-      "description": "The member of a keyed dataset this value belongs to. Absent for an unkeyed dataset.",
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 1000
+      "description": "The member of a keyed dataset that a `--value` belongs to.",
+      "allOf": [{ "$ref": "#/$defs/trimmed" }, { "maxLength": 1000 }]
     },
     "status": {
       "enum": ["recorded", "skipped", "failed", "rejected"]
     },
     "replaces": {
-      "description": "True when `--replace` was given: this entry replaces an earlier one for the same dataset, key and dimensions in the same job.",
+      "description": "Present when `--replace` was given: this entry replaces an earlier recorded entry for the same project, dataset, key and dimensions in the same job and attempt.",
       "const": true
     },
     "value": {
       "$ref": "#/$defs/scalar"
     },
-    "source": {
-      "$ref": "#/$defs/source"
+    "sources": {
+      "description": "Every file a converter read for this entry. Raw files are not kept.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1000,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/source"
+      }
     },
     "data": {
-      "description": "The typed values a converter read from the source, in the shape of the dataset's type."
+      "description": "The typed values the converter read from the sources, in the shape of the dataset's type.",
+      "type": ["object", "array"]
     },
     "reason": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 2000
+      "$ref": "#/$defs/text"
+    },
+    "input": {
+      "description": "What a rejected entry was given, as raw text: option name to value, such as {\"value\": \"abc\"}.",
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 50,
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*$",
+        "maxLength": 64
+      },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 2000
+      }
     },
     "problems": {
       "type": "array",
       "minItems": 1,
       "maxItems": 50,
       "items": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 2000
+        "$ref": "#/$defs/text"
       }
     }
   },
   "allOf": [
     {
+      "if": { "properties": { "status": { "const": "rejected" } }, "required": ["status"] },
+      "then": {
+        "required": ["problems"],
+        "not": { "anyOf": [{ "required": ["value"] }, { "required": ["data"] }, { "required": ["reason"] }, { "required": ["replaces"] }] }
+      },
+      "else": {
+        "properties": {
+          "project": { "$ref": "#/$defs/name" },
+          "dataset": { "$ref": "#/$defs/name" },
+          "dimensions": { "propertyNames": { "$ref": "#/$defs/name" } }
+        },
+        "not": { "anyOf": [{ "required": ["input"] }, { "required": ["problems"] }] }
+      }
+    },
+    {
       "if": { "properties": { "status": { "const": "recorded" } }, "required": ["status"] },
       "then": {
-        "not": { "anyOf": [{ "required": ["reason"] }, { "required": ["problems"] }] },
+        "not": { "required": ["reason"] },
         "oneOf": [
-          { "required": ["value"], "not": { "anyOf": [{ "required": ["source"] }, { "required": ["data"] }] } },
-          { "required": ["source", "data"], "not": { "required": ["value"] } }
+          { "required": ["value"], "not": { "anyOf": [{ "required": ["sources"] }, { "required": ["data"] }] } },
+          { "required": ["sources", "data"], "not": { "anyOf": [{ "required": ["value"] }, { "required": ["key"] }] } }
         ]
       }
     },
@@ -91,14 +121,7 @@
       "if": { "properties": { "status": { "enum": ["skipped", "failed"] } }, "required": ["status"] },
       "then": {
         "required": ["reason"],
-        "not": { "anyOf": [{ "required": ["value"] }, { "required": ["source"] }, { "required": ["data"] }, { "required": ["problems"] }, { "required": ["replaces"] }] }
-      }
-    },
-    {
-      "if": { "properties": { "status": { "const": "rejected" } }, "required": ["status"] },
-      "then": {
-        "required": ["problems"],
-        "not": { "anyOf": [{ "required": ["data"] }, { "required": ["reason"] }] }
+        "not": { "anyOf": [{ "required": ["value"] }, { "required": ["sources"] }, { "required": ["data"] }, { "required": ["replaces"] }, { "required": ["key"] }] }
       }
     }
   ],
@@ -107,58 +130,73 @@
       "type": "string",
       "pattern": "^[a-z][A-Za-z0-9]*$"
     },
+    "given": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "trimmed": {
+      "description": "Non-empty text with no leading or trailing whitespace and no control characters.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[^\\s\\x00-\\x1f\\x7f]([^\\x00-\\x1f\\x7f]*[^\\s\\x00-\\x1f\\x7f])?$"
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
     "job": {
       "description": "Which CI job wrote the entry. The CLI takes it from the command line or the environment and does not ask the CI host.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["name"],
+      "required": ["name", "attempt"],
       "properties": {
         "name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 200
+          "$ref": "#/$defs/trimmed"
         },
         "attempt": {
-          "description": "The attempt number when the CI host re-runs a job. A later attempt replaces an earlier one when fragments are merged.",
+          "description": "The attempt number. 1 unless the CI host re-ran the job.",
           "type": "integer",
           "minimum": 1
         }
       }
     },
     "scalar": {
-      "description": "One value given with `--value`, in canonical form: a decimal string with no exponent, no leading plus sign and no superfluous zeros.",
+      "description": "One number given with `--value`, in canonical form: a decimal string with no exponent, no plus sign, no leading zeros, no trailing zeros after the point, and no negative zero.",
       "type": "object",
       "additionalProperties": false,
       "required": ["value"],
       "properties": {
         "value": {
           "type": "string",
-          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$"
+          "maxLength": 100,
+          "pattern": "^(0|-?[1-9][0-9]*(\\.[0-9]*[1-9])?|-?0\\.[0-9]*[1-9])$"
         },
         "unit": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 64
+          "allOf": [{ "$ref": "#/$defs/trimmed" }, { "maxLength": 64 }]
         }
       }
     },
     "source": {
-      "description": "The file a value was read from. Raw files are not kept unless asked for; the digest identifies what was read.",
+      "description": "One file a converter read.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "sha256"],
+      "required": ["path", "format", "sha256"],
       "properties": {
         "path": {
-          "description": "Relative to the working directory, with forward slashes.",
+          "description": "Relative to the working directory, with single forward slashes and no `.` or `..` segments.",
           "type": "string",
           "minLength": 1,
           "maxLength": 1000,
-          "not": { "pattern": "(^/|^[A-Za-z]:|(^|/)\\.\\.(/|$)|\\\\)" }
+          "pattern": "^[^/\\\\~\\x00-\\x1f\\x7f:][^\\\\\\x00-\\x1f\\x7f:]*$",
+          "not": { "pattern": "(^|/)\\.{1,2}(/|$)|//|/$" }
         },
         "format": {
           "description": "The converter that read it, as named in the dataset's `from`.",
           "type": "string",
-          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9-]*$",
           "maxLength": 64
         },
         "sha256": {

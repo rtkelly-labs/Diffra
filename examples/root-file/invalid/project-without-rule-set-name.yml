@@ -1,5 +1,5 @@
 schema: https://diffra.net/schemas/root-file-v1.schema.json
-# Invalid: a project maps each dataset to the name of a rule set.
+# Invalid: a project maps each dataset to the name of a rule set, or to null.
 datasets:
   warnings:
     type: count

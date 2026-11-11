@@ -3136,7 +3136,7 @@
                 "additionalProperties": {
                   "properties": {
                     "collection": {
-                      "$ref": "#/$defs/keyedCollectionRules"
+                      "$ref": "#/$defs/keyRules"
                     }
                   }
                 }
@@ -3314,20 +3314,6 @@
               }
             ]
           }
-        }
-      }
-    },
-    "keyedCollectionRules": {
-      "type": "object",
-      "additionalProperties": false,
-      "minProperties": 1,
-      "description": "Severities for keys or members that appear or disappear.",
-      "properties": {
-        "added": {
-          "$ref": "#/$defs/severity"
-        },
-        "removed": {
-          "$ref": "#/$defs/severity"
         }
       }
     },

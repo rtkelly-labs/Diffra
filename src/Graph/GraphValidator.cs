@@ -1,6 +1,6 @@
-namespace Diffra.Protocol;
+namespace Diffra.Graph;
 
-/// <summary>Exception thrown when a Diffra composition graph violates DAG invariants.</summary>
+/// <summary>Exception thrown when a Diffra graph violates its structural invariants.</summary>
 public sealed class GraphValidationException : InvalidOperationException
 {
     public IReadOnlyList<string> Violations { get; }
@@ -12,7 +12,7 @@ public sealed class GraphValidationException : InvalidOperationException
     }
 }
 
-/// <summary>Validates structural and type invariants of a Diffra composition graph before execution.</summary>
+/// <summary>Validates structural and type invariants of a Diffra graph.</summary>
 public static class GraphValidator
 {
     private static readonly HashSet<string> AllowedBaselineRoles = new(StringComparer.Ordinal)

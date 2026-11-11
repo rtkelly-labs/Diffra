@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Protocol/Diffra.Protocol.csproj" />
+    <ProjectReference Include="../../src/Graph/Diffra.Graph.csproj" />
   </ItemGroup>
 </Project>

@@ -17,6 +17,7 @@ public sealed class SuiteFacts
     [Fact] public void TimeSeriesGraph() => TimeSeriesGraphTests.RunAll();
     [Fact] public void CloudEvents() => CloudEventsTests.RunAll();
     [Fact] public void Graph() => GraphTests.RunAll();
+    [Fact] public void ExternalCommandAdapter() => ExternalCommandAdapterTests.RunAll();
     [Fact] public void BaselineTrust() => BaselineTrustTests.RunAll();
     [Fact] public void DogfoodPipeline() => DogfoodPipelineTests.RunAll();
 }

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The graph data model and validator, kept outside the protocol library to be reworked for
+    recording the CI job graph (docs/adr/0009-dependencies-and-extensions.md). Nothing ships it yet.
+  -->
+  <PropertyGroup>
+    <AssemblyName>Diffra.Graph</AssemblyName>
+    <RootNamespace>Diffra.Graph</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+</Project>

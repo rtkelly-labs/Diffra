@@ -1,10 +1,10 @@
 # Diffra comparison report
 
-- Delta ID: `sha256:12be27dbf3c5f7018d798dd7ec8fdb870cde180cf8593470a2e8481b862bc52a`
+- Delta ID: `sha256:cd940dcf3df12228dd85a9ffb6d9d43bfc79bed5ff9f73420d73ee173cbec4ab`
 - Status: `changed`
-- Baseline reference ID: `sha256:651f3d7d58e2d9176b2dbdaa7071c30b72ba3542f7ef5cfcbe355173995f272f`
-- Baseline evidence ID: `sha256:dd754f85c6194acc8313a372d153164d1f9b9cd10d70d0d48451b87ea98ca084`
-- Candidate evidence ID: `sha256:c55d04bd6ff7d808043790f3a2c8f5a1b62fdb44e9bdc13f527af54d52efb9a0`
+- Baseline reference ID: `sha256:b446ef57d21b495c49d68e1dc079e3662ace2f9a58b484886f4f69567a8d42f6`
+- Baseline evidence ID: `sha256:14e14a249ed2572eac60ba4ecaf6761e365120d733a323d1ed2ed43b55f21911`
+- Candidate evidence ID: `sha256:976d5109904294bd9dff40075be119c4d69eb0986f5fdf998c6c647dea54618d`
 - Comparator: `diffra\.structured\-numeric` version `1\.0\.0`
 - Baseline role: `merge\-base`
 - Baseline resolved commit: `1111111111111111111111111111111111111111`

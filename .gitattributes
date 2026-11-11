@@ -11,3 +11,6 @@
 
 # Fuzz regression inputs are raw bytes.
 tests/Protocol.Fuzz/regressions/** binary
+
+# Regression corpus files are exact byte fixtures and must not undergo line-ending normalization.
+tests/regression/0.0.1-alpha.1/** -text

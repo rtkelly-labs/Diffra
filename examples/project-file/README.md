@@ -1,20 +1,21 @@
 # Project file examples
 
-Worked examples for [ADR 0010](../../docs/adr/0010-project-file-typed-metrics-and-collection-root.md):
-`diffra.project.yml`, typed metrics and the `diffra.collection.v1` root. Nothing here is implemented yet.
-These files fix the contract before the loader, the converters and `eval` support are built.
+Worked examples of the earlier single-project design: `diffra.project.yml`, typed metrics and the
+`diffra.collection.v1` root. Nothing here is implemented. [Decision record 0002](../../docs/adr/0002-project-file-and-datasets.md)
+describes the design that replaces it (one root file with several projects, datasets and named rule sets);
+these files will be rewritten to match.
 
 ## Project files
 
 | Example | Shows |
 | --- | --- |
 | [`benchmarks/`](benchmarks/) | The Parquet.SourceGenerator benchmark gate (PR #752) as one `diffra/benchmark@1` metric: per-field budgets, an absolute `and` floor, per-field stratification by CPU, and a series window |
-| [`coverage/`](coverage/) | `diffra/coverage@1` from Cobertura, with ADR 0006's floor and drop budget as `check` and `versus` rules |
+| [`coverage/`](coverage/) | `diffra/coverage@1` from Cobertura, with a coverage floor and drop budget as `check` and `versus` rules |
 | [`test-results/`](test-results/) | `diffra/test-results@1` from TRX and JUnit: tag transitions plus a duration rule that applies only when both sides succeeded |
 | [`custom/`](custom/) | The escape hatch: a custom `variant` type and custom leaf metrics (`count`, `enum`, `digest`) read from a project's own payload |
 
 `benchmarks/` and `test-results/` also carry a valid payload and the payload schema an emitter derives
-from the project file (ADR 0010, section 13). These schemas are written by hand; nothing generates them
+from the project file. These schemas are written by hand; nothing generates them
 yet. `benchmarks/` carries two collection roots: one `complete`, and one honestly `incomplete`, which is
 schema-valid but which `eval` must refuse (`inconclusive`).
 

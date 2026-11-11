@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://diffra.dev/schemas/project-v1.schema.json",
   "title": "Diffra Project File v1",
-  "description": "diffra.project.yml: typed metrics, their rules and how they are collected. See ADR 0010.",
+  "description": "diffra.project.yml: typed metrics, their rules and how they are collected. Earlier single-project design; docs/adr/0002-project-file-and-datasets.md describes its replacement.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "scope", "metrics"],

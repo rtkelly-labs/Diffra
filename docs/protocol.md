@@ -117,7 +117,7 @@ An evidence type identifies a semantic contract, not an encoding. JSON and XML i
 
 V1 comparators accept only the exact same `typeId` and `typeVersion`. The host never guesses a migration from similar JSON shape. Cross-version migration execution is deferred until a versioned Delta schema can record the migration ID/version, configuration digest, and resulting type/version. Until then, a version mismatch is `incompatible`; a future registered migration that cannot preserve meaning must return `inconclusive`.
 
-Extension registration is explicit in v1. Every decoder, comparator, migration, policy, store, resolver, or presenter declares its ID/version, input and output types, and configuration schema. The host rejects duplicate IDs, ambiguous comparator selection, missing dependencies, and incompatible contracts before execution. See the decisions in [`adr/`](adr/).
+Extension registration is explicit in v1. Every decoder, comparator, migration, policy, store, resolver, or presenter declares its ID/version, input and output types, and configuration schema. The host rejects duplicate IDs, ambiguous comparator selection, missing dependencies, and incompatible contracts before execution. This describes the current library. [Decision record 0009](adr/0009-dependencies-and-extensions.md) sets the direction: the root project file composes Diffra and converters are declared per dataset.
 
 ## JSON and collection semantics
 

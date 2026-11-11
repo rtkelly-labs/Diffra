@@ -1,4 +1,4 @@
-# Code coverage as a converted source (ADR 0006 policies expressed as rules).
+# Code coverage as a converted source, with a floor and a drop budget expressed as rules.
 schema: https://diffra.dev/schemas/project-v1.schema.json
 scope: example/library
 

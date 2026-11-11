@@ -1,15 +1,18 @@
 # Diffra
 
-Diffra is an independent .NET repository for typed comparison and trusted baselines. Read
-`docs/vision.md` for the current vision and `PLAN.md` for the active implementation sequence.
-The root `VISION.md` preserves the original design handover.
+Diffra is an independent .NET repository for a tool that records the signals CI produces and
+compares a pull request with the commit it branched from and with recent history. Read
+`docs/vision.md` for the current vision, `docs/adr/` for the decision records, `docs/glossary.md`
+for the vocabulary, and `PLAN.md` for the active implementation sequence. The root `VISION.md`
+preserves the original design handover and no longer describes the design.
 
 ## Operating Principles
 
-- **Diffra Utilizes Diffra (Self-Verification)**: The tool is its own first and continuous client. Utilizing Diffra to build, test, baseline, evaluate, and review Diffra is a core operating principle. Every capability introduced into the system (metrics, bundles, DAG graph execution, baseline resolvers, external adapters) must be actively incorporated into Diffra's own development, test, and CI gating workflow.
-- **Protocol Before Frameworks**: The core protocol, schemas, and documents remain generic, independent, and free of heavyweight runtime dependencies.
-- **Zero Aspire Runtime Dependencies**: Diffra has no runtime framework dependency on Aspire (estate invariant).
-- **Zero Warnings, Zero Regressions**: The codebase enforces `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` and deterministic canonical identity.
+- **Diffra Uses Diffra**: Diffra is used to build Diffra. This repository installs Diffra the way an adopter does: the same root file, Action and collecting job, within the adopter's wiring limit, with enforcement turned on only through the adopter's opt-in setting. Capabilities no adopter has yet run in a separate lane that never fails the build. Converters are benchmarked here on real input. Until that path exists, the self-evaluation scripts in `scripts/` stand in for it.
+- **Surface, Do Not Enforce**: Diffra reports findings; it does not manage workflow. Its step does not fail a build unless the adopter opts in, and it has no approval or promotion step.
+- **Tool First, Protocol as the Means**: Record formats, schemas and comparison rules stay generic and tied to no adopter or CI vendor, but they serve the tool rather than stand as the product.
+- **Limited Package References**: Each package reference is reviewed. Libraries that pull in large dependencies stay out of the core and live in separate packages built from this repository (`docs/adr/0009-dependencies-and-extensions.md`).
+- **Zero Warnings, Zero Regressions**: The codebase enforces `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` and deterministic output.
 
 ## Build and validation
 

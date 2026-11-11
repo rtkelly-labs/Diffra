@@ -78,7 +78,7 @@ public sealed record NodeExecutionResult(
 
 /// <summary>
 /// Represents an immutable declared node in the Diffra computation graph. Typed inputs and outputs
-/// carry both a type ID and a type version; V1 connections require both to match exactly (ADR 0002).
+/// carry both a type ID and a type version; V1 connections require both to match exactly.
 /// </summary>
 public sealed record GraphNode(
     string Id,

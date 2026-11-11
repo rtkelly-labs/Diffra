@@ -316,13 +316,15 @@ jobs:
         if: always()
         run: |
           mkdir -p metadata
-          pkg_file=$(ls artifacts/package/Diffra.Cli.*.nupkg 2>/dev/null | head -1)
-          if [ -z "$pkg_file" ] || [ ! -f "$pkg_file" ]; then
-            echo "::error::Package Diffra.Cli.*.nupkg not found in artifacts/package"
-            exit 1
+          pkg_file=$(ls artifacts/package/Diffra.Cli.*.nupkg 2>/dev/null | head -1 || true)
+          if [ -n "$pkg_file" ] && [ -f "$pkg_file" ]; then
+            pkg_name=$(basename "$pkg_file")
+            pkg_size=$(wc -c < "$pkg_file" | tr -d ' ')
+            pkg_json="\"$pkg_name\""
+          else
+            pkg_size="null"
+            pkg_json="null"
           fi
-          pkg_name=$(basename "$pkg_file")
-          pkg_size=$(wc -c < "$pkg_file" | tr -d ' ')
 
           tests_passed=0
           tests_failed=0
@@ -341,7 +343,7 @@ jobs:
             "testsFailed": $tests_failed,
             "testCount": ${TEST_COUNT:-null},
             "packageSizeBytes": $pkg_size,
-            "packageName": "$pkg_name"
+            "packageName": $pkg_json
           }
           EOF
           cat metadata/test-summary.json

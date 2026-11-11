@@ -242,53 +242,53 @@ public static class ReportRenderer
         var comparator = delta.GetProperty("comparator");
         var provenance = delta.GetProperty("provenance");
         var builder = new StringBuilder();
-        builder.AppendLine("# Diffra comparison report").AppendLine()
-            .Append("- Delta ID: `").Append(MarkdownCell(delta.GetProperty("id").GetString()!)).AppendLine("`")
-            .Append("- Status: `").Append(MarkdownCell(delta.GetProperty("status").GetString()!)).AppendLine("`")
-            .Append("- Baseline reference ID: `").Append(MarkdownCell(delta.GetProperty("baselineId").GetString()!)).AppendLine("`")
-            .Append("- Baseline evidence ID: `").Append(MarkdownCell(provenance.GetProperty("baselineEvidenceId").GetString()!)).AppendLine("`")
-            .Append("- Candidate evidence ID: `").Append(MarkdownCell(delta.GetProperty("candidateEvidenceId").GetString()!)).AppendLine("`")
-            .Append("- Comparator: `").Append(MarkdownCell(comparator.GetProperty("id").GetString()!)).Append("` version `").Append(MarkdownCell(comparator.GetProperty("version").GetString()!)).AppendLine("`");
+        builder.Append("# Diffra comparison report\n\n")
+            .Append("- Delta ID: `").Append(MarkdownCell(delta.GetProperty("id").GetString()!)).Append("`\n")
+            .Append("- Status: `").Append(MarkdownCell(delta.GetProperty("status").GetString()!)).Append("`\n")
+            .Append("- Baseline reference ID: `").Append(MarkdownCell(delta.GetProperty("baselineId").GetString()!)).Append("`\n")
+            .Append("- Baseline evidence ID: `").Append(MarkdownCell(provenance.GetProperty("baselineEvidenceId").GetString()!)).Append("`\n")
+            .Append("- Candidate evidence ID: `").Append(MarkdownCell(delta.GetProperty("candidateEvidenceId").GetString()!)).Append("`\n")
+            .Append("- Comparator: `").Append(MarkdownCell(comparator.GetProperty("id").GetString()!)).Append("` version `").Append(MarkdownCell(comparator.GetProperty("version").GetString()!)).Append("`\n");
 
         if (baseline is { } baselineValue)
         {
-            builder.Append("- Baseline role: `").Append(MarkdownCell(baselineValue.GetProperty("role").GetString()!)).AppendLine("`")
-                .Append("- Baseline resolved commit: `").Append(MarkdownCell(baselineValue.GetProperty("subjectCommit").GetString()!)).AppendLine("`");
+            builder.Append("- Baseline role: `").Append(MarkdownCell(baselineValue.GetProperty("role").GetString()!)).Append("`\n")
+                .Append("- Baseline resolved commit: `").Append(MarkdownCell(baselineValue.GetProperty("subjectCommit").GetString()!)).Append("`\n");
         }
 
-        builder.AppendLine().AppendLine("## Changes").AppendLine()
-            .AppendLine("| Path | Kind | Value | Unit |").AppendLine("| --- | --- | --- | --- |");
+        builder.Append("\n## Changes\n\n")
+            .Append("| Path | Kind | Value | Unit |\n| --- | --- | --- | --- |\n");
 
         foreach (var change in Ordered(delta.GetProperty("changes"), "path"))
         {
             builder.Append("| `").Append(MarkdownCell(change.GetProperty("path").GetString()!)).Append("` | `")
                 .Append(MarkdownCell(change.GetProperty("kind").GetString()!)).Append("` | `")
                 .Append(MarkdownCell(CanonicalValue(change.GetProperty("value")))).Append("` | ")
-                .Append(change.TryGetProperty("unit", out var unit) && unit.ValueKind == JsonValueKind.String ? MarkdownCell(unit.GetString()!) : "").AppendLine(" |");
+                .Append(change.TryGetProperty("unit", out var unit) && unit.ValueKind == JsonValueKind.String ? MarkdownCell(unit.GetString()!) : "").Append(" |\n");
         }
 
         if (assessment is not { } assessmentValue)
         {
-            builder.AppendLine().AppendLine("## Policy assessment").AppendLine()
-                .AppendLine("No policy verdict is available. No Assessment document was supplied.");
+            builder.Append("\n## Policy assessment\n\n")
+                .Append("No policy verdict is available. No Assessment document was supplied.\n");
         }
         else
         {
             var policy = assessmentValue.GetProperty("policy");
-            builder.AppendLine().AppendLine("## Policy assessment").AppendLine()
-                .Append("- Policy: `").Append(MarkdownCell(policy.GetProperty("id").GetString()!)).Append("` version `").Append(MarkdownCell(policy.GetProperty("version").GetString()!)).AppendLine("`")
-                .Append("- Outcome: `").Append(assessmentValue.GetProperty("outcome").GetString()).AppendLine("`")
-                .AppendLine().AppendLine("### Findings").AppendLine();
+            builder.Append("\n## Policy assessment\n\n")
+                .Append("- Policy: `").Append(MarkdownCell(policy.GetProperty("id").GetString()!)).Append("` version `").Append(MarkdownCell(policy.GetProperty("version").GetString()!)).Append("`\n")
+                .Append("- Outcome: `").Append(assessmentValue.GetProperty("outcome").GetString()).Append("`\n")
+                .Append("\n### Findings\n\n");
             foreach (var finding in Ordered(assessmentValue.GetProperty("findings"), "id"))
             {
                 builder.Append("- **").Append(MarkdownCell(finding.GetProperty("status").GetString()!)).Append("** ")
                     .Append(MarkdownCell(finding.GetProperty("message").GetString()!)).Append(" (`")
-                    .Append(MarkdownCell(finding.GetProperty("id").GetString()!)).AppendLine("`)");
+                    .Append(MarkdownCell(finding.GetProperty("id").GetString()!)).Append("`)\n");
             }
 
             if (assessmentValue.GetProperty("findings").GetArrayLength() == 0)
             {
-                builder.AppendLine("- No findings were recorded.");
+                builder.Append("- No findings were recorded.\n");
             }
         }
 

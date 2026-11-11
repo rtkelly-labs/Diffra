@@ -14,9 +14,10 @@ strength with Diffra.
   - the canonical-JSON differential test (`tests/CanonicalJson.Differential`);
   - a smoke test of the packed tool;
   - dogfood (`scripts/RunDogfood.cs`).
-- **Only when run manually or when their own files change:**
-  - fuzzing (`fuzz.yml`, `tests/Protocol.Fuzz`, 30 minutes per target);
-  - mutation testing (`mutation.yml`, Stryker on Comparison and Assessment only, break threshold 80).
+- **Folded into deep tier (formerly standalone workflows):**
+  - fuzzing (`tests/Protocol.Fuzz`, 30 minutes per target by default);
+  - mutation testing (Stryker across all of Protocol with 57 floor, and break threshold 80 on Comparison and Assessment).
+  - standalone `fuzz.yml` and `mutation.yml` are retired so PRs stay strictly shallow.
 - **Gaps:**
   1. Everything runs on ubuntu-latest. The macOS and Windows archives ship without being tested on those systems.
   2. `release.yml` runs only the unit tests. A tag can ship without fuzzing, mutation or property tests having passed on that commit.
@@ -28,7 +29,7 @@ strength with Diffra.
 | Tier | When | Contents | Time budget |
 |---|---|---|---|
 | Shallow | Every PR (required checks) | build, unit tests, schema fixtures, short property and differential runs, packed-tool smoke test, dogfood gate with the pinned judge | ≤ 10 min |
-| Deep | Nightly on main, on demand, and before a release | fuzzing for every target; mutation testing across all of Protocol (threshold 80); high-iteration property runs; unit tests and the CLI end-to-end suite on ubuntu x64 and arm64, macOS x64 and arm64, and Windows x64; each release archive smoke-tested on its own OS | ≤ 60 min |
+| Deep | Nightly on main, on demand, and before a release | fuzzing for every target; mutation testing across all of Protocol (floor 57 ratcheting upward, 80 gate on Comparison and Assessment); high-iteration property runs; unit tests and the CLI end-to-end suite on Linux; five-platform native archive smoke matrix (Linux x64/arm64, macOS arm64/x64, Windows x64) | ≤ 60 min |
 | Regression | Before a release, and nightly | frozen corpus, backward reads, old vs new tool comparison (below) | ≤ 15 min |
 
 ## Regression suite
@@ -74,13 +75,14 @@ Each step is one PR.
 3. **Regression suite.** The frozen corpus seeded from 0.0.1-alpha.1, backward reads, and the old vs new tool comparison.
    Status: complete (seeded from 0.0.1-alpha.1).
 4. **Deep workflow.** An OS matrix, a nightly schedule, and mutation testing across all of Protocol.
+   Status: implemented in `.github/workflows/deep.yml` with five-platform native archive smoke matrix (Linux x64/arm64, macOS arm64/x64, Windows x64), long-budget parallel fuzzing, full-scope Protocol mutation testing (floor 57 for all of Protocol, ratcheting upward over time; 80 gate on Comparison and Assessment), 100k property checks, and machine-readable `deep-summary.json`.
 5. **Release gate.** `release.yml` requires the deep and regression workflows on the tagged commit.
 6. **Test strength as Evidence.** Turn the deep-run results into Evidence and gate on them.
 
 ## Done when
 
 - A PR gets the shallow tier only, in 10 minutes or less.
-- Nightly main runs deep and regression across all five platforms.
+- Nightly main runs deep (native archive publish, isolated smoke test, and regression corpus check across all five platforms; heavy jobs on Linux) and regression.
 - Pushing a `v*` tag cannot produce a release unless deep and regression have passed on that commit.
 - Every released version has a frozen regression corpus that later builds reproduce.
 - The dogfood gate uses a pinned released judge and baselines produced by main.

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
     VSTest adapter over the hand-rolled Protocol.Tests suite so Stryker.NET can drive it.
-    Not part of Diffra.slnx; used only by .github/workflows/mutation.yml.
+    Not part of Diffra.slnx; driven by .github/workflows/deep.yml.
   -->
   <PropertyGroup>
     <AssemblyName>Diffra.Protocol.Tests.Stryker</AssemblyName>

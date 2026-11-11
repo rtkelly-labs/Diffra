@@ -198,16 +198,31 @@ Diffra tests itself in three tiers. The plan and its order of work are in
 | Tier | When | Gate |
 | --- | --- | --- |
 | Shallow | Every pull request and push to `main` (`ci.yml`) | Required. The `build` check passes only when every shallow job passes. |
-| Deep | Nightly on `main`, on demand, and before a release | Fuzzing, mutation testing, long property runs and the five-platform matrix. A release requires it on the tagged commit. |
+| Deep | Nightly on `main`, on demand, and before a release (`deep.yml`) | Five-platform archive smoke matrix, full-scope Protocol mutation testing (floor 57 ratcheting upward, 80 gate on Comparison and Assessment), fuzzing across all targets, 100k property runs, and unit/e2e checks. Aggregated into `deep-summary.json`. Will be required for release (release gate). |
 | Regression | Nightly on `main` and before a release | Frozen corpora from earlier releases must reproduce, and the released and candidate tools must agree. A release requires it on the tagged commit. |
 
 The shallow tier is the build and unit tests, the schema fixtures, the
 canonical JSON differential test, the property tests, the smoke test of the
 packed tool, and the dogfood gate. It stays under ten minutes. A new shallow job
 joins the `needs` list of the `build` job in `ci.yml`, so the required check
-covers it without a ruleset change. Fuzzing (`fuzz.yml`) and mutation testing
-(`mutation.yml`) belong to the deep tier and run on demand until the deep
-workflow schedules them.
+covers it without a ruleset change. The deep tier runs via `.github/workflows/deep.yml`
+on a nightly schedule on `main`, on demand via `workflow_dispatch`, and as a reusable
+workflow (`workflow_call`) for release gating. Platform legs are light: each of the five
+platforms (Linux x64, Linux arm64, macOS arm64, macOS x64, Windows x64) publishes and
+smoke-tests its native self-contained archive in a stripped environment without .NET on PATH.
+Heavy work runs once on Linux (`ubuntu-latest`): full protocol unit tests, packed CLI tool
+smoke test, parallel fuzzing across all targets for a long budget, Stryker mutation testing
+across all Protocol source, and high-iteration property checks at 100,000 iterations.
+All results aggregate into a machine-readable `deep-summary.json` artifact, whose top-level
+`passed` field is the verdict.
+
+Nightly, release (`workflow_call`) and default manual runs are strict: every fuzz target runs
+for at least the strict floor (`STRICT_FUZZ_FLOOR_SECONDS`, 1800 s per target), and the summary
+fails if any target or any of the budget is missing. Only a manual dispatch with `strict`
+unticked may run a single target or a shorter budget. `strict` is not a `workflow_call` input,
+and a run counts as non-strict only when the top-level workflow is `deep.yml` itself
+(`github.workflow_ref`), so a calling workflow cannot make a run non-strict even if its own
+inputs leak into the called workflow.
 
 ### How Diffra gates itself
 

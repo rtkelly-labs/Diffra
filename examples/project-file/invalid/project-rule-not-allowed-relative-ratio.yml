@@ -1,4 +1,4 @@
-schema: https://diffra.dev/schemas/project-v1.schema.json
+schema: https://diffra.net/schemas/project-v1.schema.json
 scope: example/invalid
 # Invalid: ratios take absolute thresholds only; a relative change of a ratio misleads.
 metrics:

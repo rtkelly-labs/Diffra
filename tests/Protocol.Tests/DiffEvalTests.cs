@@ -171,7 +171,7 @@ public static class DiffEvalTests
         using var scratch = new ScratchDirectory();
         var delta = JsonNode.Parse("""
             {
-              "schema":"https://diffra.dev/schemas/delta-v1.schema.json",
+              "schema":"https://diffra.net/schemas/delta-v1.schema.json",
               "id":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
               "status":"unchanged",
               "typeResolution":"recognized",
@@ -207,7 +207,7 @@ public static class DiffEvalTests
         var payloadBytes = JsonSerializer.SerializeToUtf8Bytes(payload);
         var document = new JsonObject
         {
-            ["schema"] = "https://diffra.dev/schemas/evidence-v1.schema.json",
+            ["schema"] = "https://diffra.net/schemas/evidence-v1.schema.json",
             ["id"] = Digest,
             ["status"] = "produced",
             ["typeId"] = "org.example.metrics",
@@ -233,7 +233,7 @@ public static class DiffEvalTests
         var commit = evidence.RootElement.GetProperty("subject").GetProperty("commit").GetString()!;
         var reference = new JsonObject
         {
-            ["schema"] = "https://diffra.dev/schemas/baseline-reference-v1.schema.json",
+            ["schema"] = "https://diffra.net/schemas/baseline-reference-v1.schema.json",
             ["id"] = Digest,
             ["role"] = "merge-base",
             ["status"] = status,

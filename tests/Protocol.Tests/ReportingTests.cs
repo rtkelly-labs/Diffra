@@ -9,7 +9,7 @@ public static class ReportingTests
 {
     private const string DeltaJson = """
         {
-          "schema":"https://diffra.dev/schemas/delta-v1.schema.json",
+          "schema":"https://diffra.net/schemas/delta-v1.schema.json",
           "id":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "status":"changed",
           "typeResolution":"recognized",
@@ -24,7 +24,7 @@ public static class ReportingTests
 
     private const string AssessmentJson = """
         {
-          "schema":"https://diffra.dev/schemas/assessment-v1.schema.json",
+          "schema":"https://diffra.net/schemas/assessment-v1.schema.json",
           "id":"sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
           "deltaId":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "deltaStatus":"changed",
@@ -36,7 +36,7 @@ public static class ReportingTests
         """;
 
     private const string BaselineReferenceJson = """
-        {"schema":"https://diffra.dev/schemas/baseline-reference-v1.schema.json","id":"sha256:9999999999999999999999999999999999999999999999999999999999999999","role":"merge-base","status":"trusted","evidenceId":"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","subjectCommit":"fedcba9876543210","manifestDigest":"sha256:2222222222222222222222222222222222222222222222222222222222222222","resolver":{"id":"diffra.git-merge-base","version":"1.0.0","resolvedCommit":"fedcba9876543210"},"sourceStore":"local","trust":{"issuer":"trusted-ci","decisionId":"run-42"}}
+        {"schema":"https://diffra.net/schemas/baseline-reference-v1.schema.json","id":"sha256:9999999999999999999999999999999999999999999999999999999999999999","role":"merge-base","status":"trusted","evidenceId":"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","subjectCommit":"fedcba9876543210","manifestDigest":"sha256:2222222222222222222222222222222222222222222222222222222222222222","resolver":{"id":"diffra.git-merge-base","version":"1.0.0","resolvedCommit":"fedcba9876543210"},"sourceStore":"local","trust":{"issuer":"trusted-ci","decisionId":"run-42"}}
         """;
 
     public static void RunAll()

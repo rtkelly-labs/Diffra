@@ -48,10 +48,10 @@ public static class DocumentIdentity
 
     private static string SchemaFor(string kind) => kind switch
     {
-        "baseline-reference" => "https://diffra.dev/schemas/baseline-reference-v1.schema.json",
-        "delta" => "https://diffra.dev/schemas/delta-v1.schema.json",
-        "assessment" => "https://diffra.dev/schemas/assessment-v1.schema.json",
-        "manifest" => "https://diffra.dev/schemas/manifest-v1.schema.json",
+        "baseline-reference" => "https://diffra.net/schemas/baseline-reference-v1.schema.json",
+        "delta" => "https://diffra.net/schemas/delta-v1.schema.json",
+        "assessment" => "https://diffra.net/schemas/assessment-v1.schema.json",
+        "manifest" => "https://diffra.net/schemas/manifest-v1.schema.json",
         _ => throw new ArgumentException($"Unsupported Diffra document kind '{kind}'.", nameof(kind)),
     };
 }

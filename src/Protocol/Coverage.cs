@@ -38,7 +38,7 @@ public sealed record CoveragePayload(
     CoverageCounter Methods,
     IReadOnlyList<FileCoverage> Files)
 {
-    public const string SchemaUri = "https://diffra.dev/schemas/coverage-v1.schema.json";
+    public const string SchemaUri = "https://diffra.net/schemas/coverage-v1.schema.json";
 
     public JsonObject ToJsonObject()
     {

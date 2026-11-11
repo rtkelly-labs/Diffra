@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://diffra.dev/schemas/cloudevent-diffra-v1.schema.json",
+  "$id": "https://diffra.net/schemas/cloudevent-diffra-v1.schema.json",
   "title": "Diffra CloudEvent Envelope v1",
   "type": "object",
   "required": ["specversion", "id", "source", "type", "time", "datacontenttype", "dataschema", "data"],

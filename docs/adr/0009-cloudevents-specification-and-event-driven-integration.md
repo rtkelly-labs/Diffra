@@ -29,7 +29,7 @@ Every Diffra lifecycle stage emits a standard CloudEvents envelope (`application
 | Event Type | `type` | `dev.diffra.evidence.v1`, `dev.diffra.delta.v1`, `dev.diffra.assessment.v1` |
 | Evaluation Time | `time` | RFC 3339 timestamp (e.g. `2026-09-27T19:25:00Z`) |
 | Data Content Type | `datacontenttype` | `"application/json"` |
-| Data Schema | `dataschema` | URL: `https://diffra.dev/schemas/{schema}.schema.json` |
+| Data Schema | `dataschema` | URL: `https://diffra.net/schemas/{schema}.schema.json` |
 | Subject Anchor | `subject` | Git commit or PR ref (e.g. `commit:3a3d8b9...`) |
 | Event Payload | `data` | The complete canonical Evidence, Delta, or Assessment document |
 

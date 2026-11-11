@@ -379,7 +379,7 @@ static void BuildBaselineReference(string evidencePath, string resolvedCommit, s
             ["version"] = "1.0"
         },
         ["role"] = "merge-base",
-        ["schema"] = "https://diffra.dev/schemas/baseline-reference-v1.schema.json",
+        ["schema"] = "https://diffra.net/schemas/baseline-reference-v1.schema.json",
         ["sourceStore"] = "diffra-baselines",
         ["status"] = "trusted",
         ["subjectCommit"] = resolvedCommit,

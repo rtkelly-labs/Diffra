@@ -1,6 +1,6 @@
 # The escape hatch: custom leaf metrics and a custom variant, read from a payload
 # written by the project's own emitter. Modelled on Diffra's self-evaluation.
-schema: https://diffra.dev/schemas/project-v1.schema.json
+schema: https://diffra.net/schemas/project-v1.schema.json
 scope: diffra/core
 
 types:

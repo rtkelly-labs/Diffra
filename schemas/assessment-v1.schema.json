@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://diffra.dev/schemas/assessment-v1.schema.json",
+  "$id": "https://diffra.net/schemas/assessment-v1.schema.json",
   "title": "Diffra Assessment v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "id", "deltaId", "deltaStatus", "policy", "outcome", "findings", "provenance"],
   "properties": {
-    "schema": { "const": "https://diffra.dev/schemas/assessment-v1.schema.json" },
+    "schema": { "const": "https://diffra.net/schemas/assessment-v1.schema.json" },
     "id": { "$ref": "#/$defs/digest" },
     "deltaId": { "$ref": "#/$defs/digest" },
     "deltaStatus": { "enum": ["unchanged", "changed", "unavailable", "invalid", "incompatible", "inconclusive", "unsupported"] },

@@ -1,5 +1,5 @@
 # Test results from TRX and JUnit as a keyed map of variants.
-schema: https://diffra.dev/schemas/project-v1.schema.json
+schema: https://diffra.net/schemas/project-v1.schema.json
 scope: example/library
 
 dimensions:

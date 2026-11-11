@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://diffra.dev/schemas/evidence-v1.schema.json",
+  "$id": "https://diffra.net/schemas/evidence-v1.schema.json",
   "title": "Diffra Evidence v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "id", "status", "typeId", "typeVersion", "typeResolution", "subject", "producer", "environment", "provenance", "payloadDigest", "payload", "artifactRefs"],
   "properties": {
-    "schema": { "const": "https://diffra.dev/schemas/evidence-v1.schema.json" },
+    "schema": { "const": "https://diffra.net/schemas/evidence-v1.schema.json" },
     "id": { "$ref": "#/$defs/digestId" },
     "status": { "enum": ["produced", "unavailable", "invalid", "inconclusive"] },
     "typeId": { "type": "string", "minLength": 1 },

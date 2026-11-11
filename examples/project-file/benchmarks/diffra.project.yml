@@ -1,6 +1,6 @@
 # The Parquet.SourceGenerator benchmark gate (PR #752) as one project file.
 # One standard type replaces three payloads and three rules files.
-schema: https://diffra.dev/schemas/project-v1.schema.json
+schema: https://diffra.net/schemas/project-v1.schema.json
 scope: parquet-sourcegenerator/benchmarks
 
 dimensions:

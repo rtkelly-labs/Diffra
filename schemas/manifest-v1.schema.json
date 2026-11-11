@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://diffra.dev/schemas/manifest-v1.schema.json",
+  "$id": "https://diffra.net/schemas/manifest-v1.schema.json",
   "title": "Diffra Manifest v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "id", "subject", "groups", "artifacts", "evidenceIds", "provenance"],
   "properties": {
-    "schema": { "const": "https://diffra.dev/schemas/manifest-v1.schema.json" },
+    "schema": { "const": "https://diffra.net/schemas/manifest-v1.schema.json" },
     "id": { "$ref": "#/$defs/digest" },
     "subject": {
       "type": "object", "additionalProperties": false,

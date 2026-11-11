@@ -1,5 +1,5 @@
 {
-  "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
+  "schema": "https://diffra.net/schemas/evidence-v1.schema.json",
   "id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "status": "produced",
   "typeId": "org.example.build.metrics",

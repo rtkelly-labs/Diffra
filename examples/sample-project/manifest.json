@@ -1,5 +1,5 @@
 {
-  "schema": "https://diffra.dev/schemas/manifest-v1.schema.json",
+  "schema": "https://diffra.net/schemas/manifest-v1.schema.json",
   "id": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
   "subject": { "kind": "git-repository", "id": "example/project", "commit": "0123456789abcdef" },
   "groups": [{

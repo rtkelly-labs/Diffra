@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://diffra.dev/baselines/deep/payload.schema.json",
+  "$id": "https://diffra.net/baselines/deep/payload.schema.json",
   "title": "Diffra deep-tier test strength payload",
   "description": "Structured numeric payloads that scripts/DeepEvidence.cs builds from deep-summary.json, one per facet. Every gated metric is oriented so that weaker tests or bigger artifacts are a higher value. Value bounds keep every real change at a relative change of at least 1e-4; see docs/artifact-delivery-and-ci.md.",
   "type": "object",

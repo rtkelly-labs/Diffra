@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://diffra.dev/schemas/collection-v1.schema.json",
+  "$id": "https://diffra.net/schemas/collection-v1.schema.json",
   "title": "Diffra Collection Root v1",
   "description": "For one subject commit, every declared metric x planned stratum (and, for maps, every planned key) with its collection status. See ADR 0010.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "id", "status", "subject", "project", "metrics", "provenance"],
   "properties": {
-    "schema": { "const": "https://diffra.dev/schemas/collection-v1.schema.json" },
+    "schema": { "const": "https://diffra.net/schemas/collection-v1.schema.json" },
     "id": { "$ref": "#/$defs/digest" },
     "status": { "enum": ["complete", "incomplete"] },
     "subject": {

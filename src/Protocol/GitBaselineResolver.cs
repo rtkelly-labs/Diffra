@@ -19,7 +19,7 @@ public sealed record ResolvedBaseline(
 /// <summary>Resolves Git merge-base baselines and enforces immutable commit pinning.</summary>
 public static class GitBaselineResolver
 {
-    public const string BaselineReferenceSchema = "https://diffra.dev/schemas/baseline-reference-v1.schema.json";
+    public const string BaselineReferenceSchema = "https://diffra.net/schemas/baseline-reference-v1.schema.json";
     private static readonly Regex CommitShaPattern = new("^[a-f0-9]{40}$", RegexOptions.CultureInvariant);
 
     /// <summary>

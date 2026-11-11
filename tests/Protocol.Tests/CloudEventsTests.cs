@@ -27,7 +27,7 @@ public static class CloudEventsTests
             Source: "diffra://repo/rtkelly-labs/Diffra/subject/diffra/core",
             Type: DiffraCloudEvent.EvidenceEventType,
             Time: now,
-            DataSchema: "https://diffra.dev/schemas/evidence-v1.schema.json",
+            DataSchema: "https://diffra.net/schemas/evidence-v1.schema.json",
             Data: data,
             Subject: "commit:2222222222222222222222222222222222222222",
             DiffraOutcome: "pass",

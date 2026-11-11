@@ -43,7 +43,7 @@ public static class CollectTests
 
             using var document = JsonDocument.Parse(bytesOne);
             var root = document.RootElement;
-            Assert(root.GetProperty("schema").GetString() == "https://diffra.dev/schemas/evidence-v1.schema.json", "Unexpected Evidence schema.");
+            Assert(root.GetProperty("schema").GetString() == "https://diffra.net/schemas/evidence-v1.schema.json", "Unexpected Evidence schema.");
             Assert(root.GetProperty("status").GetString() == "produced", "Expected produced status.");
             Assert(root.GetProperty("typeResolution").GetString() == "recognized", "Expected recognized type resolution.");
             Assert(root.GetProperty("id").GetString()!.StartsWith("sha256:", StringComparison.Ordinal), "Expected SHA-256 Evidence ID.");

@@ -10,7 +10,7 @@ namespace Diffra.Protocol;
 /// </summary>
 public static class DeliveryIndex
 {
-    public const string SchemaUri = "https://diffra.dev/schemas/delivery-index-v1.schema.json";
+    public const string SchemaUri = "https://diffra.net/schemas/delivery-index-v1.schema.json";
 
     public sealed record AssetEntry(
         string Id,

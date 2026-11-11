@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://diffra.dev/schemas/delta-v1.schema.json",
+  "$id": "https://diffra.net/schemas/delta-v1.schema.json",
   "title": "Diffra Delta v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "id", "status", "typeResolution", "baselineId", "candidateEvidenceId", "comparator", "changes", "provenance"],
   "properties": {
-    "schema": { "const": "https://diffra.dev/schemas/delta-v1.schema.json" },
+    "schema": { "const": "https://diffra.net/schemas/delta-v1.schema.json" },
     "id": { "$ref": "#/$defs/digest" },
     "status": { "enum": ["unchanged", "changed", "unavailable", "invalid", "incompatible", "inconclusive", "unsupported"] },
     "typeResolution": { "enum": ["recognized", "opaque"] },

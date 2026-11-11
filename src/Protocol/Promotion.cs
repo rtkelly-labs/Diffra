@@ -17,7 +17,7 @@ public sealed record PromotionApprovalRecord(
     string VerificationRunEvidenceId,
     DateTimeOffset Timestamp)
 {
-    public const string SchemaUri = "https://diffra.dev/schemas/promotion-approval-v1.schema.json";
+    public const string SchemaUri = "https://diffra.net/schemas/promotion-approval-v1.schema.json";
 
     public JsonObject ToJsonObject() => new()
     {

@@ -37,8 +37,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: deep-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  group: deep-${{ github.event_name == 'workflow_call' && format('call-{0}', github.run_id) || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_call' && !startsWith(github.ref, 'refs/tags/') }}
+
+defaults:
+  run:
+    shell: bash
 
 env:
   SHARPFUZZ_VERSION: 2.3.0
@@ -195,9 +199,16 @@ jobs:
             exit 1
           fi
 
-      # Step reserved for regression suite platform corpus check (added by regression suite PR)
-      # - name: Platform regression corpus check
-      #   run: echo "Reserved for regression suite"
+      # Run regression corpus against extracted native self-contained archive
+      # TODO(#114): Switch to quick mode (--quick) once PR #114 lands on main.
+      - name: Run regression corpus against native self-contained archive
+        run: |
+          if [ "${{ matrix.rid }}" = "win-x64" ]; then
+            archive_bin="$PWD/temp/smoke-selfcontained/diffra.exe"
+          else
+            archive_bin="$PWD/temp/smoke-selfcontained/diffra"
+          fi
+          dotnet run --project tests/regression/Diffra.Regression.csproj --configuration Release -- --tool "$archive_bin"
 
       - name: Record platform metadata
         if: always()
@@ -251,6 +262,7 @@ jobs:
       - name: Run protocol and integration test suite
         id: unit-tests
         run: |
+          set -euo pipefail
           mkdir -p temp
           dotnet run --project tests/Protocol.Tests/Protocol.Tests.csproj --configuration Release --no-build | tee temp/protocol-tests.log
           test_count=$(grep -c '^PASS ' temp/protocol-tests.log || true)
@@ -305,18 +317,31 @@ jobs:
         run: |
           mkdir -p metadata
           pkg_file=$(ls artifacts/package/Diffra.Cli.*.nupkg 2>/dev/null | head -1)
-          pkg_size=""
-          if [ -n "$pkg_file" ] && [ -f "$pkg_file" ]; then
-            pkg_size=$(wc -c < "$pkg_file" | tr -d ' ')
+          if [ -z "$pkg_file" ] || [ ! -f "$pkg_file" ]; then
+            echo "::error::Package Diffra.Cli.*.nupkg not found in artifacts/package"
+            exit 1
+          fi
+          pkg_name=$(basename "$pkg_file")
+          pkg_size=$(wc -c < "$pkg_file" | tr -d ' ')
+
+          tests_passed=0
+          tests_failed=0
+          if [ "${{ steps.unit-tests.outcome }}" = "success" ]; then
+            tests_passed="${TEST_COUNT:-0}"
+            tests_failed=0
+          else
+            tests_failed=1
           fi
 
           cat <<EOF > metadata/test-summary.json
           {
             "unitTests": "${{ steps.unit-tests.outcome }}",
             "toolSmoke": "${{ steps.tool-smoke.outcome }}",
+            "testsPassed": $tests_passed,
+            "testsFailed": $tests_failed,
             "testCount": ${TEST_COUNT:-null},
-            "packageSizeBytes": ${pkg_size:-null},
-            "packageName": "$(basename "$pkg_file" 2>/dev/null || echo "Diffra.Cli.nupkg")"
+            "packageSizeBytes": $pkg_size,
+            "packageName": "$pkg_name"
           }
           EOF
           cat metadata/test-summary.json
@@ -337,12 +362,27 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - id: set-matrix
+      - name: Validate release call constraints and set matrix
+        id: set-matrix
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TARGET: ${{ inputs.target }}
+          FUZZ_SECONDS: ${{ inputs.fuzz_seconds || '1800' }}
         run: |
-          target="${{ inputs.target }}"
-          case "$target" in
+          if [ "$EVENT_NAME" = "workflow_call" ]; then
+            if [ -n "$TARGET" ] && [ "$TARGET" != "all" ]; then
+              echo "::error::workflow_call must run all fuzz targets (cannot weaken gate with target='$TARGET')"
+              exit 1
+            fi
+            if [ -n "$FUZZ_SECONDS" ] && [ "$FUZZ_SECONDS" -lt 300 ]; then
+              echo "::error::workflow_call fuzz budget must be at least 300s (got $FUZZ_SECONDS)"
+              exit 1
+            fi
+          fi
+
+          case "$TARGET" in
             canonical|evidence|document|delivery-index|payloads|line-ranges|bundle|bundle-zip)
-              echo "matrix={\"target\":[\"$target\"]}" >> "$GITHUB_OUTPUT"
+              echo "matrix={\"target\":[\"$TARGET\"]}" >> "$GITHUB_OUTPUT"
               ;;
             *)
               echo 'matrix={"target":["canonical","evidence","document","delivery-index","payloads","line-ranges","bundle","bundle-zip"]}' >> "$GITHUB_OUTPUT"
@@ -457,7 +497,8 @@ jobs:
 
       - name: Fail on findings
         run: |
-          if [ "${{ steps.fuzz.outcome }}" != "success" ] || [ -n "$(find "$FUZZ_FINDINGS" -name '*.txt' ! -name 'observation-*')" ]; then
+          crash_files=$(find "$FUZZ_FINDINGS" -type f \( -name 'crash-*' -o -name 'leak-*' -o -name 'timeout-*' -o -name 'oom-*' -o -name '*.txt' \) ! -name 'observation-*' 2>/dev/null || true)
+          if [ "${{ steps.fuzz.outcome }}" != "success" ] || [ -n "$crash_files" ]; then
             echo "::error::Fuzzing found issues for $FUZZ_TARGET; see the job summary and the deep-fuzz-$FUZZ_TARGET artifact."
             exit 1
           fi
@@ -569,6 +610,7 @@ jobs:
       - name: Run high-iteration property and metamorphic checks
         id: properties-run
         run: |
+          set -euo pipefail
           mkdir -p metadata temp
           dotnet run --project tests/Protocol.Properties/Protocol.Properties.csproj --configuration Release -- 100000 | tee temp/properties.log
 
@@ -576,17 +618,23 @@ jobs:
         if: always()
         run: |
           mkdir -p metadata
+          iterations=$(grep -oE 'Iterations per property: [0-9]+' temp/properties.log 2>/dev/null | awk '{print $NF}' || true)
           checked=$(grep -c -E '^\| .* \| (pass|\*\*FAIL\*\*) \|' temp/properties.log 2>/dev/null || true)
           passed=$(grep -c -E '^\| .* \| pass \|' temp/properties.log 2>/dev/null || true)
           failed=$(grep -c -E '^\| .* \| \*\*FAIL\*\* \|' temp/properties.log 2>/dev/null || true)
 
+          if [ -z "$iterations" ] || [ -z "$checked" ] || [ "$checked" -le 0 ]; then
+            echo "::error::Could not parse property check iterations and results from log (format drift)"
+            exit 1
+          fi
+
           cat <<EOF > metadata/properties-summary.json
           {
             "status": "${{ steps.properties-run.outcome }}",
-            "iterations": 100000,
-            "propertiesChecked": ${checked:-null},
-            "propertiesPassed": ${passed:-null},
-            "propertiesFailed": ${failed:-null}
+            "iterations": $iterations,
+            "propertiesChecked": $checked,
+            "propertiesPassed": $passed,
+            "propertiesFailed": $failed
           }
           EOF
           cat metadata/properties-summary.json
@@ -607,7 +655,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
-      result: ${{ steps.aggregate.outputs.result }}
+      result: ${{ steps.aggregate.outputs.result || 'failure' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -624,31 +672,44 @@ jobs:
           path: artifacts-summary
 
       - name: Generate deep summary
+        id: summary
         env:
+          SCHEMA_VERSION: "1.0.0"
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_REF: ${{ github.ref }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
           FUZZ_BUDGET_SECONDS: ${{ inputs.fuzz_seconds || '1800' }}
+          FUZZ_TARGET: ${{ inputs.target || 'all' }}
           MUTATION_THRESHOLD: "57"
           JOB_RESULTS_JSON: ${{ toJson(needs) }}
         run: dotnet run scripts/DeepSummary.cs -- artifacts-summary deep-summary.json
 
       - name: Upload deep summary artifact
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: deep-summary
           path: deep-summary.json
-          if-no-files-found: error
+          if-no-files-found: ignore
 
       - name: Require every deep-tier job to pass
         id: aggregate
+        if: always()
         env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
+          SUMMARY_OUTCOME: ${{ steps.summary.outcome }}
         run: |
           echo "Deep-tier results: $RESULTS"
+          echo "Summary step outcome: $SUMMARY_OUTCOME"
+          if [ "$SUMMARY_OUTCOME" != "success" ]; then
+            echo "result=failure" >> "$GITHUB_OUTPUT"
+            echo "::error::Deep summary generation failed."
+            exit 1
+          fi
           for result in $RESULTS; do
             if [ "$result" != "success" ]; then
+              echo "result=failure" >> "$GITHUB_OUTPUT"
               echo "::error::A deep-tier job finished with '$result'."
               exit 1
             fi

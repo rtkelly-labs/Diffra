@@ -7,23 +7,47 @@ var outputPath = args.Length > 1 ? args[1] : "deep-summary.json";
 
 var errors = new List<string>();
 
-// Environment metadata
-var schemaVersion = Environment.GetEnvironmentVariable("SCHEMA_VERSION") ?? "1.0.0";
+// Environment metadata (strict: no defaulting)
+var schemaVersion = Environment.GetEnvironmentVariable("SCHEMA_VERSION");
+if (string.IsNullOrEmpty(schemaVersion))
+{
+    errors.Add("Missing required SCHEMA_VERSION environment variable");
+}
+
 var commitSha = Environment.GetEnvironmentVariable("GITHUB_SHA") ?? Environment.GetEnvironmentVariable("COMMIT_SHA");
+if (string.IsNullOrEmpty(commitSha))
+{
+    errors.Add("Missing required GITHUB_SHA environment variable");
+}
+
 var gitRef = Environment.GetEnvironmentVariable("GITHUB_REF");
 var runIdStr = Environment.GetEnvironmentVariable("GITHUB_RUN_ID");
 long? runId = long.TryParse(runIdStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedRunId) ? parsedRunId : null;
 var runAttemptStr = Environment.GetEnvironmentVariable("GITHUB_RUN_ATTEMPT");
 int? runAttempt = int.TryParse(runAttemptStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedAttempt) ? parsedAttempt : null;
+
 var fuzzBudgetStr = Environment.GetEnvironmentVariable("FUZZ_BUDGET_SECONDS");
 int? fuzzBudgetSeconds = int.TryParse(fuzzBudgetStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedBudget) ? parsedBudget : null;
-var mutationThresholdStr = Environment.GetEnvironmentVariable("MUTATION_THRESHOLD") ?? "57";
-int? mutationThreshold = int.TryParse(mutationThresholdStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedThreshold) ? parsedThreshold : 57;
+if (!fuzzBudgetSeconds.HasValue)
+{
+    errors.Add("Missing or invalid FUZZ_BUDGET_SECONDS environment variable");
+}
 
-// Per-job results from needs object if available
+var mutationThresholdStr = Environment.GetEnvironmentVariable("MUTATION_THRESHOLD");
+int? mutationThreshold = int.TryParse(mutationThresholdStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedThreshold) ? parsedThreshold : null;
+if (!mutationThreshold.HasValue)
+{
+    errors.Add("Missing or invalid MUTATION_THRESHOLD environment variable");
+}
+
+// Per-job results from needs object (strict: failure to parse is an error)
 var jobResults = new JsonObject();
 var jobResultsJson = Environment.GetEnvironmentVariable("JOB_RESULTS_JSON");
-if (!string.IsNullOrEmpty(jobResultsJson))
+if (string.IsNullOrEmpty(jobResultsJson))
+{
+    errors.Add("Missing required JOB_RESULTS_JSON environment variable");
+}
+else
 {
     try
     {
@@ -36,7 +60,7 @@ if (!string.IsNullOrEmpty(jobResultsJson))
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"Note: Could not parse JOB_RESULTS_JSON: {ex.Message}");
+        errors.Add($"Failed to parse JOB_RESULTS_JSON: {ex.Message}");
     }
 }
 
@@ -53,6 +77,8 @@ var fuzzTargets = new JsonObject();
 long? totalFuzzExecutions = 0L;
 int? totalFuzzFindings = 0;
 int? testCount = null;
+int? testsPassed = null;
+int? testsFailed = null;
 string? unitTestsStatus = null;
 string? toolSmokeStatus = null;
 double? mutationScore = null;
@@ -64,9 +90,17 @@ int? propertiesChecked = null;
 int? propertiesPassed = null;
 int? propertiesFailed = null;
 
+var allowedPrefixes = new[] { "platform-", "test-summary", "properties-summary", "fuzz-stats-" };
+
 foreach (var file in Directory.GetFiles(artifactsDir, "*.json", SearchOption.AllDirectories))
 {
     var fileName = Path.GetFileName(file);
+    if (!allowedPrefixes.Any(p => fileName.StartsWith(p, StringComparison.OrdinalIgnoreCase)) &&
+        !fileName.Equals("mutation-report.json", StringComparison.OrdinalIgnoreCase))
+    {
+        continue;
+    }
+
     try
     {
         var content = File.ReadAllText(file);
@@ -80,12 +114,18 @@ foreach (var file in Directory.GetFiles(artifactsDir, "*.json", SearchOption.All
                 var platName = platProp.GetString();
                 if (!string.IsNullOrEmpty(platName))
                 {
+                    var archiveSmoke = root.TryGetProperty("archiveSmoke", out var smk) ? smk.GetString() : null;
+                    if (archiveSmoke != "success")
+                    {
+                        errors.Add($"platform '{platName}' archiveSmoke status is '{archiveSmoke ?? "null"}' (expected 'success')");
+                    }
+
                     var platObj = new JsonObject
                     {
                         ["platform"] = platName,
                         ["runner"] = root.TryGetProperty("runner", out var r) ? r.GetString() : null,
                         ["rid"] = root.TryGetProperty("rid", out var rd) ? rd.GetString() : null,
-                        ["archiveSmoke"] = root.TryGetProperty("archiveSmoke", out var smk) ? smk.GetString() : null,
+                        ["archiveSmoke"] = archiveSmoke,
                         ["archiveName"] = root.TryGetProperty("archiveName", out var an) ? an.GetString() : null,
                     };
 
@@ -93,11 +133,6 @@ foreach (var file in Directory.GetFiles(artifactsDir, "*.json", SearchOption.All
                     {
                         platObj["archiveSizeBytes"] = asVal;
                         archiveSizesBytes[platName] = asVal;
-                    }
-                    else if (root.TryGetProperty("archiveSize", out var asPropOld) && asPropOld.TryGetInt64(out var asValOld))
-                    {
-                        platObj["archiveSizeBytes"] = asValOld;
-                        archiveSizesBytes[platName] = asValOld;
                     }
                     else
                     {
@@ -120,18 +155,47 @@ foreach (var file in Directory.GetFiles(artifactsDir, "*.json", SearchOption.All
                 errors.Add("test-summary is missing valid testCount");
             }
 
+            if (root.TryGetProperty("testsPassed", out var tpProp) && tpProp.TryGetInt32(out var tpVal))
+            {
+                testsPassed = tpVal;
+            }
+            else
+            {
+                errors.Add("test-summary is missing valid testsPassed");
+            }
+
+            if (root.TryGetProperty("testsFailed", out var tfProp) && tfProp.TryGetInt32(out var tfVal))
+            {
+                testsFailed = tfVal;
+            }
+            else
+            {
+                errors.Add("test-summary is missing valid testsFailed");
+            }
+
             unitTestsStatus = root.TryGetProperty("unitTests", out var ut) ? ut.GetString() : null;
+            if (unitTestsStatus != "success")
+            {
+                errors.Add($"test-summary unitTests status is '{unitTestsStatus ?? "null"}' (expected 'success')");
+            }
+
             toolSmokeStatus = root.TryGetProperty("toolSmoke", out var ts) ? ts.GetString() : null;
+            if (toolSmokeStatus != "success")
+            {
+                errors.Add($"test-summary toolSmoke status is '{toolSmokeStatus ?? "null"}' (expected 'success')");
+            }
 
             if (root.TryGetProperty("packageSizeBytes", out var psProp) && psProp.TryGetInt64(out var psVal))
             {
-                var pkgName = root.TryGetProperty("packageName", out var pn) ? pn.GetString() ?? "Diffra.Cli.nupkg" : "Diffra.Cli.nupkg";
-                packageSizesBytes[pkgName] = psVal;
-            }
-            else if (root.TryGetProperty("packageSize", out var psPropOld) && psPropOld.TryGetInt64(out var psValOld))
-            {
-                var pkgName = root.TryGetProperty("packageName", out var pn) ? pn.GetString() ?? "Diffra.Cli.nupkg" : "Diffra.Cli.nupkg";
-                packageSizesBytes[pkgName] = psValOld;
+                if (root.TryGetProperty("packageName", out var pn) && !string.IsNullOrEmpty(pn.GetString()))
+                {
+                    var pkgName = pn.GetString()!;
+                    packageSizesBytes[pkgName] = psVal;
+                }
+                else
+                {
+                    errors.Add("test-summary is missing valid packageName");
+                }
             }
             else
             {
@@ -144,17 +208,36 @@ foreach (var file in Directory.GetFiles(artifactsDir, "*.json", SearchOption.All
             {
                 propertyIterations = itVal;
             }
+            else
+            {
+                errors.Add("properties-summary is missing valid iterations");
+            }
+
             if (root.TryGetProperty("propertiesChecked", out var pcProp) && pcProp.TryGetInt32(out var pcVal))
             {
                 propertiesChecked = pcVal;
             }
+            else
+            {
+                errors.Add("properties-summary is missing valid propertiesChecked");
+            }
+
             if (root.TryGetProperty("propertiesPassed", out var ppProp) && ppProp.TryGetInt32(out var ppVal))
             {
                 propertiesPassed = ppVal;
             }
+            else
+            {
+                errors.Add("properties-summary is missing valid propertiesPassed");
+            }
+
             if (root.TryGetProperty("propertiesFailed", out var pfProp) && pfProp.TryGetInt32(out var pfVal))
             {
                 propertiesFailed = pfVal;
+            }
+            else
+            {
+                errors.Add("properties-summary is missing valid propertiesFailed");
             }
         }
         else if (fileName.StartsWith("fuzz-stats-", StringComparison.OrdinalIgnoreCase))
@@ -165,22 +248,17 @@ foreach (var file in Directory.GetFiles(artifactsDir, "*.json", SearchOption.All
                 if (!string.IsNullOrEmpty(targetName))
                 {
                     long? execs = root.TryGetProperty("executions", out var ex) && ex.TryGetInt64(out var exVal) ? exVal : null;
-                    long? execsPerSecond = null;
-                    if (root.TryGetProperty("execsPerSecond", out var eps) && eps.TryGetInt64(out var epsVal))
-                    {
-                        execsPerSecond = epsVal;
-                    }
-                    else if (root.TryGetProperty("execPerSecond", out var epsOld) && epsOld.TryGetInt64(out var epsValOld))
-                    {
-                        execsPerSecond = epsValOld;
-                    }
-
+                    long? execsPerSecond = root.TryGetProperty("execsPerSecond", out var eps) && eps.TryGetInt64(out var epsVal) ? epsVal : null;
                     int? findings = root.TryGetProperty("findingsCount", out var fc) && fc.TryGetInt32(out var fcVal) ? fcVal : null;
                     var status = root.TryGetProperty("status", out var st) ? st.GetString() : null;
 
                     if (execs is null) errors.Add($"fuzz target '{targetName}' is missing executions");
                     if (execsPerSecond is null) errors.Add($"fuzz target '{targetName}' is missing execsPerSecond");
                     if (findings is null) errors.Add($"fuzz target '{targetName}' is missing findingsCount");
+                    if (status != "success")
+                    {
+                        errors.Add($"fuzz target '{targetName}' status is '{status ?? "null"}' (expected 'success')");
+                    }
 
                     fuzzTargets[targetName] = new JsonObject
                     {
@@ -285,17 +363,53 @@ foreach (var reqPlat in requiredPlatforms)
     }
 }
 
+// Validate unit tests: testsFailed must be 0 and testsPassed > 0
 if (!testCount.HasValue) errors.Add("Missing testCount from test-summary");
+if (!testsPassed.HasValue || testsPassed.Value <= 0)
+{
+    errors.Add(string.Create(CultureInfo.InvariantCulture, $"testsPassed must be greater than 0 (got {testsPassed?.ToString(CultureInfo.InvariantCulture) ?? "null"})"));
+}
+if (!testsFailed.HasValue || testsFailed.Value != 0)
+{
+    errors.Add(string.Create(CultureInfo.InvariantCulture, $"testsFailed must be 0 (got {testsFailed?.ToString(CultureInfo.InvariantCulture) ?? "null"})"));
+}
 if (string.IsNullOrEmpty(unitTestsStatus)) errors.Add("Missing unitTestsStatus from test-summary");
 if (string.IsNullOrEmpty(toolSmokeStatus)) errors.Add("Missing toolSmokeStatus from test-summary");
+
+// Validate mutation scores
 if (!mutationScore.HasValue) errors.Add("Missing mutationScore from mutation-report");
 if (!comparisonScore.HasValue) errors.Add("Missing comparisonScore from mutation-report");
 if (!assessmentScore.HasValue) errors.Add("Missing assessmentScore from mutation-report");
+
+// Validate property checks: propertiesFailed must be 0 and propertiesChecked > 0
 if (!propertyIterations.HasValue) errors.Add("Missing propertyIterations from properties-summary");
-if (!propertiesChecked.HasValue) errors.Add("Missing propertiesChecked from properties-summary");
-if (!propertiesPassed.HasValue) errors.Add("Missing propertiesPassed from properties-summary");
-if (!propertiesFailed.HasValue) errors.Add("Missing propertiesFailed from properties-summary");
-if (fuzzTargets.Count == 0) errors.Add("No fuzz targets recorded");
+if (!propertiesChecked.HasValue || propertiesChecked.Value <= 0)
+{
+    errors.Add(string.Create(CultureInfo.InvariantCulture, $"propertiesChecked must be greater than 0 (got {propertiesChecked?.ToString(CultureInfo.InvariantCulture) ?? "null"})"));
+}
+if (!propertiesPassed.HasValue || propertiesPassed.Value <= 0)
+{
+    errors.Add(string.Create(CultureInfo.InvariantCulture, $"propertiesPassed must be greater than 0 (got {propertiesPassed?.ToString(CultureInfo.InvariantCulture) ?? "null"})"));
+}
+if (!propertiesFailed.HasValue || propertiesFailed.Value != 0)
+{
+    errors.Add(string.Create(CultureInfo.InvariantCulture, $"propertiesFailed must be 0 (got {propertiesFailed?.ToString(CultureInfo.InvariantCulture) ?? "null"})"));
+}
+
+// Validate fuzz targets: require all expected targets
+var expectedTarget = Environment.GetEnvironmentVariable("FUZZ_TARGET");
+string[] allFuzzTargets = ["canonical", "evidence", "document", "delivery-index", "payloads", "line-ranges", "bundle", "bundle-zip"];
+string[] requiredTargets = (string.IsNullOrEmpty(expectedTarget) || expectedTarget == "all")
+    ? allFuzzTargets
+    : [expectedTarget];
+
+foreach (var reqTarget in requiredTargets)
+{
+    if (!fuzzTargets.ContainsKey(reqTarget))
+    {
+        errors.Add($"Missing required fuzz target result for '{reqTarget}'");
+    }
+}
 
 var summary = new JsonObject
 {
@@ -307,6 +421,8 @@ var summary = new JsonObject
     ["fuzzBudgetSeconds"] = fuzzBudgetSeconds,
     ["mutationThreshold"] = mutationThreshold,
     ["testCount"] = testCount,
+    ["testsPassed"] = testsPassed,
+    ["testsFailed"] = testsFailed,
     ["unitTestsStatus"] = unitTestsStatus,
     ["toolSmokeStatus"] = toolSmokeStatus,
     ["mutationScore"] = mutationScore,
@@ -350,9 +466,9 @@ if (!string.IsNullOrEmpty(stepSummaryPath))
     using var writer = File.AppendText(stepSummaryPath);
     writer.WriteLine("## Deep Test Tier Summary");
     writer.WriteLine();
-    writer.WriteLine($"- **Schema Version:** {schemaVersion}");
+    writer.WriteLine($"- **Schema Version:** {schemaVersion ?? "null"}");
     writer.WriteLine($"- **Commit:** {commitSha ?? "n/a"}");
-    writer.WriteLine($"- **Test Count:** {testCount?.ToString(CultureInfo.InvariantCulture) ?? "null"}");
+    writer.WriteLine($"- **Test Count:** {testCount?.ToString(CultureInfo.InvariantCulture) ?? "null"} ({testsPassed?.ToString(CultureInfo.InvariantCulture) ?? "null"} passed, {testsFailed?.ToString(CultureInfo.InvariantCulture) ?? "null"} failed)");
     writer.WriteLine($"- **Mutation Score (All Protocol):** {(mutationScore.HasValue ? $"{mutationScore.Value:F2}%" : "null")}");
     writer.WriteLine($"- **Comparison.cs Score:** {(comparisonScore.HasValue ? $"{comparisonScore.Value:F2}%" : "null")}");
     writer.WriteLine($"- **Assessment.cs Score:** {(assessmentScore.HasValue ? $"{assessmentScore.Value:F2}%" : "null")}");

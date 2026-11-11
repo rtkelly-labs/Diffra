@@ -295,6 +295,25 @@ jobs:
       - name: Run frozen regression corpora against candidate build
         run: dotnet run --project tests/regression/Diffra.Regression.csproj --configuration Release --no-build -- --tool runner-bin/diffra
 
+  # Compile-only verification for deep-tier test harnesses (Protocol.Fuzz and Protocol.Tests.Stryker).
+  # Not part of the required check gate, but catches harness breakage on PRs early.
+  compile-harnesses:
+    name: compile-harnesses
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Build fuzz and stryker test harnesses
+        run: |
+          dotnet build tests/Protocol.Fuzz/Protocol.Fuzz.csproj --configuration Release
+          dotnet build tests/Protocol.Tests.Stryker/Protocol.Tests.Stryker.csproj --configuration Release
+
   # The required check. It passes only when every shallow-tier job passes, so a new
   # shallow job is added to this list rather than to the repository ruleset.
   build:

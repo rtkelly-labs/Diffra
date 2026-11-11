@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
     SharpFuzz + libFuzzer harness for document parsers and bundle import.
-    Runs in CI only (see .github/workflows/fuzz.yml). Not part of Diffra.slnx while it is an experiment.
+    Runs in CI only (see .github/workflows/deep.yml). Not part of Diffra.slnx while it is an experiment.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>

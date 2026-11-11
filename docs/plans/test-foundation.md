@@ -82,7 +82,7 @@ Each step is one PR.
 ## Done when
 
 - A PR gets the shallow tier only, in 10 minutes or less.
-- Nightly main runs deep and regression across all five platforms.
+- Nightly main runs deep (native archive publish, isolated smoke test, and regression corpus check across all five platforms; heavy jobs on Linux) and regression.
 - Pushing a `v*` tag cannot produce a release unless deep and regression have passed on that commit.
 - Every released version has a frozen regression corpus that later builds reproduce.
 - The dogfood gate uses a pinned released judge and baselines produced by main.

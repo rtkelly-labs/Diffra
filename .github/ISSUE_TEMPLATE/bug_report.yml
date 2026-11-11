@@ -48,8 +48,8 @@ body:
     id: runtime-version
     attributes:
       label: Environment & Versions
-      description: .NET SDK version, OS version, and Diffra version (e.g. dotnet --version, diffra --version)
-      placeholder: .NET 10.0.100, Diffra 0.1.0-alpha.1
+      description: .NET SDK version (`dotnet --version`), OS version, and Diffra version (the release archive version, or the version shown by `dotnet tool list` for an installed tool)
+      placeholder: .NET 10.0.100, Diffra 0.0.1-alpha.1
     validations:
       required: false
   - type: textarea

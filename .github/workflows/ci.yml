@@ -26,6 +26,15 @@ jobs:
         with:
           config: .ls-lint.yml
 
+      - name: Enforce No Shell or PowerShell Scripts Policy
+        run: |
+          forbidden=$(git ls-files '*.sh' '*.bash' '*.zsh' '*.ps1' '*.psm1')
+          if [ -n "$forbidden" ]; then
+            echo "::error::Shell and PowerShell scripts are not allowed; use C# file-based apps under scripts/:"
+            echo "$forbidden"
+            exit 1
+          fi
+
   compile:
     name: compile
     runs-on: ubuntu-latest

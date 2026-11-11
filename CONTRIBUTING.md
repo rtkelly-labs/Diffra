@@ -42,11 +42,13 @@ documented need.
 
 2. **Linear History & Rebase**:
    - We enforce a strictly linear history on `main`.
-   - Before opening a PR or marking it ready for review, rebase your branch on latest `main`:
+   - Before opening a PR or marking it ready for review, rebase your branch on the latest upstream `main`.
+     If you work from a fork, add the Diffra repository as `upstream` once, then rebase on it:
 
      ```bash
-     git fetch origin
-     git rebase origin/main
+     git remote add upstream https://github.com/rtkelly-labs/Diffra.git
+     git fetch upstream
+     git rebase upstream/main
      ```
 
 3. **Temporary Files & Policies**:
@@ -57,5 +59,5 @@ documented need.
 
 ## Reporting Issues
 
-- **Bug Reports**: Please use the [Bug Report](.github/ISSUE_TEMPLATE/bug_report.yml) form. Provide exact reproduction steps and system versions.
-- **Feature Requests**: Please use the [Feature Request](.github/ISSUE_TEMPLATE/feature_request.yml) form.
+- **Bug Reports**: Please use the [Bug Report](https://github.com/rtkelly-labs/Diffra/issues/new?template=bug_report.yml) form. Provide exact reproduction steps and system versions.
+- **Feature Requests**: Please use the [Feature Request](https://github.com/rtkelly-labs/Diffra/issues/new?template=feature_request.yml) form.

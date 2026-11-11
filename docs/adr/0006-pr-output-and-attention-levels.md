@@ -14,7 +14,10 @@ request.
 
 1. **Attention levels.** Every result has one of three levels: `act`, `review` or `quiet`, shown
    to people as "Needs action", "Worth reviewing" and "Quiet". The level is derived from rule
-   outcomes only; it carries no size or magnitude.
+   outcomes only; it carries no size or magnitude. A failed rule gives `act`. A warning, a value
+   that needs review, a failed attribution or an inconclusive comparison gives `review`, because
+   an input that could not be judged is never shown as a pass (decision 9). Otherwise the level
+   is `quiet`. A result takes the highest level of its findings.
 2. **One comment per pull request**, headed by the attention level. Each time a workflow
    finishes, the comment is rebuilt from every record present for the commit, never patched, and
    shows which datasets are still running.
@@ -42,16 +45,20 @@ request.
 
 ## Not yet decided
 
-- Exactly which rule outcomes map to which attention level (proposed: a failed `fail` rule, a
-  missing required dataset or a rejected record gives `act`; any warning or needs-review gives
-  `review`; otherwise `quiet`).
+- Whether a missing required dataset or a rejected record gives `act`. Neither exists yet.
 - The fixed artifact name (proposed: `diffra-result`).
 - The first lines of the comment.
 - What happens to an existing comment when a pull request becomes quiet.
 
 ## Current code
 
-`report` renders one Delta and an optional Assessment as HTML, JSON or Markdown. Outcomes are
-`pass`, `warn`, `fail`, `needs-review` and `inconclusive`; there are no attention levels, no
-comment, no checks-list line and no output limits. The self-evaluation job writes the Markdown
-report to the job summary.
+`report` renders one Delta and an optional Assessment as HTML, JSON or Markdown, and also in two
+one-screen formats. `--format comment` writes the pull request comment: the attention label, a
+ranked table of at most 4 columns, and, past the limits, one overflow line and the full list in a
+collapsed section. It is empty when the result is quiet. `--format agent` writes the
+agent-facing Markdown: the attention token, the finding count and one line per finding within
+about 500 tokens, ending with a truncation line when findings are left out. Without an Assessment
+every change is worth reviewing, because no rule judged it. The limits are in `OutputLimits`
+(`Attention.cs`), with the defaults above; the CLI does not set them yet. Ranking does not yet
+group findings by dataset or collapse similar findings, nothing posts the comment, and there is
+no checks-list line. The self-evaluation job writes the Markdown report to the job summary.

@@ -32,6 +32,7 @@ foreach (var (name, run) in tests)
 Console.WriteLine($"Passed {tests.Length} protocol identity checks.");
 ComparisonTests.RunAll();
 ReportingTests.RunAll();
+AttentionTests.RunAll();
 CollectTests.RunAll();
 DiffEvalTests.RunAll();
 SampleFixtureTests.RunAll();

@@ -57,7 +57,9 @@ static int Run(string[] arguments)
             "html" => ReportFormat.Html,
             "json" => ReportFormat.Json,
             "markdown" => ReportFormat.Markdown,
-            _ => throw new ArgumentException($"Unsupported report format '{options.Format}'. Choose html, json, or markdown."),
+            "comment" => ReportFormat.Comment,
+            "agent" => ReportFormat.Agent,
+            _ => throw new ArgumentException($"Unsupported report format '{options.Format}'. Choose html, json, markdown, comment or agent."),
         };
 
         var report = ReportRenderer.Render(deltaBytes, assessmentBytes, baselineBytes, format);
@@ -197,7 +199,7 @@ static void PrintUsage()
     Console.Error.WriteLine("  collect --payload <json-file> --subject-id <id> --commit <full-commit> --type-id <id> --type-version <version> --producer-id <id> --producer-version <version> -o <evidence-file>");
     Console.Error.WriteLine("  diff --baseline-ref <reference.json> --baseline-evidence <evidence.json> --evidence <candidate.json> -o <delta.json>");
     Console.Error.WriteLine("  eval --rules <rules.json> --delta <delta.json> -o <assessment.json>");
-    Console.Error.WriteLine("  report <delta-file> [--assessment <file>] [--baseline-ref <reference.json>] [--format html|json|markdown] [-o <file>]");
+    Console.Error.WriteLine("  report <delta-file> [--assessment <file>] [--baseline-ref <reference.json>] [--format html|json|markdown|comment|agent] [-o <file>]");
     Console.Error.WriteLine("  bundle <export|import> [options]");
     Console.Error.WriteLine("  present <bundle|serve> [options]");
 }

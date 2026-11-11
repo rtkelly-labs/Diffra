@@ -36,7 +36,8 @@ public static class Enforcement
 
     /// <summary>
     /// Reads a written value. An absent or empty value is the default. Anything else that is not
-    /// one of the three values is rejected, so a misspelt setting never silently turns enforcement off.
+    /// one of the three values returns false; the caller must treat that as an error rather than
+    /// use <paramref name="value"/>, so a misspelt setting never silently turns enforcement off.
     /// </summary>
     public static bool TryParse(string? text, out FailOn value)
     {

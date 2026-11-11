@@ -32,7 +32,7 @@ public static class AttentionTests
         LineLimitBoundary();
         FailOnNamesTheLowestFailingStatus();
         FailOnReadsOnlyTheThreeValues();
-        Console.WriteLine("PASS attention levels and one-screen output");
+        Console.WriteLine("PASS attention levels, one-screen output and fail-on");
     }
 
     private static void StatusesMapToLevels()
@@ -309,6 +309,11 @@ public static class AttentionTests
         Equal(true, Enforcement.FailsStep(FailOn.Warn, failed), "warn trips on fail");
         Equal(false, Enforcement.FailsStep(FailOn.Warn, unjudged), "statuses other than fail and warn never fail the step");
         Equal(false, Enforcement.FailsStep(FailOn.Warn, []), "no findings never fail the step");
+        Equal(false, Enforcement.FailsStep(FailOn.Fail, unjudged), "fail ignores unjudged statuses");
+        Equal(false, Enforcement.FailsStep(FailOn.Never, warned), "never ignores a warning");
+        Throws<ArgumentOutOfRangeException>(() => Enforcement.FailsStep((FailOn)7, failed));
+        Throws<ArgumentNullException>(() => Enforcement.FailsStep(FailOn.Fail, null!));
+        Throws<ArgumentOutOfRangeException>(() => Enforcement.Token((FailOn)7));
     }
 
     private static void FailOnReadsOnlyTheThreeValues()

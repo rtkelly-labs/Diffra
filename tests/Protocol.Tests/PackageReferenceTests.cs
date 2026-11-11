@@ -27,6 +27,14 @@ public static class PackageReferenceTests
             throw new InvalidOperationException(string.Join(Environment.NewLine, lines));
         }
 
+        // The protocol library takes no package or framework references (docs/adr/0009).
+        var inProtocol = found.Where(r => r.Project.StartsWith("src/Protocol/", StringComparison.Ordinal)).ToList();
+        if (inProtocol.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "The protocol library takes no package references: " + string.Join(", ", inProtocol));
+        }
+
         ParsesReferencesFromProjectText();
         Console.WriteLine($"PASS every package and framework reference is reviewed ({found.Count} listed)");
     }

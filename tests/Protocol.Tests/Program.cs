@@ -39,6 +39,7 @@ CasAndBundleTests.RunAll();
 PresentationTests.RunAll();
 CoverageTests.RunAll();
 TimeSeriesGraphTests.RunAll();
+RootFileTests.RunAll();
 CloudEventsTests.RunAll();
 GraphTests.RunAll();
 PackageReferenceTests.RunAll();

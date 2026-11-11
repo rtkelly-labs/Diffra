@@ -4,21 +4,45 @@ on:
   push:
     branches: [main]
   pull_request:
+  merge_group:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'merge_group' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Lint file names and script languages
+        uses: ls-lint/action@a87c5eb4fb26d7af1bd0adba203dd1e76f7e94eb # v2.3.2
+        with:
+          config: .ls-lint.yml
+
+      - name: Enforce No Shell or PowerShell Scripts Policy
+        run: |
+          forbidden=$(git ls-files '*.sh' '*.bash' '*.zsh' '*.ps1' '*.psm1')
+          if [ -n "$forbidden" ]; then
+            echo "::error::Shell and PowerShell scripts are not allowed; use C# file-based apps under scripts/:"
+            echo "$forbidden"
+            exit 1
+          fi
+
   compile:
     name: compile
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Enforce No Python Scripts Policy
         run: |
@@ -58,24 +82,14 @@ jobs:
       - name: Build solution
         run: dotnet build Diffra.slnx --configuration Release
 
+      - name: Pack Pre-Release Diffra CLI Tool
+        run: dotnet pack src/Cli/Diffra.Cli.csproj --configuration Release -o artifacts/package
+
       - name: Run protocol and integration test suite
         run: dotnet run --project tests/Protocol.Tests/Protocol.Tests.csproj --configuration Release --no-build
 
       - name: Audit package vulnerabilities
         run: dotnet list package --vulnerable --include-transitive
-
-      - name: Dogfood Diffra (Self-Evaluation against Baseline Budget)
-        run: dotnet run scripts/RunDogfood.cs
-
-      - name: Upload Dogfood Review Bundle Artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: diffra-dogfood-bundle
-          path: dogfood-run/review-bundle
-          if-no-files-found: error
-
-      - name: Pack Pre-Release Diffra CLI Tool
-        run: dotnet pack src/Cli/Diffra.Cli.csproj --configuration Release -o artifacts/package
 
       - name: Smoke test installed Diffra CLI tool
         run: |
@@ -127,6 +141,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Check the schemas against the JSON Schema metaschema
         run: |
@@ -170,6 +186,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Checkout RFC 8785 test vectors (cyberphone/json-canonicalization)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -261,6 +279,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
@@ -277,6 +297,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
@@ -295,6 +317,37 @@ jobs:
       - name: Run frozen regression corpora against candidate build
         run: dotnet run --project tests/regression/Diffra.Regression.csproj --configuration Release --no-build -- --tool runner-bin/diffra
 
+  dogfood:
+    name: dogfood
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Install pinned Diffra judge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: dotnet run scripts/InstallJudge.cs
+
+      - name: Dogfood Diffra (Self-Evaluation against Baseline Budget)
+        run: dotnet run scripts/RunDogfood.cs
+
+      - name: Upload Dogfood Review Bundle Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: diffra-dogfood-bundle
+          path: dogfood-run/review-bundle
+          if-no-files-found: ignore
+
   # Compile-only verification for deep-tier test harnesses (Protocol.Fuzz and Protocol.Tests.Stryker).
   # Not part of the required check gate, but catches harness breakage on PRs early.
   compile-harnesses:
@@ -303,6 +356,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
@@ -319,7 +374,7 @@ jobs:
   build:
     name: build
     if: always()
-    needs: [compile, schema-fixtures, jcs-differential, properties, regression-corpus]
+    needs: [lint, compile, schema-fixtures, jcs-differential, properties, regression-corpus, dogfood]
     runs-on: ubuntu-latest
     steps:
       - name: Require every shallow-tier job to pass
@@ -332,4 +387,139 @@ jobs:
               echo "::error::A shallow-tier job finished with '$result'."
               exit 1
             fi
+          done
+
+  record-baseline-collect:
+    name: record-baseline-collect
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Install pinned Diffra judge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: dotnet run scripts/InstallJudge.cs
+
+      - name: Collect main baseline evidence
+        run: dotnet run scripts/RunDogfood.cs --collect-only
+
+      - name: Validate Candidate Evidence Document
+        run: |
+          test -s dogfood-run/candidate-evidence.json
+          jq -e '.id and .subject.commit and .payload' dogfood-run/candidate-evidence.json > /dev/null
+
+      - name: Upload Candidate Evidence Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: candidate-evidence
+          path: dogfood-run/candidate-evidence.json
+          if-no-files-found: error
+
+  record-baseline-publish:
+    name: record-baseline-publish
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [record-baseline-collect]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Candidate Evidence Artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: candidate-evidence
+          path: ${{ runner.temp }}/evidence-input
+
+      - name: Publish baseline to diffra-baselines branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_SHA: ${{ github.sha }}
+          BRANCH: diffra-baselines
+        run: |
+          set -euo pipefail
+          EVIDENCE_FILE="${RUNNER_TEMP}/evidence-input/candidate-evidence.json"
+          REPO_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          WORK_DIR="${RUNNER_TEMP}/diffra-baselines-repo"
+
+          if [ ! -s "$EVIDENCE_FILE" ]; then
+            echo "::error::Candidate evidence file is missing or empty at $EVIDENCE_FILE"
+            exit 1
+          fi
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          rm -rf "$WORK_DIR"
+
+          LS_REMOTE_EXIT=0
+          git ls-remote --exit-code --heads "$REPO_URL" "$BRANCH" > /dev/null 2>&1 || LS_REMOTE_EXIT=$?
+          if [ "$LS_REMOTE_EXIT" -eq 0 ]; then
+            echo "Branch $BRANCH exists on remote. Cloning..."
+            git clone --branch "$BRANCH" --single-branch --depth 20 "$REPO_URL" "$WORK_DIR"
+            cd "$WORK_DIR"
+          elif [ "$LS_REMOTE_EXIT" -eq 2 ]; then
+            echo "Branch $BRANCH does not exist on remote (bootstrap). Initializing orphan branch..."
+            mkdir -p "$WORK_DIR"
+            cd "$WORK_DIR"
+            git init -b "$BRANCH"
+            git remote add origin "$REPO_URL"
+          else
+            echo "::error::git ls-remote failed with exit code $LS_REMOTE_EXIT querying branch $BRANCH"
+            exit "$LS_REMOTE_EXIT"
+          fi
+
+          mkdir -p evidence
+          TARGET_FILE="evidence/${COMMIT_SHA}.json"
+
+          if [ -f "$TARGET_FILE" ]; then
+            if cmp -s "$EVIDENCE_FILE" "$TARGET_FILE"; then
+              echo "Baseline evidence for $COMMIT_SHA already exists with identical content. Idempotent success."
+              exit 0
+            else
+              echo "::error::Baseline evidence for $COMMIT_SHA already exists with DIFFERENT content. Failing without overwriting."
+              exit 1
+            fi
+          fi
+
+          cp "$EVIDENCE_FILE" "$TARGET_FILE"
+          git add "$TARGET_FILE"
+
+          if git diff --staged --quiet; then
+            echo "Nothing to commit for $COMMIT_SHA. Idempotent success."
+            exit 0
+          fi
+
+          git commit -m "baseline: record evidence for ${COMMIT_SHA}"
+
+          MAX_ATTEMPTS=3
+          ATTEMPT=1
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            echo "Push attempt $ATTEMPT of $MAX_ATTEMPTS..."
+            if git push -u origin "$BRANCH"; then
+              echo "Successfully pushed baseline for $COMMIT_SHA to $BRANCH."
+              exit 0
+            fi
+
+            echo "Push failed on attempt $ATTEMPT. Fetching and rebasing..."
+            if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+              echo "::error::Exceeded maximum retry attempts pushing to $BRANCH."
+              exit 1
+            fi
+
+            git fetch origin "$BRANCH"
+            git rebase "origin/$BRANCH"
+            ATTEMPT=$((ATTEMPT + 1))
+            sleep 2
           done

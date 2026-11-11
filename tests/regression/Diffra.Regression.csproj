@@ -5,7 +5,4 @@
     <RootNamespace>Diffra.Regression</RootNamespace>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="../../src/Protocol/Diffra.Protocol.csproj" />
-  </ItemGroup>
 </Project>

@@ -689,5 +689,11 @@
       ],
       "ExpectedExitCode": 0
     }
-  ]
+  ],
+  "Provenance": {
+    "Asset": "Diffra.Cli.0.0.1-alpha.1.nupkg",
+    "Sha256": "b6212a455da046549e01ab595f169d60ad840d64cd54c6e62ac6910526d1ab04",
+    "Tool": "diffra",
+    "Version": "0.0.1-alpha.1"
+  }
 }

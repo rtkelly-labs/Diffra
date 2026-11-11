@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -18,17 +19,70 @@ var protocolFiles = GetSourceFiles(Path.Combine(repoRoot, "src", "Protocol"));
 var cliFiles = GetSourceFiles(Path.Combine(repoRoot, "src", "Cli"));
 var schemaFiles = Directory.GetFiles(Path.Combine(repoRoot, "schemas"), "*.json", SearchOption.TopDirectoryOnly);
 
+long packageSizeBytes = 0;
+var tempPackageDir = Path.Combine(repoRoot, "dogfood-run", "package");
+if (Directory.Exists(tempPackageDir))
+{
+    Directory.Delete(tempPackageDir, recursive: true);
+}
+Directory.CreateDirectory(tempPackageDir);
+
+var start = new ProcessStartInfo("dotnet")
+{
+    RedirectStandardOutput = true,
+    RedirectStandardError = true,
+    UseShellExecute = false
+};
+start.ArgumentList.Add("pack");
+start.ArgumentList.Add(Path.Combine(repoRoot, "src", "Cli", "Diffra.Cli.csproj"));
+start.ArgumentList.Add("-c");
+start.ArgumentList.Add("Release");
+start.ArgumentList.Add("-o");
+start.ArgumentList.Add(tempPackageDir);
+
+using var packProcess = Process.Start(start);
+if (packProcess == null)
+{
+    throw new InvalidOperationException("Failed to start dotnet pack process.");
+}
+var stdoutTask = packProcess.StandardOutput.ReadToEndAsync();
+var stderrTask = packProcess.StandardError.ReadToEndAsync();
+packProcess.WaitForExit();
+var stdout = stdoutTask.GetAwaiter().GetResult();
+var stderr = stderrTask.GetAwaiter().GetResult();
+if (packProcess.ExitCode != 0)
+{
+    throw new InvalidOperationException($"dotnet pack failed with exit code {packProcess.ExitCode}:\n{stderr}\n{stdout}");
+}
+var nupkgFiles = Directory.GetFiles(tempPackageDir, "Diffra.Cli.*.nupkg", SearchOption.TopDirectoryOnly);
+if (nupkgFiles.Length > 0)
+{
+    var nupkg = nupkgFiles.OrderByDescending(f => File.GetLastWriteTimeUtc(f)).First();
+    packageSizeBytes = new FileInfo(nupkg).Length;
+}
+
+if (packageSizeBytes <= 0)
+{
+    throw new InvalidOperationException("Failed to measure packageSizeBytes: no valid nupkg was found or package size is zero.");
+}
+
+var metricsNode = new JsonObject
+{
+    ["aspireRuntimeDependencies"] = aspireDependencies,
+    ["schemasCount"] = schemaFiles.Length,
+    ["sourceFilesCount"] = protocolFiles.Length + cliFiles.Length
+};
+
+if (packageSizeBytes > 0)
+{
+    metricsNode["packageSizeBytes"] = packageSizeBytes;
+}
+
 var payload = new JsonObject
 {
     ["scope"] = "diffra/core",
     ["methodology"] = "static-analysis",
-    ["metrics"] = new JsonObject
-    {
-        ["aspireRuntimeDependencies"] = aspireDependencies,
-        ["compilerWarnings"] = 0,
-        ["schemasCount"] = schemaFiles.Length,
-        ["sourceFilesCount"] = protocolFiles.Length + cliFiles.Length
-    }
+    ["metrics"] = metricsNode
 };
 
 var options = new JsonSerializerOptions { WriteIndented = false };

@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Diffra.Protocol;
+using System.Text.Json.Nodes;
 
 namespace Diffra.Regression;
 
@@ -7,8 +7,23 @@ public static class CorpusGenerator
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    public static void Generate(string corpusRoot, string version, string toolExecutable)
+    public static void Generate(string corpusRoot, string version, string toolExecutable, string? packagePath, string? expectedSha256, string? repoRoot = null)
     {
+        if (toolExecutable.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) ||
+            toolExecutable.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Refusing to generate corpus with in-tree source or csproj. Must use a verified release package or archive executable.");
+        }
+
+        if (repoRoot != null && Path.GetFullPath(toolExecutable).StartsWith(Path.Combine(repoRoot, "src"), StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Refusing to generate corpus with in-tree tool path. Must use an installed release binary.");
+        }
+
+        // Verify the tool and derive its provenance before anything is written, so a wrong or
+        // unidentifiable tool never leaves a partially regenerated corpus behind.
+        var provenance = DeriveProvenance(version, toolExecutable, packagePath, expectedSha256);
+
         var corpusDir = Path.Combine(corpusRoot, version);
         var inputsDir = Path.Combine(corpusDir, "inputs");
         var payloadsDir = Path.Combine(inputsDir, "payloads");
@@ -36,20 +51,96 @@ public static class CorpusGenerator
         // 2. Rules
         WriteRules(rulesDir);
 
-        // 3. Produce committed Evidence inputs
+        // 3. Produce committed Evidence inputs using released tool, sanitized to remove machine host details
         ProduceEvidenceInputs(payloadsDir, evidenceDir, toolExecutable);
 
         // 4. Produce committed baseline-reference.json and manifest.json
         ProduceReferenceAndManifest(evidenceDir, inputsDir);
 
-        // 5. Run cases and produce expected outputs
+        // 5. Run cases and produce expected outputs using released tool
         var cases = RunAndRecordExpected(corpusDir, inputsDir, expectedDir, toolExecutable);
 
-        // 6. Write manifest.json
-        var manifest = new RegressionManifest(version, cases);
+        // 6. Write manifest.json with release provenance
+        var manifest = new RegressionManifest(version, cases, provenance);
         var manifestPath = Path.Combine(corpusDir, "manifest.json");
         File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, JsonOptions) + "\n");
         Console.WriteLine($"Corpus generated successfully for {version} at {corpusDir} with {cases.Count} cases.");
+    }
+
+    private static CorpusProvenance DeriveProvenance(string version, string toolExecutable, string? packagePath, string? expectedSha256)
+    {
+        var reportedVersion = ToolExecutor.InspectToolVersion(toolExecutable);
+        if (string.Equals(reportedVersion, "unknown", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Unable to determine the version of '{toolExecutable}'. A corpus can only be generated from a tool that reports its version.");
+        }
+
+        if (!string.Equals(reportedVersion, version, StringComparison.OrdinalIgnoreCase) &&
+            !reportedVersion.StartsWith(version + "+", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"Tool version mismatch: running '{toolExecutable}' reported version '{reportedVersion}', but requested corpus version is '{version}'.");
+        }
+
+        if (string.IsNullOrWhiteSpace(packagePath) || !File.Exists(packagePath))
+        {
+            throw new InvalidOperationException($"'generate' requires --package <path-to-Diffra.Cli.{version}.nupkg>; the release package was not supplied or does not exist.");
+        }
+
+        var (packageId, packageVersion) = ReadNuspecIdentity(packagePath);
+        if (!string.Equals(packageId, ReleasePackageId, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"Package '{packagePath}' has id '{packageId}' in its nuspec; expected '{ReleasePackageId}'.");
+        }
+
+        if (!string.Equals(packageVersion, version, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"Package '{packagePath}' has version '{packageVersion}' in its nuspec, but requested corpus version is '{version}'.");
+        }
+
+        var reportedCore = reportedVersion.Split('+', 2)[0];
+        if (!string.Equals(reportedCore, packageVersion, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"Tool '{toolExecutable}' reported version '{reportedVersion}', which does not match package version '{packageVersion}'.");
+        }
+
+        var sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(packagePath)));
+        if (expectedSha256 != null && !string.Equals(sha256, expectedSha256.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"Package '{packagePath}' has SHA-256 '{sha256}', but --expected-sha256 is '{expectedSha256}'.");
+        }
+
+        return new CorpusProvenance(
+            Asset: $"{packageId}.{packageVersion}.nupkg",
+            Sha256: sha256,
+            Tool: "diffra",
+            Version: version);
+    }
+
+    private const string ReleasePackageId = "Diffra.Cli";
+
+    private static (string Id, string Version) ReadNuspecIdentity(string packagePath)
+    {
+        using var archive = System.IO.Compression.ZipFile.OpenRead(packagePath);
+        var nuspecs = archive.Entries
+            .Where(e => !e.FullName.Contains('/') && e.FullName.EndsWith(".nuspec", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (nuspecs.Count != 1)
+        {
+            throw new InvalidOperationException($"Package '{packagePath}' must contain exactly one root .nuspec; found {nuspecs.Count}.");
+        }
+
+        using var stream = nuspecs[0].Open();
+        var document = System.Xml.Linq.XDocument.Load(stream);
+        var metadata = document.Root?.Elements().FirstOrDefault(e => e.Name.LocalName == "metadata")
+            ?? throw new InvalidOperationException($"Package '{packagePath}' nuspec has no <metadata> element.");
+        var id = metadata.Elements().FirstOrDefault(e => e.Name.LocalName == "id")?.Value.Trim();
+        var packageVersion = metadata.Elements().FirstOrDefault(e => e.Name.LocalName == "version")?.Value.Trim();
+        if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(packageVersion))
+        {
+            throw new InvalidOperationException($"Package '{packagePath}' nuspec is missing <id> or <version>.");
+        }
+
+        return (id, packageVersion);
     }
 
     private static void WritePayloads(string dir)
@@ -285,6 +376,43 @@ public static class CorpusGenerator
             {
                 throw new InvalidOperationException($"Failed to collect evidence for {payloadFile}: {err}");
             }
+
+            // Strip local host fingerprint from committed input evidence
+            SanitizeEvidenceHostDetails(outputPath);
+        }
+    }
+
+    private static void SanitizeEvidenceHostDetails(string evidencePath)
+    {
+        var jsonText = File.ReadAllText(evidencePath);
+        if (JsonNode.Parse(jsonText) is JsonObject node)
+        {
+            var env = new JsonObject
+            {
+                ["platform"] = "generic",
+                ["runtime"] = "10.0",
+                ["tools"] = new JsonArray()
+            };
+            node["environment"] = env;
+            node.Remove("id");
+
+            var unsignedBytes = System.Text.Encoding.UTF8.GetBytes(node.ToJsonString(new JsonSerializerOptions { WriteIndented = false }));
+            var id = CanonicalHashHelper.ComputeEvidenceId(unsignedBytes);
+
+            var finalObj = new JsonObject
+            {
+                ["schema"] = node["schema"]?.DeepClone(),
+                ["id"] = id
+            };
+            foreach (var kvp in node)
+            {
+                if (kvp.Key != "schema" && kvp.Key != "id")
+                {
+                    finalObj[kvp.Key] = kvp.Value?.DeepClone();
+                }
+            }
+
+            File.WriteAllText(evidencePath, finalObj.ToJsonString(JsonOptions) + "\n");
         }
     }
 
@@ -321,8 +449,7 @@ public static class CorpusGenerator
         };
 
         var referenceBytes = JsonSerializer.SerializeToUtf8Bytes(referenceObj);
-        var referenceCanonical = CanonicalJson.Canonicalize(referenceBytes);
-        var referenceId = DocumentIdentity.ComputeId("baseline-reference", referenceCanonical);
+        var referenceId = CanonicalHashHelper.ComputeDocumentId("baseline-reference", referenceBytes);
 
         var finalReferenceObj = new
         {
@@ -395,8 +522,7 @@ public static class CorpusGenerator
         };
 
         var manifestBytes = JsonSerializer.SerializeToUtf8Bytes(manifestObj);
-        var manifestCanonical = CanonicalJson.Canonicalize(manifestBytes);
-        var manifestId = DocumentIdentity.ComputeId("manifest", manifestCanonical);
+        var manifestId = CanonicalHashHelper.ComputeDocumentId("manifest", manifestBytes);
 
         var finalManifestObj = new
         {
@@ -477,6 +603,7 @@ public static class CorpusGenerator
             var outputRel = $"expected/{outputFile}";
             var runOutputRel = $"output/{outputFile}";
 
+            var expectedFullPath = Path.Combine(corpusDir, outputRel);
             var args = new[]
             {
                 "collect",
@@ -487,7 +614,7 @@ public static class CorpusGenerator
                 "--type-version", "1.0",
                 "--producer-id", "org.diffra.test",
                 "--producer-version", "1.0",
-                "-o", Path.Combine(corpusDir, outputRel)
+                "-o", expectedFullPath
             };
 
             RunTool(args, 0, id);

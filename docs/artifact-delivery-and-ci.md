@@ -224,6 +224,28 @@ and a run counts as non-strict only when the top-level workflow is `deep.yml` it
 (`github.workflow_ref`), so a calling workflow cannot make a run non-strict even if its own
 inputs leak into the called workflow.
 
+### How Diffra gates itself
+
+Diffra self-evaluates every pull request against trusted quality budgets to prevent
+unintended changes to metrics or policies.
+
+- **Pinned trusted judge:** Diffra never allows a candidate pull request to act as
+  its own judge. Instead, self-evaluation runs an immutable, released version of
+  `Diffra.Cli` pinned in the local manifest `.config/dotnet-tools.json`. In CI, the
+  runner downloads the package from GitHub Releases, validates its SHA-256 checksum
+  against the committed digest in `.config/judge-sha256.json`, and restores the tool
+  from an isolated `nuget.config` containing `<clear/>` so `nuget.org` cannot serve
+  the package. RunDogfood executes `dotnet diffra ...` using the restored tool.
+  Moving the judge to a newer release updates the tool manifest and the committed SHA-256.
+- **Baseline storage and authority:** Quality baselines live on an orphan branch named
+  `diffra-baselines`, stored as canonical Evidence documents at `evidence/<sha>.json`.
+  Only post-merge pushes to `main` have `contents: write` permissions to record new
+  baselines for verified commits. Pull request jobs run with read-only access
+  (`contents: read`), fetch the Evidence for their merge-base commit, synthesize a
+  verified Baseline Reference, and evaluate the Delta. If no baseline exists for the
+  merge-base (such as in new repositories or bootstrap runs), the gate reports the
+  assessment outcome as `inconclusive` in the step summary without failing the build.
+
 ## Acceptance checks
 
 - A private release with a narrowly scoped read token produces the same folder

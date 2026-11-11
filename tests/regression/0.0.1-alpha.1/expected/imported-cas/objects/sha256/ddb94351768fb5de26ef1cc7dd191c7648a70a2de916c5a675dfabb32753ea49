@@ -1,6 +1,6 @@
 {
   "schema": "https://diffra.dev/schemas/manifest-v1.schema.json",
-  "id": "sha256:60b34548170199f17b644a9bdd9395b22aba3db64e4b677a5b5ade7763b412fe",
+  "id": "sha256:90ebd50575c548a5c2860915450548691f2d58d63144905c600f965d2799d82c",
   "subject": {
     "kind": "git-repository",
     "id": "example/project",
@@ -17,14 +17,14 @@
       "gate": "required",
       "artifactIds": [],
       "evidenceIds": [
-        "sha256:dd754f85c6194acc8313a372d153164d1f9b9cd10d70d0d48451b87ea98ca084"
+        "sha256:14e14a249ed2572eac60ba4ecaf6761e365120d733a323d1ed2ed43b55f21911"
       ],
       "groups": []
     }
   ],
   "artifacts": [],
   "evidenceIds": [
-    "sha256:dd754f85c6194acc8313a372d153164d1f9b9cd10d70d0d48451b87ea98ca084"
+    "sha256:14e14a249ed2572eac60ba4ecaf6761e365120d733a323d1ed2ed43b55f21911"
   ],
   "provenance": {
     "producerId": "org.diffra.regression",

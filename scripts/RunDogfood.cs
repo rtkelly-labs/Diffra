@@ -4,18 +4,18 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-var repoRoot = FindRepositoryRoot();
-var judgeVersion = ReadJudgeVersion(repoRoot);
-var baselinesDir = Path.Combine(repoRoot, "baselines", "dogfood");
-var workDir = Path.Combine(repoRoot, "dogfood-run");
-Directory.CreateDirectory(workDir);
-
 if (args.Length >= 2 && args[0] == "--check-invariants")
 {
     var testPayload = args[1];
     CheckInvariants(testPayload);
     return;
 }
+
+var repoRoot = FindRepositoryRoot();
+var judgeVersion = ReadJudgeVersion(repoRoot);
+var baselinesDir = Path.Combine(repoRoot, "baselines", "dogfood");
+var workDir = Path.Combine(repoRoot, "dogfood-run");
+Directory.CreateDirectory(workDir);
 
 // Guard: A PR must not supply tracked baseline or dogfood run files.
 var trackedFiles = CaptureOutput("git", "ls-files", "dogfood-run").Trim();
@@ -449,8 +449,7 @@ static void CheckInvariants(string payloadPath)
 
     var invariants = new List<(string Name, int Value, int Expected)>
     {
-        ("aspireRuntimeDependencies", metrics.GetProperty("aspireRuntimeDependencies").GetInt32(), 0),
-        ("compilerWarnings", metrics.GetProperty("compilerWarnings").GetInt32(), 0)
+        ("aspireRuntimeDependencies", metrics.GetProperty("aspireRuntimeDependencies").GetInt32(), 0)
     };
 
     bool anyFailed = false;

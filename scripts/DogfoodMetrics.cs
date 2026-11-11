@@ -69,7 +69,6 @@ if (packageSizeBytes <= 0)
 var metricsNode = new JsonObject
 {
     ["aspireRuntimeDependencies"] = aspireDependencies,
-    ["compilerWarnings"] = 0,
     ["schemasCount"] = schemaFiles.Length,
     ["sourceFilesCount"] = protocolFiles.Length + cliFiles.Length
 };

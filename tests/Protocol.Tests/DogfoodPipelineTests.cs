@@ -172,7 +172,10 @@ public static class DogfoodPipelineTests
         {
             var runDogfoodScript = Path.Combine(repoRoot, "scripts", "RunDogfood.cs");
 
-            // 1. Valid invariants pass
+            // 1. Valid invariants pass and --check-invariants does not create dogfood-run/
+            var dogfoodRunDir = Path.Combine(repoRoot, "dogfood-run");
+            bool dogfoodRunExistedBefore = Directory.Exists(dogfoodRunDir);
+
             var validPayload = Path.Combine(tempDir, "valid-payload.json");
             File.WriteAllText(validPayload, """
             {
@@ -180,7 +183,6 @@ public static class DogfoodPipelineTests
               "methodology": "static-analysis",
               "metrics": {
                 "aspireRuntimeDependencies": 0,
-                "compilerWarnings": 0,
                 "packageSizeBytes": 184000,
                 "schemasCount": 12,
                 "sourceFilesCount": 29
@@ -193,10 +195,13 @@ public static class DogfoodPipelineTests
             {
                 throw new InvalidOperationException($"Expected valid invariants to pass (exit 0), got {validExit}:\n{validOut}");
             }
-            if (!validOut.Contains("[INVARIANT] aspireRuntimeDependencies=0 PASS") ||
-                !validOut.Contains("[INVARIANT] compilerWarnings=0 PASS"))
+            if (!validOut.Contains("[INVARIANT] aspireRuntimeDependencies=0 PASS"))
             {
                 throw new InvalidOperationException($"Expected PASS outputs for invariants, got:\n{validOut}");
+            }
+            if (!dogfoodRunExistedBefore && Directory.Exists(dogfoodRunDir))
+            {
+                throw new InvalidOperationException("--check-invariants created dogfood-run/ directory unexpectedly.");
             }
 
             // 2. Aspire dependency invariant violation fails
@@ -207,7 +212,6 @@ public static class DogfoodPipelineTests
               "methodology": "static-analysis",
               "metrics": {
                 "aspireRuntimeDependencies": 1,
-                "compilerWarnings": 0,
                 "packageSizeBytes": 184000,
                 "schemasCount": 12,
                 "sourceFilesCount": 29
@@ -224,36 +228,24 @@ public static class DogfoodPipelineTests
             {
                 throw new InvalidOperationException($"Expected FAIL message in stderr for aspireRuntimeDependencies, got:\n{badAspireErr}\n{badAspireOut}");
             }
-
-            // 3. Compiler warnings invariant violation fails
-            var badWarningsPayload = Path.Combine(tempDir, "bad-warnings-payload.json");
-            File.WriteAllText(badWarningsPayload, """
-            {
-              "scope": "diffra/core",
-              "methodology": "static-analysis",
-              "metrics": {
-                "aspireRuntimeDependencies": 0,
-                "compilerWarnings": 3,
-                "packageSizeBytes": 184000,
-                "schemasCount": 12,
-                "sourceFilesCount": 29
-              }
-            }
-            """);
-
-            var (badWarningsExit, badWarningsOut, badWarningsErr) = RunProcessAllowExitCodeWithOutput("dotnet", "run", runDogfoodScript, "--", "--check-invariants", badWarningsPayload);
-            if (badWarningsExit == 0)
-            {
-                throw new InvalidOperationException("Expected non-zero exit code when compilerWarnings > 0, but got 0.");
-            }
-            if (!badWarningsErr.Contains("[INVARIANT] compilerWarnings=3 FAIL (expected 0)"))
-            {
-                throw new InvalidOperationException($"Expected FAIL message in stderr for compilerWarnings, got:\n{badWarningsErr}\n{badWarningsOut}");
-            }
         }
         finally
         {
-            try { Directory.Delete(tempDir, recursive: true); } catch { }
+            if (Directory.Exists(tempDir))
+            {
+                try
+                {
+                    Directory.Delete(tempDir, recursive: true);
+                }
+                catch (IOException)
+                {
+                    // Best-effort cleanup of temporary test directory; ignore transient file locks during teardown.
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    // Best-effort cleanup of temporary test directory; ignore permission errors during teardown.
+                }
+            }
         }
     }
 

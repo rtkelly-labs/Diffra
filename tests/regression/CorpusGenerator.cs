@@ -7,7 +7,7 @@ public static class CorpusGenerator
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    public static void Generate(string corpusRoot, string version, string toolExecutable, string? repoRoot = null)
+    public static void Generate(string corpusRoot, string version, string toolExecutable, string? packagePath, string? expectedSha256, string? repoRoot = null)
     {
         if (toolExecutable.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) ||
             toolExecutable.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
@@ -22,7 +22,7 @@ public static class CorpusGenerator
 
         // Verify the tool and derive its provenance before anything is written, so a wrong or
         // unidentifiable tool never leaves a partially regenerated corpus behind.
-        var provenance = DeriveProvenance(version, toolExecutable, repoRoot);
+        var provenance = DeriveProvenance(version, toolExecutable, packagePath, expectedSha256);
 
         var corpusDir = Path.Combine(corpusRoot, version);
         var inputsDir = Path.Combine(corpusDir, "inputs");
@@ -67,7 +67,7 @@ public static class CorpusGenerator
         Console.WriteLine($"Corpus generated successfully for {version} at {corpusDir} with {cases.Count} cases.");
     }
 
-    private static CorpusProvenance DeriveProvenance(string version, string toolExecutable, string? repoRoot)
+    private static CorpusProvenance DeriveProvenance(string version, string toolExecutable, string? packagePath, string? expectedSha256)
     {
         var reportedVersion = ToolExecutor.InspectToolVersion(toolExecutable);
         if (string.Equals(reportedVersion, "unknown", StringComparison.Ordinal))
@@ -81,38 +81,66 @@ public static class CorpusGenerator
             throw new InvalidOperationException($"Tool version mismatch: running '{toolExecutable}' reported version '{reportedVersion}', but requested corpus version is '{version}'.");
         }
 
-        var assetName = $"Diffra.Cli.{version}.nupkg";
-        string? pkgPath = null;
-        if (repoRoot != null)
+        if (string.IsNullOrWhiteSpace(packagePath) || !File.Exists(packagePath))
         {
-            pkgPath = new[]
-                {
-                    Path.Combine(repoRoot, "artifacts", "package", assetName),
-                    Path.Combine(repoRoot, "temp", "pinned-tool", assetName),
-                }
-                .FirstOrDefault(File.Exists);
+            throw new InvalidOperationException($"'generate' requires --package <path-to-Diffra.Cli.{version}.nupkg>; the release package was not supplied or does not exist.");
         }
 
-        string sha256;
-        if (pkgPath != null)
+        var (packageId, packageVersion) = ReadNuspecIdentity(packagePath);
+        if (!string.Equals(packageId, ReleasePackageId, StringComparison.OrdinalIgnoreCase))
         {
-            sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(pkgPath)));
+            throw new InvalidOperationException($"Package '{packagePath}' has id '{packageId}' in its nuspec; expected '{ReleasePackageId}'.");
         }
-        else if (File.Exists(toolExecutable))
+
+        if (!string.Equals(packageVersion, version, StringComparison.OrdinalIgnoreCase))
         {
-            sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(toolExecutable)));
-            assetName = Path.GetFileName(toolExecutable);
+            throw new InvalidOperationException($"Package '{packagePath}' has version '{packageVersion}' in its nuspec, but requested corpus version is '{version}'.");
         }
-        else
+
+        var reportedCore = reportedVersion.Split('+', 2)[0];
+        if (!string.Equals(reportedCore, packageVersion, StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidOperationException($"Unable to derive provenance SHA-256 for tool version '{version}'. Package or binary not found.");
+            throw new InvalidOperationException($"Tool '{toolExecutable}' reported version '{reportedVersion}', which does not match package version '{packageVersion}'.");
+        }
+
+        var sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(packagePath)));
+        if (expectedSha256 != null && !string.Equals(sha256, expectedSha256.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"Package '{packagePath}' has SHA-256 '{sha256}', but --expected-sha256 is '{expectedSha256}'.");
         }
 
         return new CorpusProvenance(
-            Asset: assetName,
+            Asset: $"{packageId}.{packageVersion}.nupkg",
             Sha256: sha256,
             Tool: "diffra",
             Version: version);
+    }
+
+    private const string ReleasePackageId = "Diffra.Cli";
+
+    private static (string Id, string Version) ReadNuspecIdentity(string packagePath)
+    {
+        using var archive = System.IO.Compression.ZipFile.OpenRead(packagePath);
+        var nuspecs = archive.Entries
+            .Where(e => !e.FullName.Contains('/') && e.FullName.EndsWith(".nuspec", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (nuspecs.Count != 1)
+        {
+            throw new InvalidOperationException($"Package '{packagePath}' must contain exactly one root .nuspec; found {nuspecs.Count}.");
+        }
+
+        using var stream = nuspecs[0].Open();
+        var document = System.Xml.Linq.XDocument.Load(stream);
+        var metadata = document.Root?.Elements().FirstOrDefault(e => e.Name.LocalName == "metadata")
+            ?? throw new InvalidOperationException($"Package '{packagePath}' nuspec has no <metadata> element.");
+        var id = metadata.Elements().FirstOrDefault(e => e.Name.LocalName == "id")?.Value.Trim();
+        var packageVersion = metadata.Elements().FirstOrDefault(e => e.Name.LocalName == "version")?.Value.Trim();
+        if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(packageVersion))
+        {
+            throw new InvalidOperationException($"Package '{packagePath}' nuspec is missing <id> or <version>.");
+        }
+
+        return (id, packageVersion);
     }
 
     private static void WritePayloads(string dir)

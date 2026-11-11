@@ -117,9 +117,17 @@ Comparison of every other field in the document continues strictly. Any differen
 To freeze a new corpus for release `<version>` using a verified released binary:
 
 ```sh
-dotnet run --project tests/regression/Diffra.Regression.csproj -- generate <version> --tool <path-to-released-diffra>
+dotnet run --project tests/regression/Diffra.Regression.csproj -- generate <version> \
+  --tool <path-to-released-diffra> \
+  --package <path-to-Diffra.Cli.<version>.nupkg> \
+  --expected-sha256 <published-sha256>
 ```
 
-`generate` strictly requires a verified external release executable and refuses `.csproj` or in-tree source paths. Before it writes anything, it checks that the tool reports `<version>` (an unknown version fails) and derives the SHA-256 from the release package (`artifacts/package/` or `temp/pinned-tool/`) or, failing that, from the executable itself. It records that provenance (asset name, SHA-256, version) in `manifest.json`.
+`generate` requires an external release executable and refuses `.csproj` or in-tree source paths. `--package` is required and must be the release package the tool was installed from. There is no directory search and no fallback to hashing the executable. Before it writes anything, `generate` checks:
+- the package's nuspec has id `Diffra.Cli` and version `<version>`; the file name is not trusted;
+- the tool reports a known version that matches the package version (build metadata after `+` is ignored);
+- when `--expected-sha256` is given, the package's SHA-256 matches it. An in-tree `dotnet pack` produces a package with the same id and version as the release, so pass the published digest to be sure the package is the released one.
+
+Any failure stops `generate` before anything is written. It records the provenance (asset name, package SHA-256, version) in `manifest.json`.
 
 Committed Evidence inputs under `inputs/evidence/` are rewritten by the harness, not kept as the release emitted them: `environment` is replaced with `{"platform":"generic","runtime":"10.0","tools":[]}` and `id` is re-minted with `CanonicalHashHelper.ComputeEvidenceId`, so the fixtures carry no host fingerprint.

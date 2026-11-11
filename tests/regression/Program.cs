@@ -10,6 +10,8 @@ string? newTool = null;
 string? oldPkg = null;
 string? newPkg = null;
 string? corpusRoot = null;
+string? package = null;
+string? expectedSha256 = null;
 var quick = false;
 var allowPath = false;
 
@@ -64,6 +66,20 @@ for (var i = 0; i < argsList.Count; i++)
             if (i + 1 < argsList.Count)
             {
                 newTool = argsList[++i];
+            }
+            break;
+
+        case "--package":
+            if (i + 1 < argsList.Count)
+            {
+                package = argsList[++i];
+            }
+            break;
+
+        case "--expected-sha256":
+            if (i + 1 < argsList.Count)
+            {
+                expectedSha256 = argsList[++i];
             }
             break;
 
@@ -137,8 +153,14 @@ if (mode == "generate")
         return 2;
     }
 
-    Console.WriteLine($"Generating corpus for {version} at {corpusRoot} using {tool}...");
-    CorpusGenerator.Generate(corpusRoot, version, tool, repoRoot);
+    if (string.IsNullOrWhiteSpace(package))
+    {
+        Console.Error.WriteLine($"Error: 'generate' requires --package <path-to-Diffra.Cli.{version}.nupkg>, the release package the tool was installed from.");
+        return 2;
+    }
+
+    Console.WriteLine($"Generating corpus for {version} at {corpusRoot} using {tool} from {package}...");
+    CorpusGenerator.Generate(corpusRoot, version, tool, package, expectedSha256, repoRoot);
     return 0;
 }
 
@@ -334,7 +356,9 @@ static void PrintUsage()
     Console.WriteLine("  --compare --old <old> --new <new>      Compare two tool builds against all corpora");
     Console.WriteLine("            [--old-pkg <path>]           Path to old package (.nupkg / archive) for SHA-256 check");
     Console.WriteLine("            [--new-pkg <path>]           Path to new package (.nupkg / archive) for SHA-256 check");
-    Console.WriteLine("  generate <version> --tool <path>       Generate a new frozen corpus for a release using verified tool");
+    Console.WriteLine("  generate <version> --tool <path> --package <nupkg> [--expected-sha256 <hex>]");
+    Console.WriteLine("                                         Generate a new frozen corpus for a release; the package's nuspec");
+    Console.WriteLine("                                         id/version and the tool's version must match <version>");
     Console.WriteLine("  --corpus <path>                        Path to corpus directory (default: tests/regression)");
 }
 

@@ -1,0 +1,138 @@
+name: Deep baseline
+
+# Publishes the deep Evidence that a nightly Deep run on main recorded to the diffra-baselines
+# branch, at evidence/deep/<sha>/<facet>.json. This mirrors ci.yml's record-baseline-collect and
+# record-baseline-publish split: the Deep run collects without write access, and only this job
+# can write. It lives in its own workflow so that deep.yml keeps no job with write access, which
+# a read-only caller could not start. deep.yml is a reusable workflow meant for read-only
+# callers such as the release gate in release.yml.
+#
+# workflow_run fires only for runs of the Deep workflow itself. A release or any other caller
+# runs deep.yml inside its own run, so it never triggers this workflow.
+on:
+  workflow_run:
+    workflows: [Deep]
+    types: [completed]
+
+permissions:
+  contents: read
+
+# Two publishes for the same commit queue rather than race; neither is cancelled.
+concurrency:
+  group: deep-baseline-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  publish:
+    name: publish deep baseline
+    if: >-
+      github.repository == 'rtkelly-labs/Diffra' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'schedule' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == 'rtkelly-labs/Diffra'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download deep Evidence artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: deep-evidence
+          path: ${{ runner.temp }}/deep-evidence
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Publish deep baseline to diffra-baselines branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
+          BRANCH: diffra-baselines
+        run: |
+          set -euo pipefail
+          INPUT_DIR="${RUNNER_TEMP}/deep-evidence"
+          MANIFEST="${INPUT_DIR}/manifest.json"
+          REPO_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          WORK_DIR="${RUNNER_TEMP}/diffra-baselines-repo"
+          FACETS="strength mutation throughput size"
+
+          if ! [[ "$COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Unexpected head SHA '$COMMIT_SHA'."
+            exit 1
+          fi
+
+          # Only Evidence the Deep run itself marked as recorded, for this exact commit, is published.
+          if [ "$(jq -r '.mode' "$MANIFEST")" != "record" ] || [ "$(jq -r '.commit' "$MANIFEST")" != "$COMMIT_SHA" ]; then
+            echo "::error::The deep-evidence manifest is not a record for $COMMIT_SHA."
+            exit 1
+          fi
+          for facet in $FACETS; do
+            file="${INPUT_DIR}/evidence/${facet}.json"
+            if [ ! -s "$file" ] || [ "$(jq -r '.subject.commit' "$file")" != "$COMMIT_SHA" ]; then
+              echo "::error::Recorded $facet Evidence is missing or is not for $COMMIT_SHA."
+              exit 1
+            fi
+          done
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          rm -rf "$WORK_DIR"
+
+          LS_REMOTE_EXIT=0
+          git ls-remote --exit-code --heads "$REPO_URL" "$BRANCH" > /dev/null 2>&1 || LS_REMOTE_EXIT=$?
+          if [ "$LS_REMOTE_EXIT" -eq 0 ]; then
+            echo "Branch $BRANCH exists on remote. Cloning..."
+            git clone --branch "$BRANCH" --single-branch --depth 20 "$REPO_URL" "$WORK_DIR"
+            cd "$WORK_DIR"
+          elif [ "$LS_REMOTE_EXIT" -eq 2 ]; then
+            echo "Branch $BRANCH does not exist on remote (bootstrap). Initializing orphan branch..."
+            mkdir -p "$WORK_DIR"
+            cd "$WORK_DIR"
+            git init -b "$BRANCH"
+            git remote add origin "$REPO_URL"
+          else
+            echo "::error::git ls-remote failed with exit code $LS_REMOTE_EXIT querying branch $BRANCH"
+            exit "$LS_REMOTE_EXIT"
+          fi
+
+          TARGET_DIR="evidence/deep/${COMMIT_SHA}"
+          # The nightly run repeats on an unchanged main, and fuzz throughput differs run to run,
+          # so the first Evidence recorded for a commit is kept and later ones are not written.
+          if [ -d "$TARGET_DIR" ]; then
+            echo "::notice::Deep Evidence for $COMMIT_SHA is already recorded; keeping the first record."
+            exit 0
+          fi
+
+          mkdir -p "$TARGET_DIR"
+          for facet in $FACETS; do
+            cp "${INPUT_DIR}/evidence/${facet}.json" "${TARGET_DIR}/${facet}.json"
+          done
+          git add "$TARGET_DIR"
+          git commit -m "baseline: record deep evidence for ${COMMIT_SHA}"
+
+          MAX_ATTEMPTS=3
+          ATTEMPT=1
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            echo "Push attempt $ATTEMPT of $MAX_ATTEMPTS..."
+            if git push -u origin "$BRANCH"; then
+              echo "Published deep Evidence for $COMMIT_SHA to $BRANCH:$TARGET_DIR."
+              exit 0
+            fi
+
+            echo "Push failed on attempt $ATTEMPT. Fetching and rebasing..."
+            if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+              echo "::error::Exceeded maximum retry attempts pushing to $BRANCH."
+              exit 1
+            fi
+            git fetch origin "$BRANCH"
+            git rebase "origin/$BRANCH"
+            ATTEMPT=$((ATTEMPT + 1))
+            sleep 2
+          done

@@ -136,6 +136,8 @@ int? testsPassed = null;
 int? testsFailed = null;
 string? unitTestsStatus = null;
 string? toolSmokeStatus = null;
+JsonObject? coverage = null;
+JsonObject? mutationCounts = null;
 double? mutationScore = null;
 double? comparisonScore = null;
 double? assessmentScore = null;
@@ -239,6 +241,31 @@ foreach (var file in Directory.GetFiles(artifactsDir, "*.json", SearchOption.All
             if (toolSmokeStatus != "success")
             {
                 errors.Add($"test-summary toolSmoke status is '{toolSmokeStatus ?? "null"}' (expected 'success')");
+            }
+
+            if (root.TryGetProperty("coverage", out var covProp) && covProp.ValueKind == JsonValueKind.Object)
+            {
+                coverage = new JsonObject();
+                foreach (var name in new[] { "linesCovered", "linesValid", "branchesCovered", "branchesValid" })
+                {
+                    if (covProp.TryGetProperty(name, out var covValue) && covValue.TryGetInt64(out var covNumber) && covNumber >= 0)
+                    {
+                        coverage[name] = covNumber;
+                    }
+                    else
+                    {
+                        errors.Add($"test-summary coverage is missing valid {name}");
+                    }
+                }
+
+                if (coverage["linesValid"]?.GetValue<long>() is not > 0 || coverage["branchesValid"]?.GetValue<long>() is not > 0)
+                {
+                    errors.Add("test-summary coverage must measure at least one line and one branch");
+                }
+            }
+            else
+            {
+                errors.Add("test-summary is missing coverage");
             }
 
             if (root.TryGetProperty("packageSizeBytes", out var psProp) && psProp.TryGetInt64(out var psVal))
@@ -379,6 +406,12 @@ foreach (var file in Directory.GetFiles(artifactsDir, "*.json", SearchOption.All
                     totalNoCoverage += fNoCoverage;
 
                     int fTotal = fKilled + fSurvived + fTimeout + fNoCoverage;
+                    if (fTotal > 0 && (path.EndsWith("Comparison.cs", StringComparison.OrdinalIgnoreCase) || path.EndsWith("Assessment.cs", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        mutationCounts ??= new JsonObject();
+                        mutationCounts[path.EndsWith("Comparison.cs", StringComparison.OrdinalIgnoreCase) ? "comparison" : "assessment"] = MutantCounts(fKilled, fSurvived, fTimeout, fNoCoverage);
+                    }
+
                     if (fTotal > 0)
                     {
                         // Unrounded, so the floor check matches the workflow's own gate exactly.
@@ -393,6 +426,9 @@ foreach (var file in Directory.GetFiles(artifactsDir, "*.json", SearchOption.All
                         }
                     }
                 }
+
+                mutationCounts ??= new JsonObject();
+                mutationCounts["protocol"] = MutantCounts(totalKilled, totalSurvived, totalTimeout, totalNoCoverage);
 
                 if (!mutationScore.HasValue)
                 {
@@ -428,6 +464,14 @@ foreach (var reqPlat in requiredPlatforms)
 
 // Validate unit tests: testsFailed must be 0 and testsPassed > 0
 if (!testCount.HasValue) errors.Add("Missing testCount from test-summary");
+if (coverage is null) errors.Add("Missing coverage from test-summary");
+foreach (var scope in new[] { "protocol", "comparison", "assessment" })
+{
+    if (mutationCounts is null || !mutationCounts.ContainsKey(scope))
+    {
+        errors.Add($"Missing {scope} mutant counts from mutation-report");
+    }
+}
 if (!testsPassed.HasValue || testsPassed.Value <= 0)
 {
     errors.Add(string.Create(CultureInfo.InvariantCulture, $"testsPassed must be greater than 0 (got {testsPassed?.ToString(CultureInfo.InvariantCulture) ?? "null"})"));
@@ -518,6 +562,8 @@ var summary = new JsonObject
     ["mutationScore"] = mutationScore,
     ["comparisonMutationScore"] = comparisonScore.HasValue ? Math.Round(comparisonScore.Value, 2) : null,
     ["assessmentMutationScore"] = assessmentScore.HasValue ? Math.Round(assessmentScore.Value, 2) : null,
+    ["mutationCounts"] = mutationCounts,
+    ["coverage"] = coverage,
     ["fuzz"] = new JsonObject
     {
         ["totalExecutions"] = totalFuzzExecutions,
@@ -564,6 +610,7 @@ if (!string.IsNullOrEmpty(stepSummaryPath))
     writer.WriteLine($"- **Mutation Score (All Protocol):** {(mutationScore.HasValue ? $"{mutationScore.Value:F2}%" : "null")}");
     writer.WriteLine($"- **Comparison.cs Score:** {(comparisonScore.HasValue ? $"{comparisonScore.Value:F2}%" : "null")}");
     writer.WriteLine($"- **Assessment.cs Score:** {(assessmentScore.HasValue ? $"{assessmentScore.Value:F2}%" : "null")}");
+    writer.WriteLine($"- **Line Coverage (Protocol):** {(coverage is null ? "null" : $"{coverage["linesCovered"]}/{coverage["linesValid"]}")}; **Branch Coverage:** {(coverage is null ? "null" : $"{coverage["branchesCovered"]}/{coverage["branchesValid"]}")}");
     writer.WriteLine($"- **Fuzzing Total Executions:** {totalFuzzExecutions?.ToString("N0", CultureInfo.InvariantCulture) ?? "null"} (Findings: {totalFuzzFindings?.ToString(CultureInfo.InvariantCulture) ?? "null"})");
     writer.WriteLine($"- **Property Checks:** {propertiesPassed?.ToString(CultureInfo.InvariantCulture) ?? "null"}/{propertiesChecked?.ToString(CultureInfo.InvariantCulture) ?? "null"} passed ({propertyIterations?.ToString("N0", CultureInfo.InvariantCulture) ?? "null"} iterations)");
     writer.WriteLine();
@@ -614,3 +661,11 @@ if (errors.Count > 0)
 }
 
 return 0;
+
+static JsonObject MutantCounts(int killed, int survived, int timeout, int noCoverage) => new()
+{
+    ["killed"] = killed,
+    ["survived"] = survived,
+    ["timeout"] = timeout,
+    ["noCoverage"] = noCoverage
+};

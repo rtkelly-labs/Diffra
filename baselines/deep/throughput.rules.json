@@ -1,0 +1,5 @@
+{
+  "id": "diffra.deep.throughput",
+  "version": "1.0.0",
+  "warnAboveRelativeIncrease": "0.25"
+}

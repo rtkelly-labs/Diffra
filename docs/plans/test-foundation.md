@@ -79,6 +79,7 @@ Each step is one PR.
 5. **Release gate.** `release.yml` requires the deep and regression workflows on the tagged commit.
    Status: implemented in `.github/workflows/release.yml`; a tag release also requires `tests/regression/<version>/` (see "Releasing Diffra" in `docs/artifact-delivery-and-ci.md`).
 6. **Test strength as Evidence.** Turn the deep-run results into Evidence and gate on them.
+   Status: implemented. `scripts/DeepEvidence.cs` turns `deep-summary.json` into strength, mutation, throughput and size Evidence (payload schema in `baselines/deep/payload.schema.json`, rules in `baselines/deep/*.rules.json`), and the test job now collects coverage. The nightly run on `main` records the Evidence, and `deep-baseline.yml` publishes it to `diffra-baselines` at `evidence/deep/<sha>/`. Every other deep run is judged against the nearest ancestor's Evidence with the pinned judge, and a `fail` verdict fails the `deep` job. With no baseline the verdict is `inconclusive`. See `docs/artifact-delivery-and-ci.md`.
 
 ## Done when
 

@@ -1,0 +1,6 @@
+{
+  "id": "diffra.deep.size",
+  "version": "1.0.0",
+  "warnAboveRelativeIncrease": "0.05",
+  "failAboveRelativeIncrease": "0.2"
+}

@@ -19,7 +19,12 @@ public sealed record NumericEvidence(
 /// <summary>Resolved baseline document identity paired with its evidence identity.</summary>
 public sealed record BaselineEvidenceReference(string Id, string EvidenceId, string Status);
 
-/// <summary>Stable comparator identity and the environment used for this comparison.</summary>
+/// <summary>
+/// Stable comparator identity and the environment used for this comparison. The environment
+/// enters the Delta ID, so it must name only what changes comparison results. The default
+/// records the runtime family, never the host patch version, so the same comparison gets the
+/// same ID on every machine.
+/// </summary>
 public sealed record NumericComparatorOptions(
     string Id,
     string Version,
@@ -30,7 +35,7 @@ public sealed record NumericComparatorOptions(
         "diffra.structured-numeric",
         "1.0.0",
         "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
-        new Dictionary<string, string>(StringComparer.Ordinal) { ["runtime"] = System.Environment.Version.ToString() });
+        new Dictionary<string, string>(StringComparer.Ordinal) { ["runtime"] = "dotnet" });
 }
 
 /// <summary>Per-measurement numeric delta. A null relative value means the baseline was zero.</summary>

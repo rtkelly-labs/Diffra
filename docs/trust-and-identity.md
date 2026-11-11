@@ -76,6 +76,8 @@ Any change to the subject commit, Evidence ID, payload digest, or policy identit
 
 A Delta projection covers its schema, exact `baselineId`, candidate Evidence ID, comparator ID/version/configuration digest and input type/version, status, typed changes, type resolution, and complete schema-validated comparison provenance. V1 requires exact type/version matches, so it has no migration identity field. It contains no policy verdict.
 
+The comparison environment in Delta provenance names only what can change a comparison result. It records the runtime family (`"runtime": "dotnet"`), not the host patch version, so the same inputs and comparator produce the same Delta ID on every machine. Comparator logic changes are carried by the comparator version and configuration digest, which already enter the identity.
+
 An Assessment projection covers schema, Delta ID/status, policy ID/version, rules digest, outcome, findings, and evaluator provenance. Re-evaluating a Delta under new rules changes only the Assessment ID. Rendering the same Delta and Assessment through a different renderer changes presentation identity only; it does not alter Evidence, Delta, Assessment, or baseline approval.
 
 ## Result states

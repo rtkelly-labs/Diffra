@@ -32,6 +32,7 @@ internal static class ComparisonTests
         AddedAndRemovedMetricsAreReportedInPathOrder();
         IdenticalEvidenceIsUnchangedAndPasses();
         DeltaIdIsTheFramedCanonicalProjection();
+        DeltaIdDoesNotDependOnTheHostRuntime();
         ComparisonGuardsReturnTheirStatus();
         MalformedMeasurementsAreInconclusive();
         RelativeThresholdsWarnAndFail();
@@ -344,6 +345,27 @@ internal static class ComparisonTests
             Equal("inconclusive", result.Outcome);
             Equal("comparison-not-assessable", result.Findings.Single().Id);
         }
+    }
+
+    private static void DeltaIdDoesNotDependOnTheHostRuntime()
+    {
+        var baseline = Evidence("{\"count\":1}");
+        var candidate = Evidence("{\"count\":2}", CandidateEvidenceId);
+        var delta = Compare(baseline, candidate);
+
+        Equal(1, delta.Provenance.Environment.Count);
+        Equal("dotnet", delta.Provenance.Environment["runtime"]);
+        True(!delta.Provenance.Environment.Values.Contains(Environment.Version.ToString()));
+
+        var pinned = StructuredNumericComparator.Compare(
+            baseline,
+            candidate,
+            new BaselineEvidenceReference(BaselineId, BaselineEvidenceId, "trusted"),
+            NumericComparatorOptions.Default with
+            {
+                Environment = new Dictionary<string, string>(StringComparer.Ordinal) { ["runtime"] = "dotnet" }
+            });
+        Equal(pinned.Id, delta.Id);
     }
 
     private static void InvalidArgumentsAreRejected()

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Breaking
+
+- Delta identity no longer depends on the host .NET patch version. The default numeric comparator records `provenance.environment` as `{"runtime": "dotnet"}` instead of `System.Environment.Version`, so the same comparison now produces the same Delta ID on every machine. Delta IDs produced by 0.0.1-alpha.1 differ from the IDs this version produces for the same inputs; 0.0.1-alpha.1 Deltas still read and verify unchanged.
+
 ## 0.0.1-alpha.1 - 2026-11-10
 
 Diffra 0.0.1-alpha.1 is an initial unstable alpha release. The protocol contracts, schemas, document shapes, and CLI flags may change in any 0.0.x release.

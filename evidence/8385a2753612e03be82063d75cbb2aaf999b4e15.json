@@ -1,0 +1,35 @@
+{
+  "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
+  "id": "sha256:73ec13f41fd3277f22e490908d902fad79f6c8e661aeb2d1533f95ecf8d943ed",
+  "status": "produced",
+  "typeId": "diffra.metrics.dogfood",
+  "typeVersion": "1.0",
+  "typeResolution": "recognized",
+  "subject": {
+    "kind": "git-repository",
+    "id": "diffra/core",
+    "commit": "8385a2753612e03be82063d75cbb2aaf999b4e15"
+  },
+  "producer": {
+    "id": "diffra.dogfood",
+    "version": "0.0.1-alpha.1",
+    "configDigest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "environment": {
+    "platform": "Ubuntu 26.04.1 LTS",
+    "runtime": ".NET 10.0.15",
+    "tools": [
+      {
+        "id": "dotnet-sdk",
+        "version": "10.0.403"
+      }
+    ]
+  },
+  "provenance": {
+    "source": "git:8385a2753612e03be82063d75cbb2aaf999b4e15",
+    "artifactDigests": []
+  },
+  "payloadDigest": "sha256:98cdf00ecd4c8db0d6595911c573e97d8ce41dadaab5863a3188d48da6501845",
+  "payload": {"methodology":"static-analysis","metrics":{"aspireRuntimeDependencies":0,"packageSizeBytes":184125,"schemasCount":12,"sourceFilesCount":29},"scope":"diffra/core"},
+  "artifactRefs": []
+}

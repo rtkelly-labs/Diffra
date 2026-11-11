@@ -8,6 +8,7 @@ public sealed class SuiteFacts
 {
     [Fact] public void Comparison() => ComparisonTests.RunAll();
     [Fact] public void Reporting() => ReportingTests.RunAll();
+    [Fact] public void Attention() => AttentionTests.RunAll();
     [Fact] public void Collect() => CollectTests.RunAll();
     [Fact] public void DiffEval() => DiffEvalTests.RunAll();
     [Fact] public void SampleFixture() => SampleFixtureTests.RunAll();

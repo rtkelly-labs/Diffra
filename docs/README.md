@@ -34,6 +34,7 @@ built.
 | Numeric comparison (`diff`) | CLI | `Comparison.cs` | [0003](adr/0003-comparison-history-and-noise.md) |
 | Increase budgets (`eval`) | CLI | `Assessment.cs` | [0006](adr/0006-pr-output-and-attention-levels.md) |
 | HTML, JSON and Markdown reports (`report`) | CLI | `Reporting.cs` | |
+| Attention levels, pull request comment and agent Markdown (`report --format comment\|agent`) | CLI | `Attention.cs` | [0006](adr/0006-pr-output-and-attention-levels.md) |
 | Content-addressed store and portable bundles (`bundle`) | CLI | `ContentAddressedStore.cs`, `EvidenceBundle.cs` | |
 | Review bundle and local server (`present`) | CLI | `PresentationBundle.cs`, `src/Cli/PresentCommand.cs` | |
 | Self-verification pipeline | CI script | `scripts/RunDogfood.cs` | |

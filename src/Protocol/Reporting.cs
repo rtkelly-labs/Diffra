@@ -10,6 +10,12 @@ public enum ReportFormat
     Html,
     Json,
     Markdown,
+
+    /// <summary>The one-screen pull request comment, headed by the attention level; empty when quiet.</summary>
+    Comment,
+
+    /// <summary>The agent-facing Markdown: the attention level and ranked findings within a token budget.</summary>
+    Agent,
 }
 
 /// <summary>Renders review reports from immutable Delta and optional Assessment documents.</summary>
@@ -34,7 +40,18 @@ public static class ReportRenderer
         ReadOnlyMemory<byte>? assessmentUtf8Json,
         ReadOnlyMemory<byte>? baselineReferenceUtf8Json,
         ReportFormat format)
+        => Render(deltaUtf8Json, assessmentUtf8Json, baselineReferenceUtf8Json, format, OutputLimits.Default);
+
+    /// <summary>Renders a report, applying <paramref name="limits"/> to the comment and agent formats.</summary>
+    public static string Render(
+        ReadOnlyMemory<byte> deltaUtf8Json,
+        ReadOnlyMemory<byte>? assessmentUtf8Json,
+        ReadOnlyMemory<byte>? baselineReferenceUtf8Json,
+        ReportFormat format,
+        OutputLimits limits)
     {
+        ArgumentNullException.ThrowIfNull(limits);
+        limits.Validate();
         DocumentIdentity.Verify("delta", deltaUtf8Json.Span);
         using var deltaDocument = CanonicalJson.Parse(deltaUtf8Json.Span);
         ValidateDelta(deltaDocument.RootElement);
@@ -61,6 +78,8 @@ public static class ReportRenderer
                 ReportFormat.Html => RenderHtml(deltaDocument.RootElement, assessmentDocument?.RootElement, baselineDocument?.RootElement),
                 ReportFormat.Json => RenderJson(deltaDocument.RootElement, assessmentDocument?.RootElement, baselineDocument?.RootElement),
                 ReportFormat.Markdown => RenderMarkdown(deltaDocument.RootElement, assessmentDocument?.RootElement, baselineDocument?.RootElement),
+                ReportFormat.Comment => AttentionRenderer.RenderComment(Attention.Read(deltaDocument.RootElement, assessmentDocument?.RootElement), limits),
+                ReportFormat.Agent => AttentionRenderer.RenderAgent(Attention.Read(deltaDocument.RootElement, assessmentDocument?.RootElement), limits),
                 _ => throw new ArgumentOutOfRangeException(nameof(format), format, "Unsupported report format."),
             };
         }

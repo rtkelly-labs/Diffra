@@ -28,7 +28,7 @@ public sealed record ComplexityPayload(
     ComplexitySummary Summary,
     IReadOnlyList<MethodComplexity> Methods)
 {
-    public const string SchemaUri = "https://diffra.dev/schemas/complexity-v1.schema.json";
+    public const string SchemaUri = "https://diffra.net/schemas/complexity-v1.schema.json";
     public const string UnitName = "cyclomatic-complexity";
 
     public JsonObject ToJsonObject()

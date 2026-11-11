@@ -1,5 +1,5 @@
 {
-  "schema": "https://diffra.dev/schemas/collection-v1.schema.json",
+  "schema": "https://diffra.net/schemas/collection-v1.schema.json",
   "id": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
   "status": "incomplete",
   "subject": {

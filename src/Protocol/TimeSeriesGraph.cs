@@ -29,7 +29,7 @@ public sealed record TimeSeriesProjection(
     CandidatePoint? Candidate = null,
     TimeSeriesThresholds? Thresholds = null)
 {
-    public const string SchemaUri = "https://diffra.dev/schemas/timeseries-v1.schema.json";
+    public const string SchemaUri = "https://diffra.net/schemas/timeseries-v1.schema.json";
 
     public JsonObject ToJsonObject()
     {

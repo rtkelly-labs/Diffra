@@ -11,7 +11,7 @@ using Diffra.Protocol;
 /// <summary>Creates a deterministic v1 Evidence document from a JSON payload.</summary>
 internal static class CollectCommand
 {
-    private const string EvidenceSchema = "https://diffra.dev/schemas/evidence-v1.schema.json";
+    private const string EvidenceSchema = "https://diffra.net/schemas/evidence-v1.schema.json";
     private const string EmptyConfigDigest = "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a";
     private const string Usage = "Usage: collect --payload <json-file> --subject-id <id> --commit <full-commit> "
         + "--type-id <id> --type-version <version> --producer-id <id> --producer-version <version> -o <evidence-file>";

@@ -101,7 +101,7 @@ public static class CasAndBundleTests
 
         var manifestContent = $$"""
         {
-          "schema": "https://diffra.dev/schemas/manifest-v1.schema.json",
+          "schema": "https://diffra.net/schemas/manifest-v1.schema.json",
           "id": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
           "subject": { "kind": "git-repository", "id": "test/repo", "commit": "12345678" },
           "groups": [{
@@ -169,7 +169,7 @@ public static class CasAndBundleTests
 
         var manifestContent = $$"""
         {
-          "schema": "https://diffra.dev/schemas/manifest-v1.schema.json",
+          "schema": "https://diffra.net/schemas/manifest-v1.schema.json",
           "id": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
           "subject": { "kind": "git-repository", "id": "test/repo", "commit": "12345678" },
           "groups": [],
@@ -223,7 +223,7 @@ public static class CasAndBundleTests
         var missingDigest = ContentAddressedStore.ComputeDigest("never packaged"u8.ToArray());
         var manifestContent = $$"""
         {
-          "schema": "https://diffra.dev/schemas/manifest-v1.schema.json",
+          "schema": "https://diffra.net/schemas/manifest-v1.schema.json",
           "id": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
           "subject": { "kind": "git-repository", "id": "test/repo", "commit": "12345678" },
           "groups": [],
@@ -272,7 +272,7 @@ public static class CasAndBundleTests
         var artifactDigest = ContentAddressedStore.ComputeDigest(artifactBytes);
         var manifestContent = $$"""
         {
-          "schema": "https://diffra.dev/schemas/manifest-v1.schema.json",
+          "schema": "https://diffra.net/schemas/manifest-v1.schema.json",
           "id": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
           "subject": { "kind": "git-repository", "id": "test/repo", "commit": "12345678" },
           "groups": [],
@@ -325,7 +325,7 @@ public static class CasAndBundleTests
         var manifestPath = temp.FilePath("manifest.json");
         File.WriteAllText(manifestPath, """
         {
-          "schema": "https://diffra.dev/schemas/manifest-v1.schema.json",
+          "schema": "https://diffra.net/schemas/manifest-v1.schema.json",
           "id": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
           "subject": { "kind": "git-repository", "id": "test/repo", "commit": "12345678" },
           "groups": [],
@@ -367,7 +367,7 @@ public static class CasAndBundleTests
 
         var manifestContent = $$"""
         {
-          "schema": "https://diffra.dev/schemas/manifest-v1.schema.json",
+          "schema": "https://diffra.net/schemas/manifest-v1.schema.json",
           "id": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
           "subject": { "kind": "git-repository", "id": "test/repo", "commit": "12345678" },
           "groups": [],

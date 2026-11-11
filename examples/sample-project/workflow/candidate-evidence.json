@@ -1,6 +1,6 @@
 {
-  "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
-  "id": "sha256:a3f28927625197ae2e70d5c3934944aeaf0a5ae55e8a4b1501aeaaa14864438f",
+  "schema": "https://diffra.net/schemas/evidence-v1.schema.json",
+  "id": "sha256:ccf81a6852a39f7597c3fa34a83d4c49278cf38b47e7c299d8f15450432ee7f8",
   "status": "produced",
   "typeId": "org.example.metrics",
   "typeVersion": "1.0",

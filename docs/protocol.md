@@ -21,7 +21,7 @@ An Evidence document has this shape:
 
 ```json
 {
-  "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
+  "schema": "https://diffra.net/schemas/evidence-v1.schema.json",
   "typeId": "org.example.generated-api",
   "typeVersion": "1.0.0",
   "typeResolution": "recognized",
@@ -49,7 +49,7 @@ A Baseline reference records the exact resolution of a selector:
 
 ```json
 {
-  "schema": "https://diffra.dev/schemas/baseline-reference-v1.schema.json",
+  "schema": "https://diffra.net/schemas/baseline-reference-v1.schema.json",
   "role": "merge-base",
   "status": "trusted",
   "subjectCommit": "<full-merge-base-commit>",
@@ -70,7 +70,7 @@ A Delta identifies the inputs and comparator. It contains no policy verdict:
 
 ```json
 {
-  "schema": "https://diffra.dev/schemas/delta-v1.schema.json",
+  "schema": "https://diffra.net/schemas/delta-v1.schema.json",
   "baselineId": "sha256:...",
   "candidateEvidenceId": "sha256:...",
   "comparator": { "id": "org.diffra.structured", "version": "1.0.0", "configDigest": "sha256:...", "inputTypeId": "org.example.generated-api", "inputTypeVersion": "1.0.0" },
@@ -96,7 +96,7 @@ An Assessment cites one Delta and one exact policy revision:
 
 ```json
 {
-  "schema": "https://diffra.dev/schemas/assessment-v1.schema.json",
+  "schema": "https://diffra.net/schemas/assessment-v1.schema.json",
   "deltaId": "sha256:...",
   "deltaStatus": "changed",
   "policy": { "id": "org.example.api-policy", "version": "1.0.0", "rulesDigest": "sha256:..." },

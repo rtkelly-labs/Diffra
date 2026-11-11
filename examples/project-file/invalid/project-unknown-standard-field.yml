@@ -1,4 +1,4 @@
-schema: https://diffra.dev/schemas/project-v1.schema.json
+schema: https://diffra.net/schemas/project-v1.schema.json
 scope: example/invalid
 # Invalid: diffra/benchmark@1 has no field named gen3PerKOps.
 metrics:

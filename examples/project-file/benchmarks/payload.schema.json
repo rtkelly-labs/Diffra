@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://diffra.dev/examples/project-file/benchmarks/payload.schema.json",
+  "$id": "https://diffra.net/examples/project-file/benchmarks/payload.schema.json",
   "title": "Derived payload schema: parquet-sourcegenerator/benchmarks",
   "description": "Derived by hand from benchmarks/diffra.project.yml to show what an emitter validates before writing (ADR 0010, section 13). A generator is not built yet.",
   "type": "object",

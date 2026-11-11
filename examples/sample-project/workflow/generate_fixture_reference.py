@@ -49,7 +49,7 @@ def main():
     evidence = json.loads((ROOT / "baseline-evidence.json").read_text(encoding="utf-8"))
     subject = evidence["subject"]
     manifest = {
-        "schema": "https://diffra.dev/schemas/manifest-v1.schema.json",
+        "schema": "https://diffra.net/schemas/manifest-v1.schema.json",
         "subject": subject,
         "groups": [{
             "id": "quality", "name": "Quality", "role": "quality", "required": True,
@@ -69,7 +69,7 @@ def main():
     write_json(manifest_path, manifest)
 
     reference = {
-        "schema": "https://diffra.dev/schemas/baseline-reference-v1.schema.json",
+        "schema": "https://diffra.net/schemas/baseline-reference-v1.schema.json",
         "role": "merge-base", "status": "trusted", "evidenceId": evidence["id"],
         "subjectCommit": subject["commit"], "manifestDigest": digest(manifest_path.read_bytes()),
         "resolver": {"id": "org.example.fixture-resolver", "version": "1.0", "resolvedCommit": subject["commit"], "sourceRef": "local-fixture"},

@@ -1,5 +1,5 @@
 # Code coverage as a converted source (ADR 0006 policies expressed as rules).
-schema: https://diffra.dev/schemas/project-v1.schema.json
+schema: https://diffra.net/schemas/project-v1.schema.json
 scope: example/library
 
 dimensions:

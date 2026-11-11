@@ -102,9 +102,9 @@ static void HashesPayload()
 
 static void HashesEvidenceProjection()
 {
-    var projection = UTF8("{\"schema\":\"https://diffra.dev/schemas/evidence-v1.schema.json\",\"payloadDigest\":\"sha256:x\",\"payload\":{\"value\":1},\"id\":\"ignored\"}");
-    var sameProjection = UTF8("{\"id\":\"another\",\"payloadDigest\":\"sha256:x\",\"payload\":{\"value\":1},\"schema\":\"https://diffra.dev/schemas/evidence-v1.schema.json\"}");
-    var canonicalWithoutId = UTF8("{\"payload\":{\"value\":1},\"payloadDigest\":\"sha256:x\",\"schema\":\"https://diffra.dev/schemas/evidence-v1.schema.json\"}");
+    var projection = UTF8("{\"schema\":\"https://diffra.net/schemas/evidence-v1.schema.json\",\"payloadDigest\":\"sha256:x\",\"payload\":{\"value\":1},\"id\":\"ignored\"}");
+    var sameProjection = UTF8("{\"id\":\"another\",\"payloadDigest\":\"sha256:x\",\"payload\":{\"value\":1},\"schema\":\"https://diffra.net/schemas/evidence-v1.schema.json\"}");
+    var canonicalWithoutId = UTF8("{\"payload\":{\"value\":1},\"payloadDigest\":\"sha256:x\",\"schema\":\"https://diffra.net/schemas/evidence-v1.schema.json\"}");
     var framed = Encoding.ASCII.GetBytes("diffra/v1\0evidence\0").Concat(canonicalWithoutId).ToArray();
     var expected = "sha256:" + Convert.ToHexString(SHA256.HashData(framed)).ToLowerInvariant();
 
@@ -168,7 +168,7 @@ static string BuildEvidence(string artifactRefs)
         .Select(item => item.GetProperty("digest").GetString()!)
         .Distinct(StringComparer.Ordinal);
     var artifactDigests = string.Join(',', referencedDigests.Select(digest => $"\"{digest}\""));
-    var projection = $"{{\"schema\":\"https://diffra.dev/schemas/evidence-v1.schema.json\",\"typeId\":\"org.example.value\",\"typeVersion\":\"1.0.0\",\"typeResolution\":\"recognized\",\"status\":\"produced\",\"subject\":{{\"kind\":\"git-repository\",\"id\":\"repo:example/project\",\"commit\":\"abcdef\"}},\"producer\":{{\"id\":\"org.example.producer\",\"version\":\"1.0.0\",\"configDigest\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\"}},\"environment\":{{\"platform\":\"test\",\"runtime\":\"net10.0\",\"tools\":[]}},\"provenance\":{{\"source\":\"test\",\"artifactDigests\":[{artifactDigests}]}},\"payloadDigest\":\"{payloadDigest}\",\"payload\":{payload},\"artifactRefs\":{artifactRefs}}}";
+    var projection = $"{{\"schema\":\"https://diffra.net/schemas/evidence-v1.schema.json\",\"typeId\":\"org.example.value\",\"typeVersion\":\"1.0.0\",\"typeResolution\":\"recognized\",\"status\":\"produced\",\"subject\":{{\"kind\":\"git-repository\",\"id\":\"repo:example/project\",\"commit\":\"abcdef\"}},\"producer\":{{\"id\":\"org.example.producer\",\"version\":\"1.0.0\",\"configDigest\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\"}},\"environment\":{{\"platform\":\"test\",\"runtime\":\"net10.0\",\"tools\":[]}},\"provenance\":{{\"source\":\"test\",\"artifactDigests\":[{artifactDigests}]}},\"payloadDigest\":\"{payloadDigest}\",\"payload\":{payload},\"artifactRefs\":{artifactRefs}}}";
     var id = EvidenceIdentity.ComputeId(UTF8(projection));
     return projection[..^1] + $",\"id\":\"{id}\"}}";
 }

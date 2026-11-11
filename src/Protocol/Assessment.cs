@@ -44,7 +44,7 @@ public sealed record AssessmentDocument(
 /// <summary>Evaluates thresholds over an existing Delta without rerunning comparison.</summary>
 public static class AssessmentEvaluator
 {
-    public const string AssessmentSchema = "https://diffra.dev/schemas/assessment-v1.schema.json";
+    public const string AssessmentSchema = "https://diffra.net/schemas/assessment-v1.schema.json";
     public const string EvaluatorId = "diffra.numeric-policy";
     public const string EvaluatorVersion = "1.0.0";
 

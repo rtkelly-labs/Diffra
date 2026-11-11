@@ -93,7 +93,7 @@ public static class EvidenceIdentity
     {
         EnsureOnlyProperties(root, "schema", "id", "status", "typeId", "typeVersion", "typeResolution",
             "subject", "producer", "environment", "provenance", "payloadDigest", "payload", "artifactRefs", "message");
-        if (RequiredString(root, "schema") != "https://diffra.dev/schemas/evidence-v1.schema.json")
+        if (RequiredString(root, "schema") != "https://diffra.net/schemas/evidence-v1.schema.json")
         {
             throw new JsonException("Evidence schema URI is unsupported.");
         }

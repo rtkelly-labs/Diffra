@@ -79,7 +79,7 @@ public sealed record DeltaDocument(
 /// <summary>Compares JSON objects whose leaves are numbers or numeric measurement objects.</summary>
 public static class StructuredNumericComparator
 {
-    public const string DeltaSchema = "https://diffra.dev/schemas/delta-v1.schema.json";
+    public const string DeltaSchema = "https://diffra.net/schemas/delta-v1.schema.json";
 
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
     {

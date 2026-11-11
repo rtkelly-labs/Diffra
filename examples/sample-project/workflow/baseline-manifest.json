@@ -1,5 +1,5 @@
 {
-  "schema": "https://diffra.dev/schemas/manifest-v1.schema.json",
+  "schema": "https://diffra.net/schemas/manifest-v1.schema.json",
   "subject": {
     "kind": "git-repository",
     "id": "example/project",
@@ -16,14 +16,14 @@
       "gate": "required",
       "artifactIds": [],
       "evidenceIds": [
-        "sha256:e0582f1ced6d0a9c9a88f6e82a03ffa50499c8cc3a0ed6969cc5931806e964f5"
+        "sha256:054aa509b2cf85d08ca3a92a8bf424d0201145d9dbebc403c5d355df5007c518"
       ],
       "groups": []
     }
   ],
   "artifacts": [],
   "evidenceIds": [
-    "sha256:e0582f1ced6d0a9c9a88f6e82a03ffa50499c8cc3a0ed6969cc5931806e964f5"
+    "sha256:054aa509b2cf85d08ca3a92a8bf424d0201145d9dbebc403c5d355df5007c518"
   ],
   "provenance": {
     "producerId": "org.example.fixture",
@@ -34,5 +34,5 @@
     },
     "source": "git:1111111111111111111111111111111111111111"
   },
-  "id": "sha256:ad62f2fc5de477c7f325e65643c3f55b5b36556c885b3072d4dabf8f3216fca4"
+  "id": "sha256:84bbe34f47a790f65a60924308ad882d075f649ceb09057127888664fa54d3b8"
 }

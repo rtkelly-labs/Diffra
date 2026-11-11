@@ -418,7 +418,7 @@ void BuildBaselineReference(string evidencePath, string resolvedCommit, string o
             ["version"] = "1.0"
         },
         ["role"] = "approved-main",
-        ["schema"] = "https://diffra.dev/schemas/baseline-reference-v1.schema.json",
+        ["schema"] = "https://diffra.net/schemas/baseline-reference-v1.schema.json",
         ["sourceStore"] = BaselinesBranch,
         ["status"] = "trusted",
         ["subjectCommit"] = resolvedCommit,

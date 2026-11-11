@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://diffra.dev/schemas/project-v1.schema.json",
+  "$id": "https://diffra.net/schemas/project-v1.schema.json",
   "title": "Diffra Project File v1",
   "description": "diffra.project.yml: typed metrics, their rules and how they are collected. See ADR 0010.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "scope", "metrics"],
   "properties": {
-    "schema": { "const": "https://diffra.dev/schemas/project-v1.schema.json" },
+    "schema": { "const": "https://diffra.net/schemas/project-v1.schema.json" },
     "scope": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._/-]*$" },
     "dimensions": {
       "type": "object",

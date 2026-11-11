@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://diffra.dev/examples/project-file/test-results/payload.schema.json",
+  "$id": "https://diffra.net/examples/project-file/test-results/payload.schema.json",
   "title": "Derived payload schema: diffra/test-results@1",
   "description": "Derived by hand from test-results/diffra.project.yml (ADR 0010, sections 5 and 13). Each tag admits only its own fields.",
   "type": "object",

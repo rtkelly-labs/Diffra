@@ -6,7 +6,7 @@ namespace Diffra.Protocol;
 /// <summary>Builds deterministic, verified v1 Evidence document bytes.</summary>
 public static class EvidenceDocumentBuilder
 {
-    public const string EvidenceSchema = "https://diffra.dev/schemas/evidence-v1.schema.json";
+    public const string EvidenceSchema = "https://diffra.net/schemas/evidence-v1.schema.json";
     public const string EmptyConfigDigest = "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a";
     public const string RecognizedTypeResolution = "recognized";
     public const string OpaqueTypeResolution = "opaque";

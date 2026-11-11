@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://diffra.dev/schemas/coverage-v1.schema.json",
+  "$id": "https://diffra.net/schemas/coverage-v1.schema.json",
   "title": "Diffra Standardized Code Coverage Payload v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "scope", "methodology", "summary", "files"],
   "properties": {
-    "schema": { "const": "https://diffra.dev/schemas/coverage-v1.schema.json" },
+    "schema": { "const": "https://diffra.net/schemas/coverage-v1.schema.json" },
     "scope": { "type": "string", "minLength": 1 },
     "methodology": { "type": "string", "minLength": 1 },
     "summary": {

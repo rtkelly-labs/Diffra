@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://diffra.dev/schemas/timeseries-v1.schema.json",
+  "$id": "https://diffra.net/schemas/timeseries-v1.schema.json",
   "title": "Diffra Time-Series Projection v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "metricId", "subjectId", "unit", "points"],
   "properties": {
-    "schema": { "const": "https://diffra.dev/schemas/timeseries-v1.schema.json" },
+    "schema": { "const": "https://diffra.net/schemas/timeseries-v1.schema.json" },
     "metricId": { "type": "string", "minLength": 1 },
     "subjectId": { "type": "string", "minLength": 1 },
     "unit": { "type": "string", "minLength": 1 },

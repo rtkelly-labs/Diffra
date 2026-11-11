@@ -7,9 +7,9 @@ using Diffra.Protocol;
 
 internal static class DiffEvalCommands
 {
-    private const string EvidenceSchema = "https://diffra.dev/schemas/evidence-v1.schema.json";
-    private const string BaselineSchema = "https://diffra.dev/schemas/baseline-reference-v1.schema.json";
-    private const string DeltaSchema = "https://diffra.dev/schemas/delta-v1.schema.json";
+    private const string EvidenceSchema = "https://diffra.net/schemas/evidence-v1.schema.json";
+    private const string BaselineSchema = "https://diffra.net/schemas/baseline-reference-v1.schema.json";
+    private const string DeltaSchema = "https://diffra.net/schemas/delta-v1.schema.json";
     private static readonly SearchValues<char> NonLowercaseHexCharacters = SearchValues.Create("0123456789abcdef");
     private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web)
     {

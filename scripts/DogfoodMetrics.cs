@@ -20,27 +20,54 @@ var cliFiles = GetSourceFiles(Path.Combine(repoRoot, "src", "Cli"));
 var schemaFiles = Directory.GetFiles(Path.Combine(repoRoot, "schemas"), "*.json", SearchOption.TopDirectoryOnly);
 
 long packageSizeBytes = 0;
-var packageDir = Path.Combine(repoRoot, "artifacts", "package");
-var nupkgFiles = Directory.Exists(packageDir)
-    ? Directory.GetFiles(packageDir, "Diffra.Cli.*.nupkg", SearchOption.TopDirectoryOnly)
-    : [];
+string? candidatePackage = Environment.GetEnvironmentVariable("DIFFRA_CANDIDATE_PACKAGE");
+for (int i = 0; i < args.Length; i++)
+{
+    if (args[i] == "--package" && i + 1 < args.Length)
+    {
+        candidatePackage = args[i + 1];
+        break;
+    }
+}
 
-if (nupkgFiles.Length == 0)
+if (!string.IsNullOrEmpty(candidatePackage) && File.Exists(candidatePackage))
+{
+    packageSizeBytes = new FileInfo(candidatePackage).Length;
+}
+else
 {
     var tempPackageDir = Path.Combine(repoRoot, "dogfood-run", "package");
+    if (Directory.Exists(tempPackageDir))
+    {
+        Directory.Delete(tempPackageDir, recursive: true);
+    }
     Directory.CreateDirectory(tempPackageDir);
-    var start = new ProcessStartInfo("dotnet")
+
+    var dotnetBin = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
+    if (string.IsNullOrEmpty(dotnetBin) || !File.Exists(dotnetBin))
+    {
+        var userDotnet = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dotnet", "dotnet");
+        dotnetBin = File.Exists(userDotnet) ? userDotnet : "dotnet";
+    }
+
+    var start = new ProcessStartInfo(dotnetBin)
     {
         RedirectStandardOutput = true,
         RedirectStandardError = true,
         UseShellExecute = false
     };
+    var dir = Path.GetDirectoryName(dotnetBin);
+    if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+    {
+        start.Environment["DOTNET_ROOT"] = dir;
+    }
     start.ArgumentList.Add("pack");
     start.ArgumentList.Add(Path.Combine(repoRoot, "src", "Cli", "Diffra.Cli.csproj"));
     start.ArgumentList.Add("-c");
     start.ArgumentList.Add("Release");
     start.ArgumentList.Add("-o");
     start.ArgumentList.Add(tempPackageDir);
+
     using var packProcess = Process.Start(start);
     if (packProcess == null)
     {
@@ -55,13 +82,12 @@ if (nupkgFiles.Length == 0)
     {
         throw new InvalidOperationException($"dotnet pack failed with exit code {packProcess.ExitCode}:\n{stderr}\n{stdout}");
     }
-    nupkgFiles = Directory.GetFiles(tempPackageDir, "Diffra.Cli.*.nupkg", SearchOption.TopDirectoryOnly);
-}
-
-if (nupkgFiles.Length > 0)
-{
-    var nupkg = nupkgFiles.OrderByDescending(f => File.GetLastWriteTimeUtc(f)).First();
-    packageSizeBytes = new FileInfo(nupkg).Length;
+    var nupkgFiles = Directory.GetFiles(tempPackageDir, "Diffra.Cli.*.nupkg", SearchOption.TopDirectoryOnly);
+    if (nupkgFiles.Length > 0)
+    {
+        var nupkg = nupkgFiles.OrderByDescending(f => File.GetLastWriteTimeUtc(f)).First();
+        packageSizeBytes = new FileInfo(nupkg).Length;
+    }
 }
 
 if (packageSizeBytes <= 0)

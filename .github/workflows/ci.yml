@@ -420,16 +420,21 @@ jobs:
 
           rm -rf "$WORK_DIR"
 
-          if git ls-remote --exit-code --heads "$REPO_URL" "$BRANCH" > /dev/null 2>&1; then
+          LS_REMOTE_EXIT=0
+          git ls-remote --exit-code --heads "$REPO_URL" "$BRANCH" > /dev/null 2>&1 || LS_REMOTE_EXIT=$?
+          if [ "$LS_REMOTE_EXIT" -eq 0 ]; then
             echo "Branch $BRANCH exists on remote. Cloning..."
             git clone --branch "$BRANCH" --single-branch --depth 20 "$REPO_URL" "$WORK_DIR"
             cd "$WORK_DIR"
-          else
-            echo "Branch $BRANCH does not exist on remote. Initializing orphan branch..."
+          elif [ "$LS_REMOTE_EXIT" -eq 2 ]; then
+            echo "Branch $BRANCH does not exist on remote (bootstrap). Initializing orphan branch..."
             mkdir -p "$WORK_DIR"
             cd "$WORK_DIR"
             git init -b "$BRANCH"
             git remote add origin "$REPO_URL"
+          else
+            echo "::error::git ls-remote failed with exit code $LS_REMOTE_EXIT querying branch $BRANCH"
+            exit "$LS_REMOTE_EXIT"
           fi
 
           mkdir -p evidence

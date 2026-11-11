@@ -89,8 +89,7 @@ if (File.Exists(baselineRefPath)) File.Delete(baselineRefPath);
 var mergeBaseCommit = ResolveMergeBaseStrict(repoRoot);
 Console.WriteLine($"Resolved merge-base against origin/main: {mergeBaseCommit}");
 
-var baselinesBranch = Environment.GetEnvironmentVariable("DIFFRA_BASELINES_BRANCH");
-if (string.IsNullOrWhiteSpace(baselinesBranch)) baselinesBranch = "diffra-baselines";
+const string baselinesBranch = "diffra-baselines";
 
 // Check whether baseline branch exists on origin
 var (lsRemoteExit, lsRemoteOut, lsRemoteErr) = RunProcessAllowExitCodeWithOutput("git", "ls-remote", "--heads", "origin", baselinesBranch);
@@ -434,12 +433,31 @@ static int RunProcessAllowExitCode(string filename, params string[] args)
 
 static (int exitCode, string stdout, string stderr) RunProcessAllowExitCodeWithOutput(string filename, params string[] args)
 {
-    var start = new ProcessStartInfo(filename)
+    var resolvedFile = filename;
+    if (filename == "dotnet")
+    {
+        var host = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
+        if (!string.IsNullOrEmpty(host) && File.Exists(host))
+        {
+            resolvedFile = host;
+        }
+        else
+        {
+            var userDotnet = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dotnet", "dotnet");
+            if (File.Exists(userDotnet)) resolvedFile = userDotnet;
+        }
+    }
+    var start = new ProcessStartInfo(resolvedFile)
     {
         RedirectStandardOutput = true,
         RedirectStandardError = true,
         UseShellExecute = false
     };
+    var dir = Path.GetDirectoryName(resolvedFile);
+    if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+    {
+        start.Environment["DOTNET_ROOT"] = dir;
+    }
     foreach (var arg in args) start.ArgumentList.Add(arg);
     using var proc = Process.Start(start)!;
     var stdoutTask = proc.StandardOutput.ReadToEndAsync();

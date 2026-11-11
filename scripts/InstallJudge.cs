@@ -60,6 +60,22 @@ if (!string.Equals(actualSha, expectedSha, StringComparison.OrdinalIgnoreCase))
 }
 Console.WriteLine($"Verified SHA-256 checksum: {actualSha}");
 
+// Ensure no stale package in global packages folder overrides the verified nupkg
+var globalPkgDir = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+    ".nuget", "packages", packageId.ToLowerInvariant(), version.ToLowerInvariant());
+if (Directory.Exists(globalPkgDir))
+{
+    try
+    {
+        Directory.Delete(globalPkgDir, recursive: true);
+    }
+    catch
+    {
+        // Ignore if locked or permission denied
+    }
+}
+
 // Create isolated nuget.config
 var nugetConfigPath = Path.Combine(cacheDir, "nuget.config");
 File.WriteAllText(nugetConfigPath,

@@ -1,0 +1,60 @@
+name: Bug Report
+description: Create a report to help us improve Diffra
+title: "bug: "
+labels: ["type: bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Tell us what you see vs what you expected to see.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps To Reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. In this environment...
+        2. With these inputs...
+        3. Run command '...'
+        4. See error
+    validations:
+      required: true
+  - type: textarea
+    id: minimal-sample
+    attributes:
+      label: Minimal Reproducible Code / Config
+      description: Provide a minimal code snippet, JSON fixture, or configuration reproducing the issue.
+      render: shell
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - macOS
+        - Linux (Ubuntu / Debian)
+        - Windows 11 / 10
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: runtime-version
+    attributes:
+      label: Environment & Versions
+      description: .NET SDK version (`dotnet --version`), OS version, and Diffra version (the release archive version, or the version shown by `dotnet tool list` for an installed tool)
+      placeholder: .NET 10.0.100, Diffra 0.0.1-alpha.1
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Log Output
+      description: Please copy and paste any relevant terminal output, stack traces, or logs.
+      render: shell

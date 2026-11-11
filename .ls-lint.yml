@@ -1,0 +1,49 @@
+# .ls-lint.yml
+# Allow-list for the scripts directory: C# file-based apps plus data and docs.
+# The repository-wide ban on shell (.sh, .bash, .zsh) and PowerShell (.ps1, .psm1)
+# scripts is enforced by the `lint` job in ci.yml with `git ls-files`, which matches
+# the final suffix at any depth (including multi-dot names such as build.release.sh).
+# The scripts rules below do not overlap, so ls-lint applies them deterministically.
+
+ls:
+  .sh: exists:0
+  .bash: exists:0
+  .zsh: exists:0
+  .ps1: exists:0
+  .psm1: exists:0
+  scripts:
+    .dir: regex:.*
+    .md: regex:.*
+    .json: regex:.*
+    .yml: regex:.*
+    .yaml: regex:.*
+    .toml: regex:.*
+    .xml: regex:.*
+    .sql: regex:.*
+    .txt: regex:.*
+    .cs: regex:.*
+    .py: exists:0
+    .*: exists:0
+  "scripts/**":
+    .dir: regex:.*
+    .md: regex:.*
+    .json: regex:.*
+    .yml: regex:.*
+    .yaml: regex:.*
+    .toml: regex:.*
+    .xml: regex:.*
+    .sql: regex:.*
+    .txt: regex:.*
+    .cs: regex:.*
+    .py: exists:0
+    .*: exists:0
+
+ignore:
+  - .git
+  - temp
+  - .temp
+  - "**/temp"
+  - bin
+  - obj
+  - dist
+  - build

@@ -4,15 +4,37 @@ on:
   push:
     branches: [main]
   pull_request:
+  merge_group:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'merge_group' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Lint file names and script languages
+        uses: ls-lint/action@a87c5eb4fb26d7af1bd0adba203dd1e76f7e94eb # v2.3.2
+        with:
+          config: .ls-lint.yml
+
+      - name: Enforce No Shell or PowerShell Scripts Policy
+        run: |
+          forbidden=$(git ls-files '*.sh' '*.bash' '*.zsh' '*.ps1' '*.psm1')
+          if [ -n "$forbidden" ]; then
+            echo "::error::Shell and PowerShell scripts are not allowed; use C# file-based apps under scripts/:"
+            echo "$forbidden"
+            exit 1
+          fi
+
   compile:
     name: compile
     runs-on: ubuntu-latest
@@ -331,7 +353,7 @@ jobs:
   build:
     name: build
     if: always()
-    needs: [compile, schema-fixtures, jcs-differential, properties, regression-corpus, dogfood]
+    needs: [lint, compile, schema-fixtures, jcs-differential, properties, regression-corpus, dogfood]
     runs-on: ubuntu-latest
     steps:
       - name: Require every shallow-tier job to pass

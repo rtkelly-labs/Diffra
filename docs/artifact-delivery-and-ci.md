@@ -300,9 +300,11 @@ and metrics that need different thresholds are separate facets:
 - **Mutation noise.** Mutation scores move between runs on an unchanged tree, because a
   mutant near the test timeout can flip between survived and timed out. Two runs of the same
   source gave 761 survived and 7 timed out (4149 bp) and 758 survived and 8 timed out
-  (4139 bp) on `Diffra.Protocol`. Comparison and Assessment share the same timeout risk, so
-  all three use the mutation tolerance. The test count and coverage were stable across those
-  runs and keep zero tolerance in the strength facet.
+  (4139 bp) on `Diffra.Protocol`. Comparison and Assessment come from the same Stryker run and
+  can flip the same way, though those runs had no timeouts there. They share the facet and its
+  tolerance; with 212 and 55 scored mutants, one more surviving mutant is about 47 bp
+  (Comparison, a warning) or 182 bp (Assessment, a failure). The test count and coverage were
+  stable across those runs and keep zero tolerance in the strength facet.
 - **Throughput noise.** At the 30 s per-target budget, two runs of the same target gave 17550
   and 35298 execs/s. Throughput therefore only warns. A fail threshold waits until nightly
   runs give enough data to set one.

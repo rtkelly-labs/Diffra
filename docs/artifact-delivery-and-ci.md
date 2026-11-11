@@ -249,6 +249,17 @@ unintended changes to metrics or policies.
   Baseline reference that the script issues itself (nothing verifies it), and
   evaluate the Delta. If no baseline exists for the merge-base (such as in new repositories or bootstrap runs), the gate reports the
   assessment outcome as `inconclusive` in the step summary without failing the build.
+- **CI timing:** A `ci-timing` job that the build does not require reads the run
+  while it is still going and writes its timing to the step summary with
+  `dotnet run scripts/CiTiming.cs`. It shows wait time (the run's creation to the last
+  job finishing), queue time per job, and execution time per job and along the longest
+  path through the job graph, with the graph drawn in Mermaid. The CI host's API reports
+  each job's times but not the dependencies between jobs, so these are read from the
+  workflow file at the run's commit. Only the latest attempt is measured, and earlier
+  attempts are noted. Jobs that finish after the timing job starts are shown as still
+  going. The job never fails the build, and no rule judges these figures yet. Locally,
+  `--watch <seconds>` follows a run until it finishes, and `--save <dir>` with
+  `--input <dir>` renders a saved run offline.
 
 ### Releasing Diffra
 

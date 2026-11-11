@@ -152,8 +152,8 @@ scripts or remote assets.
 `comment` and `agent` are the one-screen formats
 ([0006](adr/0006-pr-output-and-attention-levels.md)). Each finding gets an attention level: a
 failed rule needs action (`act`); a warning, a value that needs review or an inconclusive
-comparison is worth reviewing (`review`); a pass is `quiet`. Without an Assessment, every change
-is `review`. Findings are ranked by level, then rule severity, then the size of the relative
+comparison is worth reviewing (`review`); a pass is `quiet`. An Assessment outcome that no
+finding explains still sets the level. Without an Assessment, every change is `review`. Findings are ranked by level, then rule severity, then the size of the relative
 change.
 
 - `comment` is the pull request comment: a heading with the level, then a table of at most 5
@@ -161,7 +161,7 @@ change.
   line, with the full list in a collapsed section. A quiet result writes an empty file, because
   nothing is posted. The command writes the comment; posting it is a separate step.
 - `agent` is plain Markdown for an agent: `attention:` with `act`, `review` or `quiet`,
-  `findings:` with the count, then one line per finding while the file stays within about 500
+  `findings:` with the number of findings that are not quiet, then one line per finding while the file stays within about 500
   tokens. A `truncated:` line says how many findings were left out.
 
 ## `bundle`

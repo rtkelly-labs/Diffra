@@ -17,7 +17,8 @@ request.
    outcomes only; it carries no size or magnitude. A failed rule gives `act`. A warning, a value
    that needs review, a failed attribution or an inconclusive comparison gives `review`, because
    an input that could not be judged is never shown as a pass (decision 9). Otherwise the level
-   is `quiet`. A result takes the highest level of its findings.
+   is `quiet`. A result takes the highest level of its findings. A change that no rule judged is
+   `review`.
 2. **One comment per pull request**, headed by the attention level. Each time a workflow
    finishes, the comment is rebuilt from every record present for the commit, never patched, and
    shows which datasets are still running.

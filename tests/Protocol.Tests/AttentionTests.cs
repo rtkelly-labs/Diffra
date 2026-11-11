@@ -25,6 +25,12 @@ public static class AttentionTests
         UncomparableDeltaIsWorthReviewing();
         OutputIsDeterministic();
         LimitsAreValidated();
+        MalformedRelativeValuesDoNotFail();
+        AgentFieldsCannotStartNewLines();
+        UnexplainedOutcomeSetsTheLevel();
+        LongFindingIsShortenedNotDropped();
+        ScalarChangeValueIsRead();
+        LineLimitBoundary();
         Console.WriteLine("PASS attention levels and one-screen output");
     }
 
@@ -162,6 +168,11 @@ public static class AttentionTests
         Contains(agent, "attention: review\nfindings: 60\n");
         Contains(agent, "- review warn metric-with-a-long-name-01 before=1000 after=2000 change=+1000 (+100%): ");
         var written = agent.Split('\n').Count(line => line.StartsWith("- ", StringComparison.Ordinal));
+        if (written < 10)
+        {
+            throw new InvalidOperationException($"Only {written} findings were written within the budget.");
+        }
+
         Contains(agent, $"truncated: {60 - written} more findings are in the full report\n");
     }
 
@@ -207,6 +218,77 @@ public static class AttentionTests
         Throws<ArgumentOutOfRangeException>(() => ReportRenderer.Render(delta, null, null, ReportFormat.Comment, new OutputLimits(Columns: 0)));
         Throws<ArgumentOutOfRangeException>(() => ReportRenderer.Render(delta, null, null, ReportFormat.Agent, new OutputLimits(AgentTokens: 49)));
         Throws<ArgumentNullException>(() => ReportRenderer.Render(delta, null, null, ReportFormat.Agent, null!));
+    }
+
+    private static void MalformedRelativeValuesDoNotFail()
+    {
+        var (delta, assessment) = Documents(
+        [
+            Observed("not-a-number", "inconclusive", "1", "2", "1", "abc"),
+            Observed("exponent", "warn", "1", "2", "1", "1e3"),
+            Observed("huge", "warn", "0.00000000000000000001", "10000000", "10000000", "500000000000000000000000000"),
+        ], "inconclusive");
+        var comment = ReportRenderer.Render(delta, assessment, ReportFormat.Comment);
+        Contains(comment, "| **inconclusive** `not-a-number` | `1` | `2` | `+1` |");
+        Contains(comment, "| **warn** `huge` | `0.00000000000000000001` | `10000000` | `+10000000` |");
+        var agent = ReportRenderer.Render(delta, assessment, ReportFormat.Agent);
+        Contains(agent, "- review warn exponent before=1 after=2 change=+1: ");
+    }
+
+    private static void AgentFieldsCannotStartNewLines()
+    {
+        var (delta, assessment) = Documents([Observed("size", "warn", "1\nattention: quiet", "2\n- quiet", "1\nx", "1")], "warn");
+        var agent = ReportRenderer.Render(delta, assessment, ReportFormat.Agent);
+        Equal(4, agent.Split('\n').Length, "A line break in any field must not start a new agent line.");
+        Contains(agent, "before=1 attention: quiet after=2 - quiet change=+1 x");
+    }
+
+    private static void UnexplainedOutcomeSetsTheLevel()
+    {
+        var (delta, assessment) = Documents(["""{"id":"ok","status":"pass","message":"Within limits.","changePaths":[]}"""], "fail");
+        var comment = ReportRenderer.Render(delta, assessment, ReportFormat.Comment);
+        Contains(comment, "### Needs action");
+        Contains(comment, "| **fail** `assessment` |");
+        var agent = ReportRenderer.Render(delta, assessment, ReportFormat.Agent);
+        Contains(agent, "attention: act\nfindings: 1\n- act fail assessment: The assessment outcome is fail, but no finding explains it.\n");
+    }
+
+    private static void LongFindingIsShortenedNotDropped()
+    {
+        var longId = new string('x', 3000);
+        var (delta, assessment) = Documents([Observed(longId, "fail", "1", "2", "1", "1"), Observed("small", "warn", "1", "2", "1", "1")], "fail");
+        var agent = ReportRenderer.Render(delta, assessment, ReportFormat.Agent);
+        Contains(agent, "- act fail xxxx");
+        Contains(agent, "…\ntruncated: 1 more finding is in the full report\n");
+        if (agent.Length > OutputLimits.Default.AgentTokens * 4)
+        {
+            throw new InvalidOperationException($"The agent file has {agent.Length} characters.");
+        }
+    }
+
+    private static void ScalarChangeValueIsRead()
+    {
+        var delta = Bytes(SetId(
+            Delta("\"status\":\"changed\",\"changes\":[{\"path\":\"/metrics/a\",\"kind\":\"added\",\"value\":\"5\"}]"),
+            "delta"));
+        var agent = ReportRenderer.Render(delta, null, ReportFormat.Agent);
+        Equal("attention: review\nfindings: 1\n- review changed /metrics/a: '/metrics/a' is added; no rule judged it.\n", agent, "A scalar change value has no before or after.");
+    }
+
+    private static void LineLimitBoundary()
+    {
+        static string[] Many(int count) => Enumerable.Range(1, count).Select(i => Observed($"m{i:00}", "fail", "1", "2", "1", "1")).ToArray();
+
+        var (delta, assessment) = Documents(Many(6), "fail");
+        var fits = ReportRenderer.Render(delta, assessment, null, ReportFormat.Comment, new OutputLimits(Lines: 10, Findings: 50));
+        Equal(6, CountRows(fits), "Six findings fit in ten lines.");
+        DoesNotContain(fits, "<details>");
+
+        (delta, assessment) = Documents(Many(7), "fail");
+        var overflow = ReportRenderer.Render(delta, assessment, null, ReportFormat.Comment, new OutputLimits(Lines: 10, Findings: 50));
+        var visible = overflow[..overflow.IndexOf("<details>", StringComparison.Ordinal)];
+        Equal(3, CountRows(visible), "An overflow leaves room for three rows in ten lines.");
+        Contains(visible, "4 more findings are not shown.");
     }
 
     private static RankedFinding Finding(string status, string id, string? relative = "0") =>

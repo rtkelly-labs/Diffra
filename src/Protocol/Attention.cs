@@ -142,6 +142,22 @@ public static class Attention
                     Text(observed, "relative")));
             }
 
+            // An outcome that no finding explains still sets the level, so a failed or inconclusive
+            // assessment is never shown as quiet.
+            var outcome = assessed.GetProperty("outcome").GetString()!;
+            if (ForStatus(outcome) > ForFindings(findings))
+            {
+                findings.Add(new RankedFinding(
+                    ForStatus(outcome),
+                    outcome,
+                    "assessment",
+                    $"The assessment outcome is {outcome}, but no finding explains it.",
+                    null,
+                    null,
+                    null,
+                    null));
+            }
+
             return Rank(findings);
         }
 
@@ -179,13 +195,18 @@ public static class Attention
     }
 
     private static string? Text(JsonElement? element, string property) =>
-        element is { } value && value.TryGetProperty(property, out var text) && text.ValueKind == JsonValueKind.String ? text.GetString() : null;
+        element is { ValueKind: JsonValueKind.Object } value && value.TryGetProperty(property, out var text) && text.ValueKind == JsonValueKind.String ? text.GetString() : null;
 }
 
 /// <summary>Renders the one-screen pull request comment and the agent-facing Markdown.</summary>
 internal static class AttentionRenderer
 {
     private static readonly string[] Headings = ["Finding", "Before", "After", "Change"];
+
+    private const int MinimumClippedLine = 80;
+
+    // Well inside decimal range once multiplied by 100.
+    private const decimal MaxRelative = 1_000_000_000_000m;
 
     /// <summary>
     /// The pull request comment. It is empty when the result is quiet, because nothing is posted on
@@ -248,8 +269,17 @@ internal static class AttentionRenderer
         foreach (var finding in shown)
         {
             var line = AgentLine(finding);
-            if (builder.Length + line.Length > budget)
+            var remaining = budget - builder.Length;
+            if (line.Length > remaining)
             {
+                // A long line is shortened rather than dropped when enough room is left for it to
+                // say something, so one long message cannot hide every finding.
+                if (remaining >= MinimumClippedLine)
+                {
+                    builder.Append(line.AsSpan(0, remaining - 2)).Append("…\n");
+                    written++;
+                }
+
                 break;
             }
 
@@ -259,7 +289,8 @@ internal static class AttentionRenderer
 
         if (written < shown.Count)
         {
-            builder.Append("truncated: ").Append(shown.Count - written).Append(" more findings are in the full report\n");
+            var hidden = shown.Count - written;
+            builder.Append("truncated: ").Append(hidden).Append(hidden == 1 ? " more finding is" : " more findings are").Append(" in the full report\n");
         }
 
         return builder.ToString();
@@ -271,13 +302,13 @@ internal static class AttentionRenderer
         line.Append("- ").Append(Attention.Token(finding.Level)).Append(' ').Append(finding.Status).Append(' ').Append(OneLine(finding.Id));
         if (finding.Before is not null || finding.After is not null)
         {
-            line.Append(" before=").Append(finding.Before ?? "none").Append(" after=").Append(finding.After ?? "none");
+            line.Append(" before=").Append(OneLine(finding.Before ?? "none")).Append(" after=").Append(OneLine(finding.After ?? "none"));
         }
 
         var change = Change(finding);
         if (change.Length > 0)
         {
-            line.Append(" change=").Append(change);
+            line.Append(" change=").Append(OneLine(change));
         }
 
         line.Append(": ").Append(OneLine(finding.Message)).Append('\n');
@@ -320,7 +351,15 @@ internal static class AttentionRenderer
             return finding.Before is "0" ? absolute + " (from zero)" : absolute;
         }
 
-        var percent = decimal.Parse(finding.Relative, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture) * 100m;
+        // The relative value comes from the input and is not validated, so a value that is not a plain
+        // decimal, or too large to show as a percentage, leaves the absolute change on its own.
+        if (!decimal.TryParse(finding.Relative, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var relative)
+            || Math.Abs(relative) > MaxRelative)
+        {
+            return absolute;
+        }
+
+        var percent = relative * 100m;
         var rounded = Math.Round(percent, 1, MidpointRounding.AwayFromZero).ToString("0.#", CultureInfo.InvariantCulture);
         return $"{absolute} ({(percent >= 0 ? "+" : string.Empty)}{rounded}%)";
     }

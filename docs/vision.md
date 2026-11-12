@@ -86,10 +86,11 @@ Nothing posts the comment yet. `bundle` moves evidence through a content-address
 `present` builds and serves a review bundle. The root file has a schema and a loader that checks
 its cross-references, which `diffra record` uses; the `fail-on` decision is library code with no
 step to read it; and `diffra record` records a number given with `--value`, or a skipped or failed dataset,
-checked against the root file, with library code that merges the entries files of every job,
-reporting every disagreement in values or statuses and naming each job involved. There is no
-collecting job yet, and no converter for a tool's own format, so `record` cannot yet read the
-files a dataset's `from` names. The names Evidence, Delta and Assessment come from the earlier design; the
+checked against the root file, and `diffra merge` merges the entries files of every job,
+reporting every disagreement in values or statuses, naming each job involved, and listing the
+planned datasets no job collected. Nothing yet carries the jobs' files to a collecting job or
+writes the merged entries to history, and no converter for a tool's own format exists, so
+`record` cannot yet read the files a dataset's `from` names. The names Evidence, Delta and Assessment come from the earlier design; the
 glossary gives the words that replace them. The [sample
 workflow](../examples/sample-project/workflow/) contains inputs and checked-in outputs, the
 [protocol](protocol.md) describes the current document shapes, and the [CLI reference](cli.md)

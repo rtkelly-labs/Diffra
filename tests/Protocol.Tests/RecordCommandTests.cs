@@ -10,9 +10,9 @@ namespace Diffra.Protocol.Tests;
 /// </summary>
 public static class RecordCommandTests
 {
-    private const string Commit = "0123456789abcdef0123456789abcdef01234567";
+    internal const string Commit = "0123456789abcdef0123456789abcdef01234567";
 
-    private const string RootFile = """
+    internal const string RootFile = """
         schema: https://diffra.net/schemas/root-file-v1.schema.json
         dimensions:
           os: { values: [linux, windows] }
@@ -452,7 +452,7 @@ public static class RecordCommandTests
         }
     }
 
-    private static (int ExitCode, string Output, string Error) RunCli(string workingDirectory, Dictionary<string, string> environment, params string[] arguments)
+    internal static (int ExitCode, string Output, string Error) RunCli(string workingDirectory, Dictionary<string, string> environment, params string[] arguments)
     {
         // The CLI built in the same configuration as these tests.
         var configuration = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar)).Parent?.Name ?? "Debug";

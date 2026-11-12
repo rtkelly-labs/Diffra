@@ -25,4 +25,5 @@ public sealed class SuiteFacts
     [Fact] public void BaselineTrust() => BaselineTrustTests.RunAll();
     [Fact] public void DogfoodPipeline() => DogfoodPipelineTests.RunAll();
     [Fact] public void RecordCommand() => RecordCommandTests.RunAll();
+    [Fact] public void MergeCommand() => MergeCommandTests.RunAll();
 }

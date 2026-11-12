@@ -23,6 +23,11 @@ static int Run(string[] arguments)
         return RecordCommand.Run(arguments[1..]);
     }
 
+    if (string.Equals(arguments[0], "merge", StringComparison.Ordinal))
+    {
+        return MergeCommand.Run(arguments[1..]);
+    }
+
     if (string.Equals(arguments[0], "diff", StringComparison.Ordinal))
     {
         return DiffEvalCommands.RunDiff(arguments[1..]);
@@ -200,8 +205,9 @@ static void WriteAtomically(string outputPath, string contents)
 
 static void PrintUsage()
 {
-    Console.Error.WriteLine("Usage: diffra <record|collect|diff|eval|report|bundle|present> [options]");
+    Console.Error.WriteLine("Usage: diffra <record|merge|collect|diff|eval|report|bundle|present> [options]");
     Console.Error.WriteLine("  " + RecordCommand.Usage["Usage: ".Length..]);
+    Console.Error.WriteLine("  " + MergeCommand.Usage["Usage: ".Length..]);
     Console.Error.WriteLine("  collect --payload <json-file> --subject-id <id> --commit <full-commit> --type-id <id> --type-version <version> --producer-id <id> --producer-version <version> -o <evidence-file>");
     Console.Error.WriteLine("  diff --baseline-ref <reference.json> --baseline-evidence <evidence.json> --evidence <candidate.json> -o <delta.json>");
     Console.Error.WriteLine("  eval --rules <rules.json> --delta <delta.json> -o <assessment.json>");

@@ -37,6 +37,7 @@ public static class RecordEntryTests
         ReportsEveryStatusAndEveryJob();
         GivesTheSameResultInAnyOrder();
         ReportsWhatWasNotCollected();
+        MatchesAPlanOnTheListedDimensions();
         KeepsRejectedEntriesOutOfConflicts();
         Console.WriteLine("PASS record entries, entries files and the merge");
     }
@@ -487,6 +488,29 @@ public static class RecordEntryTests
         Equal(2, missing.Count);
         Equal("main/coverage was not collected.", missing[0]);
         Equal("main/packageSize (os=windows) was not collected.", missing[1]);
+    }
+
+    // A dataset stratified by an observed dimension is planned by its listed dimensions only.
+    private static void MatchesAPlanOnTheListedDimensions()
+    {
+        var observed = RecordEntries.Parse(Entry("test-linux", 1, value: "1").Replace(
+            "\"dataset\":\"packageSize\",",
+            "\"dataset\":\"packageSize\",\"dimensions\":{\"os\":\"linux\",\"runner\":\"r1\"},",
+            StringComparison.Ordinal));
+        Equal("r1", observed.Dimensions["runner"]);
+        var result = EntryMerge.Merge(
+            Commit,
+            [observed],
+            [
+                new ExpectedEntry("main", "packageSize", new Dictionary<string, string>(StringComparer.Ordinal) { ["os"] = "linux" }),
+                new ExpectedEntry("main", "packageSize", new Dictionary<string, string>(StringComparer.Ordinal)),
+                new ExpectedEntry("main", "packageSize", new Dictionary<string, string>(StringComparer.Ordinal) { ["os"] = "windows" }),
+                new ExpectedEntry("main", "packageSize", new Dictionary<string, string>(StringComparer.Ordinal) { ["runner"] = "r2" }),
+                new ExpectedEntry("other", "packageSize", new Dictionary<string, string>(StringComparer.Ordinal)),
+            ]);
+        Equal(
+            "main/packageSize (os=windows) was not collected.|main/packageSize (runner=r2) was not collected.|other/packageSize was not collected.",
+            string.Join("|", result.Findings.Select(finding => finding.Message)));
     }
 
     private static void KeepsRejectedEntriesOutOfConflicts()

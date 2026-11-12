@@ -962,7 +962,10 @@ public static partial class EntriesFile
 /// <summary>The valid entries of an entries file, in file order, and the lines that were not valid.</summary>
 public sealed record EntriesFileContent(IReadOnlyList<RecordEntry> Entries, IReadOnlyList<string> Problems);
 
-/// <summary>A dataset the root file plans for, for one combination of dimension values.</summary>
+/// <summary>
+/// A dataset the root file plans for, for one combination of the values of the dimensions whose
+/// values it lists. An entry matches when it has these values, whatever its other dimensions are.
+/// </summary>
 public sealed record ExpectedEntry(string Project, string Dataset, IReadOnlyDictionary<string, string> Dimensions);
 
 /// <summary>What kind of problem a merge found.</summary>
@@ -1129,11 +1132,15 @@ public static class EntryMerge
         }
 
         // Rule 5: a required dataset with no entry for a planned dimension value. An entry that
-        // conflicts was still collected; a rejected entry was not.
-        var collected = new HashSet<string>(stated.Select(DatasetIdentity), StringComparer.Ordinal);
+        // conflicts was still collected; a rejected entry was not. A plan names only the dimensions
+        // whose values the root file lists, so an entry matches it when it has those values,
+        // whatever value it has for an observed dimension.
+        var collected = stated.ToLookup(entry => (entry.Project, entry.Dataset));
         foreach (var plan in expected)
         {
-            if (!collected.Contains(RecordEntries.IdentityOf(plan.Project, plan.Dataset, null, plan.Dimensions)))
+            if (!collected[(plan.Project, plan.Dataset)].Any(entry => plan.Dimensions.All(
+                    dimension => entry.Dimensions.TryGetValue(dimension.Key, out var value)
+                        && string.Equals(value, dimension.Value, StringComparison.Ordinal))))
             {
                 findings.Add(new MergeFinding(
                     MergeFindingKind.NotCollected,

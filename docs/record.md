@@ -4,8 +4,8 @@ This page specifies `diffra record`, the one command each job that produces data
 entries file it writes. The command is built for `--value`, `--skipped` and `--failed`. No
 converter exists yet, so it cannot read the files a dataset's `from` names: `--from`, or giving no
 source, is saved as a rejected entry that says so. The protocol library's `Recording.cs` validates
-entries, writes and reads entries files, and merges them by the rules below; no collecting job
-runs the merge yet.
+entries, writes and reads entries files, and merges them by the rules below, and `diffra merge`
+runs that merge for a collecting job.
 
 ## What is decided
 
@@ -153,3 +153,40 @@ another commit is a finding.
 The merged entries become the partial record for the commit that the workflow file writes. They
 travel in the same bundle format as every other stage
 ([0004](adr/0004-records-integrity-and-storage.md) decision 6), with its import checks.
+
+## The collecting step (proposed)
+
+The collecting job runs one command after the jobs that produce data, whether they succeeded or
+not. Its name is proposed: `collect` already names another command.
+
+```sh
+diffra merge [--commit <id>] [--root-file <file>] [--run-dir <dir>] [--entries <dir>]...
+  [-o <file>] [--json]
+```
+
+- `--entries` names a folder holding the jobs' entries files, and may be repeated. Without it,
+  `merge` reads `<run-dir>/entries`, which may not exist when no job recorded anything. The run
+  folder, the commit and the root file are found as for `record`.
+- Every `*.jsonl` file directly in each folder is read, in name order. Entries files come from
+  other jobs and are read as untrusted data: links are not followed, folders are not searched, and
+  more than 1,000 files, a file over 16 MiB or more than 256 MiB in all are reported and not read.
+  A line that is not a valid entry is reported and left out.
+- The plan for rule 5 is every required dataset of every project, once for each combination of
+  the listed values of the dimensions it is stratified by. An observed dimension lists no values,
+  so the plan leaves it out, and an entry with any value for it matches.
+- The merged entries are written to `-o`, or `<run-dir>/merged.jsonl`, as an entries file: one
+  valid entry per line, in the merge's order. The same entries give the same file.
+- `merge` prints one line for the result and one for each superseded attempt, finding and
+  unreadable file, or one JSON object with `--json`. What it finds never changes the exit code:
+  it exits 0, 1 when it cannot read the entries or write its output, and 2 when there is no
+  usable commit, root file or entries folder, or an option is wrong.
+
+Not yet decided:
+
+- The format of the partial record, and how it travels and is written to history.
+- How jobs' entries files reach the collecting job. A CI integration owns that transport; on
+  GitHub, each job uploads its file as an artifact and the collecting job downloads them into one
+  folder.
+- Datasets produced by another workflow file. The root file does not say which workflow file
+  produces a dataset, so a collecting job reports a required dataset produced elsewhere as not
+  collected.

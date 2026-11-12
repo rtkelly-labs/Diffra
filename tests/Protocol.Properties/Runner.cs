@@ -87,22 +87,33 @@ internal sealed class Runner(long iterations, ulong seed, string? filter)
 
     private string Describe<T>(Gen<T> gen, Action<T> assert, Func<T, string> print, uint stream, long index, Exception failure)
     {
-        var text = string.Create(CultureInfo.InvariantCulture, $"Root seed {seed}, case {index}: {failure.Message}");
+        var text = string.Create(
+            CultureInfo.InvariantCulture,
+            $"Root seed {seed}, case {index}: {failure.Message}\n  replay: run with the arguments {Math.Max(iterations, index + 1)} {seed}");
         try
         {
             text += "\n  input: " + Limit(print(gen.Generate(CaseGenerator(stream, index), null, out _)));
+        }
+        catch (Exception exception)
+        {
+            text += "\n  input: could not be printed: " + exception.Message;
+        }
 
+        try
+        {
             // The failing case is replayed first, then CsCheck looks for a smaller one.
             gen.Sample(assert, seed: CaseGenerator(stream, index).ToString(), iter: ShrinkIterations, print: print);
             return text + "\n(CsCheck did not reproduce the failure, so it was not shrunk.)";
         }
         catch (Exception shrunk)
         {
-            return text + "\nShrunk by CsCheck:\n" + shrunk.Message;
+            // CsCheck's search for a smaller case is random, so this part differs from run to run,
+            // and the seed it names is CsCheck's own, not one this program takes.
+            return text + "\nA smaller failing case, from a random search by CsCheck (not replayable; its seed is not this program's):\n" + shrunk.Message;
         }
     }
 
-    private PCG CaseGenerator(uint stream, long index) => new(stream, Mix(seed + (ulong)index));
+    private PCG CaseGenerator(uint stream, long index) => new(stream, Mix(unchecked(Mix(seed) + (ulong)index)));
 
     private static string Limit(string text) => text.Length > 4000 ? text[..4000] + "..." : text;
 
@@ -118,7 +129,8 @@ internal sealed class Runner(long iterations, ulong seed, string? filter)
         return hash;
     }
 
-    // SplitMix64's finalizer, so that neighbouring case numbers give unrelated generators.
+    // SplitMix64's finalizer, so that neighbouring case numbers give unrelated generators. The seed
+    // is mixed first, so that neighbouring root seeds share no cases.
     private static ulong Mix(ulong value)
     {
         unchecked

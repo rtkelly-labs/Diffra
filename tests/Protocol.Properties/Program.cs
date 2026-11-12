@@ -17,10 +17,15 @@ using CsCheck;
 using Diffra.Protocol;
 using Diffra.Protocol.Properties;
 
-var iterations = args.Length > 0 ? long.Parse(args[0], CultureInfo.InvariantCulture) : 2000;
-var seed = args.Length > 1 && args[1].Length > 0 && args[1] != "random"
-    ? ulong.Parse(args[1], CultureInfo.InvariantCulture)
-    : BitConverter.ToUInt64(RandomNumberGenerator.GetBytes(sizeof(ulong)));
+var iterations = 2000L;
+var seed = BitConverter.ToUInt64(RandomNumberGenerator.GetBytes(sizeof(ulong)));
+if ((args.Length > 0 && (!long.TryParse(args[0], NumberStyles.None, CultureInfo.InvariantCulture, out iterations) || iterations < 1))
+    || (args.Length > 1 && args[1].Length > 0 && args[1] != "random" && !ulong.TryParse(args[1], NumberStyles.None, CultureInfo.InvariantCulture, out seed)))
+{
+    Console.Error.WriteLine("Usage: [iterations] [seed] [filter]. The seed is a whole number, the root seed a failure prints, or 'random'.");
+    return 2;
+}
+
 var runner = new Runner(iterations, seed, args.Length > 2 && args[2].Length > 0 ? args[2] : null);
 var results = runner.Results;
 
@@ -227,6 +232,12 @@ report.AppendLine();
 report.AppendLine(CultureInfo.InvariantCulture, $"Non-vacuity: keyed diff pairs with at least one change: {keyedNonEmpty}.");
 report.AppendLine(CultureInfo.InvariantCulture, $"Diff-eval outcomes (plain payloads): {Describe(outcomes)}.");
 report.AppendLine(CultureInfo.InvariantCulture, $"Diff-eval status/outcome (payloads with keyed collections): {Describe(keyedOutcomes)}.");
+if (results.Count == 0)
+{
+    Console.Error.WriteLine("No property matches the filter.");
+    return 2;
+}
+
 foreach (var note in runner.Notes)
 {
     report.AppendLine(note);

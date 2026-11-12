@@ -182,7 +182,7 @@ internal static class DataTrees
 
     /// <summary>
     /// The same tree written another way: object members in another order and every number respelt.
-    /// One time in three, a single leaf also changes value.
+    /// One time in three, a single leaf is also varied, which changes its value about half the time.
     /// </summary>
     public static J Respell(J tree, Random random)
     {

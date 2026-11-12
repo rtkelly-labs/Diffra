@@ -49,13 +49,17 @@ internal sealed partial record ExactNumber(bool Negative, string Digits, BigInte
 
 internal static class Numbers
 {
-    // Margins well inside each limit, so that the model never depends on where exactly a limit falls.
-    public static readonly BigInteger SafeForDeepEquals = int.MaxValue - 1000;
-    public static readonly BigInteger SafeForComparator = (long.MaxValue / 2) - 1000;
+    // Margins inside each limit, so that the model never depends on where exactly a limit falls.
+    // They are wider than a token is long, and no wider: the exponents just inside them are drawn
+    // (see Edges), so that exact comparison is checked close to each limit.
+    private const int Margin = 100;
+    public static readonly BigInteger SafeForDeepEquals = int.MaxValue - Margin;
+    public static readonly BigInteger SafeForComparator = (long.MaxValue / 2) - Margin;
 
     private static readonly BigInteger[] Edges =
     [
-        308, 324, 400, 9999, 10000,
+        308, 324, 400, 9999, 10000, 1_000_000,
+        int.MaxValue - (2 * Margin), (long.MaxValue / 2) - (2 * Margin),
         int.MaxValue, (BigInteger)int.MaxValue + 1, -(BigInteger)int.MaxValue - 1, -(BigInteger)int.MaxValue - 2,
         long.MaxValue / 2, (long.MaxValue / 2) + 1, long.MinValue / 2, (long.MinValue / 2) - 1,
         long.MaxValue, (BigInteger)long.MaxValue + 1, long.MinValue, (BigInteger)long.MinValue - 1,
@@ -101,15 +105,22 @@ internal static class Numbers
     public static (bool Negative, string Digits, BigInteger Exponent) Vary(
         (bool Negative, string Digits, BigInteger Exponent) value,
         (bool Negative, string Digits, BigInteger Exponent) other,
-        Random random) => random.Next(10) switch
+        Random random) => random.Next(12) switch
         {
             < 5 => value,
             5 => (value.Negative, value.Digits, value.Exponent + 1),
             6 => (value.Negative, value.Digits, value.Exponent - 1),
             7 => (!value.Negative, value.Digits, value.Exponent),
             8 => (value.Negative, value.Digits + "1", value.Exponent - 1),
+
+            // The same exponent once 32 or 64 bits wrap round: equal to a comparison that overflows.
+            9 => (value.Negative, value.Digits, value.Exponent + (value.Exponent.Sign > 0 ? -Wrap32 : Wrap32)),
+            10 => (value.Negative, value.Digits, value.Exponent + (value.Exponent.Sign > 0 ? -Wrap64 : Wrap64)),
             _ => other,
         };
+
+    private static readonly BigInteger Wrap32 = BigInteger.Pow(2, 32);
+    private static readonly BigInteger Wrap64 = BigInteger.Pow(2, 64);
 
     /// <summary>
     /// Writes a value as a valid JSON number in one of its many spellings: trailing zeros, a decimal
@@ -156,7 +167,8 @@ internal static class Numbers
         if (!written.IsZero || random.Next(3) == 0)
         {
             builder.Append(random.Next(2) == 0 ? 'e' : 'E');
-            builder.Append(written.Sign < 0 ? "-" : random.Next(3) == 0 ? "+" : string.Empty);
+            var minus = written.Sign < 0 || (written.IsZero && random.Next(3) == 0);
+            builder.Append(minus ? "-" : random.Next(3) == 0 ? "+" : string.Empty);
             builder.Append('0', random.Next(5) == 0 ? random.Next(1, 3) : 0);
             builder.Append(BigInteger.Abs(written).ToString(CultureInfo.InvariantCulture));
         }

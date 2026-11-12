@@ -44,6 +44,13 @@ public static class SarifConverter
     /// </summary>
     public const long MaximumFilledCharacters = 64L * 1024 * 1024;
 
+    /// <summary>
+    /// The most characters of keys and messages the findings of one entry may keep, so that many
+    /// results with a long tool name, rule id or message cannot fill memory before the
+    /// <c>maxKeys</c> budget is checked.
+    /// </summary>
+    public const long MaximumKeptCharacters = 64L * 1024 * 1024;
+
     // The most problems one file adds, so that one broken file cannot hide the others' problems.
     private const int MaximumProblemsPerFile = 10;
 
@@ -75,7 +82,15 @@ public static class SarifConverter
     public static ConverterResult Read(string root, string glob, int? maximumKeys, int? maximumTextLength) =>
         Read(root, glob, maximumKeys, maximumTextLength, MaximumFileBytes, MaximumEntryBytes);
 
-    internal static ConverterResult Read(string root, string glob, int? maximumKeys, int? maximumTextLength, long fileLimit, long entryLimit, long fillLimit = MaximumFilledCharacters)
+    internal static ConverterResult Read(
+        string root,
+        string glob,
+        int? maximumKeys,
+        int? maximumTextLength,
+        long fileLimit,
+        long entryLimit,
+        long fillLimit = MaximumFilledCharacters,
+        long keptLimit = MaximumKeptCharacters)
     {
         ArgumentNullException.ThrowIfNull(root);
         ArgumentNullException.ThrowIfNull(glob);
@@ -87,7 +102,7 @@ public static class SarifConverter
         }
 
         var sources = new List<ConverterSource>(match.Files.Count);
-        var findings = new Findings();
+        var findings = new Findings(keptLimit);
         var fill = new FillBudget(fillLimit);
         long total = 0;
         foreach (var path in match.Files)
@@ -122,7 +137,7 @@ public static class SarifConverter
             var fileProblems = new FileProblems();
             new LogReader(path, root, maximumTextLength, findings, fill, fileProblems).ReadFile(bytes);
             fileProblems.CopyTo(problems, path);
-            if (fill.Exceeded)
+            if (fill.Exceeded || findings.Exceeded)
             {
                 // The entry is rejected; reading on would only report the same limit again.
                 break;
@@ -186,8 +201,9 @@ public static class SarifConverter
     }
 
     // Every finding read from an entry's files.
-    private sealed class Findings
+    private sealed class Findings(long keptLimit)
     {
+        private long kept;
         private readonly SortedDictionary<string, (Finding Kept, int Occurrences)> results = new(StringComparer.Ordinal);
         private readonly SortedDictionary<string, (string Tool, string Rule, int Count)> byRule = new(StringComparer.Ordinal);
         private readonly SortedSet<string> collisions = new(StringComparer.Ordinal);
@@ -196,10 +212,23 @@ public static class SarifConverter
 
         public int Keys => results.Count;
 
+        // Whether the findings would keep more characters than the entry may; reading then stops.
+        public bool Exceeded { get; private set; }
+
         public void Add(Finding finding)
         {
-            total++;
             var rule = $"{finding.Tool}/{finding.Rule}";
+            var key = finding.Key;
+            var more = (byRule.ContainsKey(rule) ? 0L : rule.Length)
+                + (results.ContainsKey(key) ? 0L : key.Length + finding.Path.Length + finding.Fingerprint.Length + finding.Message.Length);
+            if (kept + more > keptLimit)
+            {
+                Exceeded = true;
+                throw new SarifException($"the findings would keep more than {keptLimit.ToString("N0", CultureInfo.InvariantCulture)} characters of keys and messages, the most one entry may.");
+            }
+
+            kept += more;
+            total++;
             if (byRule.TryGetValue(rule, out var counted))
             {
                 if (counted.Tool != finding.Tool || counted.Rule != finding.Rule)
@@ -214,19 +243,19 @@ public static class SarifConverter
                 byRule[rule] = (finding.Tool, finding.Rule, 1);
             }
 
-            if (!results.TryGetValue(finding.Key, out var held))
+            if (!results.TryGetValue(key, out var held))
             {
-                results[finding.Key] = (finding, 1);
+                results[key] = (finding, 1);
                 return;
             }
 
             if (held.Kept.Tool != finding.Tool || held.Kept.Rule != finding.Rule || held.Kept.Path != finding.Path || held.Kept.Fingerprint != finding.Fingerprint)
             {
-                collisions.Add(finding.Key);
+                collisions.Add(key);
             }
 
-            var kept = Precedence.Instance.Compare(finding, held.Kept) < 0 ? finding : held.Kept;
-            results[finding.Key] = (kept, held.Occurrences + 1);
+            var chosen = Precedence.Instance.Compare(finding, held.Kept) < 0 ? finding : held.Kept;
+            results[key] = (chosen, held.Occurrences + 1);
         }
 
         // Two different findings whose parts join to the same key, or two tool and rule pairs
@@ -343,11 +372,14 @@ public static class SarifConverter
     }
 
     // A rule descriptor, with its message strings by id once one is asked for.
-    private sealed class RuleDescriptor(JsonElement element)
+    private sealed class RuleDescriptor(JsonElement element, Component owner)
     {
         private Dictionary<string, JsonElement>? messages;
 
         public JsonElement Element => element;
+
+        // The tool component whose rules hold this descriptor.
+        public Component Owner => owner;
 
         public string? MessageString(string id) =>
             (messages ??= Table(Object(element, "messageStrings"))).TryGetValue(id, out var entry) ? OptionalString(entry, "text") : null;
@@ -358,10 +390,31 @@ public static class SarifConverter
     private sealed class Component(JsonElement element)
     {
         private Dictionary<string, RuleDescriptor>? byId;
+        private Dictionary<string, JsonElement>? globalMessages;
 
         public RuleDescriptor?[] Rules => field ??= element.TryGetProperty("rules", out var list) && list.ValueKind == JsonValueKind.Array
-            ? [.. list.EnumerateArray().Select(item => item.ValueKind == JsonValueKind.Object ? new RuleDescriptor(item) : null)]
+            ? [.. list.EnumerateArray().Select(item => item.ValueKind == JsonValueKind.Object ? new RuleDescriptor(item, this) : null)]
             : [];
+
+        // The component's guid, when it has one that can be read.
+        public string? Guid
+        {
+            get
+            {
+                try
+                {
+                    return OptionalString(element, "guid");
+                }
+                catch (SarifException)
+                {
+                    return null;
+                }
+            }
+        }
+
+        // A message string of the component as a whole, which SARIF looks in after the rule's own.
+        public string? GlobalMessageString(string id) =>
+            (globalMessages ??= Table(Object(element, "globalMessageStrings"))).TryGetValue(id, out var entry) ? OptionalString(entry, "text") : null;
 
         // The first rule with the id, as a walk of the array would find it. A rule whose id
         // cannot be read cannot match one that can, so it is passed over.
@@ -402,7 +455,11 @@ public static class SarifConverter
                 : [];
             Artifacts = run.TryGetProperty("artifacts", out var artifacts) && artifacts.ValueKind == JsonValueKind.Array ? [.. artifacts.EnumerateArray()] : [];
             Bases = Table(Object(run, "originalUriBaseIds"));
+            Invocations = run.TryGetProperty("invocations", out var invocations) && invocations.ValueKind == JsonValueKind.Array ? [.. invocations.EnumerateArray()] : [];
+            overrides = new Dictionary<RuleDescriptor, string>?[Invocations.Length];
         }
+
+        private readonly Dictionary<RuleDescriptor, string>?[] overrides;
 
         public Component? Driver { get; }
 
@@ -411,6 +468,87 @@ public static class SarifConverter
         public JsonElement[] Artifacts { get; }
 
         public Dictionary<string, JsonElement> Bases { get; }
+
+        public JsonElement[] Invocations { get; }
+
+        // The tool component a toolComponent reference names: by index among the extensions, else
+        // by guid among the driver and the extensions, else the driver. A reference that names
+        // no component the run defines gives none, so that no other component's rule is used.
+        public Component? ComponentFor(JsonElement? reference)
+        {
+            if (reference is not { } named)
+            {
+                return Driver;
+            }
+
+            if (Integer(named, "index") is { } index)
+            {
+                return index < Extensions.Length ? Extensions[(int)index] : null;
+            }
+
+            if (OptionalString(named, "guid") is { } guid)
+            {
+                return new[] { Driver }.Concat(Extensions).FirstOrDefault(component => component?.Guid is { } own && string.Equals(own, guid, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return Driver;
+        }
+
+        // The rule descriptor a reporting descriptor reference names in a component: by index,
+        // else by id.
+        public static RuleDescriptor? DescriptorFor(Component? component, long? index, string? id)
+        {
+            if (component is null)
+            {
+                return null;
+            }
+
+            if (index is { } at && at < component.Rules.Length)
+            {
+                return component.Rules[(int)at];
+            }
+
+            return id is null ? null : component.ById(id);
+        }
+
+        // The level an invocation's ruleConfigurationOverrides give a rule, if any; the first
+        // override that names the rule is used.
+        public string? OverrideLevel(long invocation, RuleDescriptor descriptor)
+        {
+            if (invocation >= Invocations.Length)
+            {
+                return null;
+            }
+
+            var table = overrides[invocation] ??= ReadOverrides(Invocations[invocation]);
+            return table.GetValueOrDefault(descriptor);
+        }
+
+        private Dictionary<RuleDescriptor, string> ReadOverrides(JsonElement invocation)
+        {
+            var table = new Dictionary<RuleDescriptor, string>();
+            if (invocation.ValueKind != JsonValueKind.Object
+                || !invocation.TryGetProperty("ruleConfigurationOverrides", out var list)
+                || list.ValueKind != JsonValueKind.Array)
+            {
+                return table;
+            }
+
+            foreach (var item in list.EnumerateArray())
+            {
+                var reference = Object(item, "descriptor");
+                if (reference is not { } named
+                    || OptionalString(Object(item, "configuration"), "level") is not { } level
+                    || DescriptorFor(ComponentFor(Object(named, "toolComponent")), Integer(named, "index"), OptionalString(named, "id")) is not { } rule)
+                {
+                    continue;
+                }
+
+                table.TryAdd(rule, level);
+            }
+
+            return table;
+        }
     }
 
     // Reads one SARIF file into the findings, adding a problem for anything it cannot read.
@@ -500,7 +638,7 @@ public static class SarifConverter
             foreach (var run in runs.EnumerateArray())
             {
                 ReadRun(run, number++);
-                if (fill.Exceeded)
+                if (fill.Exceeded || findings.Exceeded)
                 {
                     return;
                 }
@@ -539,8 +677,11 @@ public static class SarifConverter
                 return;
             }
 
+            // SARIF leaves results absent or null when the analysis did not start, and gives an
+            // empty array when it ran and found nothing.
             if (!run.TryGetProperty("results", out var results) || results.ValueKind == JsonValueKind.Null)
             {
+                problems.Add($"'{file}' {where}: the run has no results, which SARIF uses when the analysis did not start; no findings are recorded from it.");
                 return;
             }
 
@@ -561,7 +702,7 @@ public static class SarifConverter
                 catch (SarifException exception)
                 {
                     problems.Add($"'{file}' {where} result {index.ToString(CultureInfo.InvariantCulture)}: {exception.Message}");
-                    if (fill.Exceeded)
+                    if (fill.Exceeded || findings.Exceeded)
                     {
                         return;
                     }
@@ -578,7 +719,7 @@ public static class SarifConverter
                 throw new SarifException("a result must be an object.");
             }
 
-            var descriptor = Descriptor(tables, result, out var reference);
+            var descriptor = Descriptor(tables, result, out var reference, out var component);
             var rule = OptionalString(result, "ruleId")
                 ?? (reference is { } given ? OptionalString(given, "id") : null)
                 ?? (descriptor is { } found ? OptionalString(found.Element, "id") : null);
@@ -592,41 +733,28 @@ public static class SarifConverter
                 throw new SarifException("the rule id must be valid Unicode with no control characters.");
             }
 
-            var message = Message(result, descriptor);
+            var message = Message(result, descriptor, component);
             var fingerprint = Fingerprint(result, "fingerprints") ?? Fingerprint(result, "partialFingerprints") ?? MessageDigest(message);
             var (path, line) = Location(tables, result);
-            return new Finding(tool, rule, path, fingerprint, Level(result, descriptor), line, Clean(message));
+            return new Finding(tool, rule, path, fingerprint, Level(tables, result, descriptor), line, Clean(message));
         }
 
-        // The rule descriptor a result refers to: in the extension rule.toolComponent.index names,
-        // or else in the driver; by rule.index or ruleIndex, or else by id.
-        private static RuleDescriptor? Descriptor(RunTables tables, JsonElement result, out JsonElement? reference)
+        // The rule descriptor a result refers to, in the component rule.toolComponent names (by
+        // index, else guid) or else in the driver; by rule.index or ruleIndex, or else by id. The
+        // component is given too, for its global message strings.
+        private static RuleDescriptor? Descriptor(RunTables tables, JsonElement result, out JsonElement? reference, out Component? component)
         {
             reference = Object(result, "rule");
-            var component = tables.Driver;
-            if (reference is { } given && Object(given, "toolComponent") is { } named && Integer(named, "index") is { } extension)
-            {
-                component = extension < tables.Extensions.Length ? tables.Extensions[(int)extension] : null;
-            }
-
-            if (component is null)
-            {
-                return null;
-            }
-
+            component = tables.ComponentFor(reference is { } given ? Object(given, "toolComponent") : null);
             var index = (reference is { } r ? Integer(r, "index") : null) ?? Integer(result, "ruleIndex");
-            if (index is { } at && at < component.Rules.Length)
-            {
-                return component.Rules[(int)at];
-            }
-
             var id = OptionalString(result, "ruleId") ?? (reference is { } byId ? OptionalString(byId, "id") : null);
-            return id is null ? null : component.ById(id);
+            return RunTables.DescriptorFor(component, index, id);
         }
 
-        // The result's level when given. Otherwise, as SARIF specifies, the rule's default level or
-        // warning when the kind is absent or fail, and none for any other kind.
-        private static string Level(JsonElement result, RuleDescriptor? descriptor)
+        // The result's level when given. Otherwise, as SARIF specifies, when the kind is absent or
+        // fail: the level the invocation that provenance.invocationIndex names overrides the rule
+        // with, else the rule's default level, else warning; and none for any other kind.
+        private static string Level(RunTables tables, JsonElement result, RuleDescriptor? descriptor)
         {
             if (OptionalString(result, "level") is { } level)
             {
@@ -641,6 +769,16 @@ public static class SarifConverter
                 return "none";
             }
 
+            if (descriptor is { } overridden
+                && Object(result, "provenance") is { } provenance
+                && Integer(provenance, "invocationIndex") is { } invocation
+                && tables.OverrideLevel(invocation, overridden) is { } configured)
+            {
+                return Array.IndexOf(Levels, configured) >= 0
+                    ? configured
+                    : throw new SarifException($"the overriding level '{Cut(configured, 100)}' is not one of {string.Join(", ", Levels)}.");
+            }
+
             if (descriptor is { } rule && OptionalString(Object(rule.Element, "defaultConfiguration"), "level") is { } fallback)
             {
                 return Array.IndexOf(Levels, fallback) >= 0
@@ -653,7 +791,7 @@ public static class SarifConverter
 
         // The message text, or the rule's message string the message id names, with its {n}
         // placeholders replaced by the message's arguments.
-        private string Message(JsonElement result, RuleDescriptor? descriptor)
+        private string Message(JsonElement result, RuleDescriptor? descriptor, Component? component)
         {
             var message = Object(result, "message") ?? throw new SarifException("the result has no message.");
             List<string>? arguments = message.TryGetProperty("arguments", out var given) && given.ValueKind == JsonValueKind.Array
@@ -666,14 +804,14 @@ public static class SarifConverter
                 return arguments is null ? text : Format(text, arguments);
             }
 
+            // The rule's message strings first, then those of the component that defines the rule.
             if (OptionalString(message, "id") is { } id
-                && descriptor is { } rule
-                && rule.MessageString(id) is { } format)
+                && (descriptor?.MessageString(id) ?? (descriptor?.Owner ?? component)?.GlobalMessageString(id)) is { } format)
             {
                 return Format(format, arguments ?? []);
             }
 
-            throw new SarifException("the result's message has no text, and no message string of its rule that its id names.");
+            throw new SarifException("the result's message has no text, and no message string of its rule or tool component that its id names.");
         }
 
         // SARIF's message format: {n} is the nth argument, and {{ and }} are literal braces. The

@@ -131,7 +131,8 @@ Every file a converter reads is untrusted, even when it came from the adopter's 
   256 deep, and one attribute or text node holds at most 10 million characters.
 - JSON is read with a nesting limit of 256 and no comments or trailing commas, unless the format's
   own tools write them. SARIF messages filled from their arguments hold at most 64 Mi characters
-  together in one entry.
+  together in one entry, and the findings kept from SARIF hold at most 64 Mi characters of keys,
+  paths, fingerprints and messages.
 - Text formats limit one line to 1 MiB.
 - Archives, when a converter reads one, are expanded at most 100 times their stored size and to
   at most 1 GiB, and a member whose path escapes the archive is rejected.
@@ -261,7 +262,8 @@ Findings that share a key, such as the same message twice in one file, are kept 
 ### Default fields
 
 All of the fields above. The tool is the run's `tool.driver.name`. The level is the result's
-`level` when given. Otherwise, as SARIF specifies, the rule's default level or `warning` applies
+`level` when given. Otherwise, as SARIF specifies, the invocation's override for the rule, the
+rule's default level or `warning` applies
 only when the result's `kind` is absent or `fail`; a result of any other `kind` (such as `pass`
 or `informational`) has the level `none`.
 

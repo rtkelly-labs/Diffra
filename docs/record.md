@@ -100,20 +100,28 @@ The `sarif` converter reads SARIF 2.1.0 logs, as CodeQL and Ruff write them:
 - A log must be an object whose `version` is `2.1.0` and whose `runs` is an array. Any other
   version, or none, rejects the entry and names the version read. `runs: null`, which SARIF uses
   when the tool could not run, rejects the entry too. Each run needs `tool.driver.name`, the
-  tool's name. A run that keeps results in external property files
-  (`externalPropertyFileReferences.results`) rejects the entry, since they are not read.
+  tool's name. A run whose `results` is absent or `null`, which SARIF uses when the analysis did
+  not start, rejects the entry; an empty `results` array is a clean run. A run that keeps results
+  in external property files (`externalPropertyFileReferences.results`) rejects the entry, since
+  they are not read.
 - Each result needs a rule: its `ruleId`, else `rule.id`, else the id of the rule descriptor that
-  `rule.index` or `ruleIndex` names in the driver, or in the extension `rule.toolComponent.index`
-  names. A result with no rule rejects the entry.
+  `rule.index` or `ruleIndex` names. The descriptor is looked up in the extension that
+  `rule.toolComponent.index` names, else in the driver or extension whose `guid` matches
+  `rule.toolComponent.guid`, ignoring case, else in the driver; a `toolComponent` that gives only
+  a `name` uses the driver. A result with no rule rejects the entry.
 - The level is the result's `level` when given. Otherwise, when `kind` is absent or `fail`, it is
-  the rule's `defaultConfiguration.level`, or `warning`; any other `kind` gives `none`.
-- The message is `message.text`, or else the rule's `messageStrings` entry its `message.id`
-  names, with `{0}`, `{1}` and so on filled from `message.arguments`; `message.text` with no
-  `arguments` is kept as written. A placeholder is `{`, at most ten digits and `}`; any other
-  brace is kept as written. The messages filled this way hold at most 64 Mi characters together
-  in one entry, a safety limit counted as each character is copied; filling past it rejects the
-  entry, and the rest of the logs are not read. Control characters become spaces, and a message
-  longer than the root file's `maxTextLength` is cut and ends with `…`.
+  the level of the invocation's `ruleConfigurationOverrides` entry for the rule, the invocation
+  being the one the result's `provenance.invocationIndex` names, else the rule's
+  `defaultConfiguration.level`, else `warning`; any other `kind` gives `none`. The first override
+  for a rule is used.
+- The message is `message.text`, or else the `messageStrings` entry its `message.id` names in the
+  rule, or else in the tool component's `globalMessageStrings`, with `{0}`, `{1}` and so on
+  filled from `message.arguments`; `message.text` with no `arguments` is kept as written. A
+  placeholder is `{`, at most ten digits and `}`; any other brace is kept as written. The
+  messages filled this way hold at most 64 Mi characters together in one entry, a safety limit
+  counted as each character is copied; filling past it rejects the entry, and the rest of the
+  logs are not read. Control characters become spaces, and a message longer than the root file's
+  `maxTextLength` is cut and ends with `…`.
 - The path is the first location's `physicalLocation.artifactLocation`. Its `uri` is resolved
   through `uriBaseId` and the run's `originalUriBaseIds`, following at most ten bases so that a
   cycle ends; a base the run does not define leaves the URI relative to the repository root. A
@@ -134,11 +142,14 @@ The `sarif` converter reads SARIF 2.1.0 logs, as CodeQL and Ruff write them:
   or two tool and rule pairs that join to the same `byRule` key, reject the entry.
 - `total` and each `byRule` count include every result, whatever its `kind` or level.
 - More findings by key than the root file's `maxKeys` budget reject the entry, as for size.
+- The findings kept in one entry hold at most 64 Mi characters of keys, paths, fingerprints and
+  messages, a safety limit counted as each finding is kept; passing it rejects the entry, and the
+  rest of the logs are not read.
 - `suppressions` and `baselineState` are not read, and the root file's `fields` selection is not
   applied, so `byRule`, `results` and `total` are always written. The entry holds every log as a
   source and, with every number a decimal string,
   `{ "byRule": { "<tool>/<rule>": { "value": "<count>" } }, "results": { "<key>": { "value": { "level", "line", "message", "occurrences", "path", "rule", "tool" } } }, "total": { "value": "<count>" } }`
-  as its `data`. A log with no results records zero findings.
+  as its `data`. A log whose runs have empty `results` records zero findings.
 - `diffra merge` reads an entries file of at most 16 MiB. A findings entry that would take the
   file past that is saved as a rejected entry instead (see the entries file below); setting the
   root file's `maxKeys` and `maxTextLength` budgets bounds the entry's size.

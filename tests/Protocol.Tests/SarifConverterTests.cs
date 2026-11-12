@@ -31,6 +31,7 @@ public static class SarifConverterTests
         RejectsUndecodablePropertyNames();
         RejectsMessagesFilledPastTheLimit();
         ReadsBracesWithoutPlaceholdersOnce();
+        RejectsFindingsKeptPastTheLimit();
         RejectsWhatItCannotTellApart();
         RejectsExternalizedResults();
         ListsTheFirstProblemsOfAFile();
@@ -83,11 +84,19 @@ public static class SarifConverterTests
         using var folder = new Folder();
         folder.Write("empty.sarif", """{"version":"2.1.0","runs":[]}""");
         folder.Write("clean.sarif", Log(Run("Ruff")));
-        folder.Write("absent.sarif", """{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"Ruff"}},"results":null}]}""");
         var result = SarifConverter.Read(folder.Root, "*.sarif", maximumKeys: null, maximumTextLength: null);
         Equal(0, result.Problems.Count);
-        Equal(3, result.Sources.Count);
+        Equal(2, result.Sources.Count);
         Equal("""{"byRule":{},"results":{},"total":{"value":"0"}}""", result.Data);
+
+        // Absent or null results mean the analysis did not start, which is not a clean run.
+        folder.Write("absent.sarif", """{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"Ruff"}},"results":null},{"tool":{"driver":{"name":"Biome"}}}]}""");
+        var absent = SarifConverter.Read(folder.Root, "absent.sarif", maximumKeys: null, maximumTextLength: null);
+        Equal(null, absent.Data);
+        Equal(
+            "'absent.sarif' run 0: the run has no results, which SARIF uses when the analysis did not start; no findings are recorded from it.|"
+            + "'absent.sarif' run 1: the run has no results, which SARIF uses when the analysis did not start; no findings are recorded from it.",
+            string.Join("|", absent.Problems));
     }
 
     // The result's level when given; otherwise the rule's default level or warning when the kind
@@ -117,6 +126,24 @@ public static class SarifConverterTests
         var rejected = SarifConverter.Read(folder.Root, "bad.sarif", maximumKeys: null, maximumTextLength: null);
         Equal(null, rejected.Data);
         Equal("'bad.sarif' run 0 result 0: the level 'fatal' is not one of error, warning, note, none.", rejected.Problems.Single());
+
+        // With no level, the invocation provenance.invocationIndex names may override the rule's
+        // default level, for a rule it names by index or by id.
+        var overridden = """
+            {"tool":{"driver":{"name":"Tool","rules":[{"id":"R1","defaultConfiguration":{"level":"note"}},{"id":"R2","defaultConfiguration":{"level":"note"}}]}},
+             "invocations":[{"executionSuccessful":true},{"executionSuccessful":true,"ruleConfigurationOverrides":[
+               {"descriptor":{"index":0},"configuration":{"level":"error"}},
+               {"descriptor":{"id":"R2"},"configuration":{"level":"none"}}]}],
+             "results":[
+              {"ruleId":"R1","provenance":{"invocationIndex":1},"message":{"text":"overridden"}},
+              {"ruleId":"R2","provenance":{"invocationIndex":1},"message":{"text":"overridden by id"}},
+              {"ruleId":"R1","provenance":{"invocationIndex":0},"message":{"text":"other invocation"}},
+              {"ruleId":"R1","message":{"text":"no invocation"}},
+              {"ruleId":"R1","level":"warning","provenance":{"invocationIndex":1},"message":{"text":"level given"}}]}
+            """;
+        Equal("level given=warning,no invocation=note,other invocation=note,overridden by id=none,overridden=error", string.Join(",", Findings(Data(Log(overridden)))
+            .Select(finding => $"{finding.GetProperty("message").GetString()}={finding.GetProperty("level").GetString()}")
+            .Order(StringComparer.Ordinal)));
     }
 
     // A rule descriptor is found by rule.index or ruleIndex, in the extension rule.toolComponent
@@ -148,6 +175,21 @@ public static class SarifConverterTests
         folder.Write("index.sarif", Log(RunWithRules("Tool", rules, ["""{"ruleIndex":7,"message":{"text":"m"}}"""])));
         Equal("'index.sarif' run 0 result 0: the result names no rule: it has no ruleId, rule.id or rule descriptor with an id.",
             SarifConverter.Read(folder.Root, "index.sarif", maximumKeys: null, maximumTextLength: null).Problems.Single());
+
+        // A toolComponent given by guid alone is found by its guid. A guid the run does not
+        // define finds no rule, rather than the driver's.
+        var byGuid = """
+            {"tool":{"driver":{"name":"CodeQL","guid":"00000000-0000-0000-0000-000000000001","rules":[{"id":"driver-rule","defaultConfiguration":{"level":"note"}}]},
+              "extensions":[{"name":"pack","guid":"00000000-0000-0000-0000-00000000000A","rules":[{"id":"js/x","defaultConfiguration":{"level":"error"}}]}]},
+             "results":[
+              {"rule":{"index":0,"toolComponent":{"guid":"00000000-0000-0000-0000-00000000000a"}},"message":{"text":"extension by guid"}},
+              {"rule":{"index":0,"toolComponent":{"guid":"00000000-0000-0000-0000-000000000001"}},"message":{"text":"driver by guid"}},
+              {"ruleId":"other","rule":{"index":0,"toolComponent":{"guid":"00000000-0000-0000-0000-0000000000ff"}},"message":{"text":"unknown guid"}}]}
+            """;
+        folder.Write("guid.sarif", Log(byGuid));
+        Equal("driver by guid=note driver-rule,extension by guid=error js/x,unknown guid=warning other", string.Join(",", Findings(SarifConverter.Read(folder.Root, "guid.sarif", maximumKeys: null, maximumTextLength: null).Data!)
+            .Select(finding => $"{finding.GetProperty("message").GetString()}={finding.GetProperty("level").GetString()} {finding.GetProperty("rule").GetString()}")
+            .Order(StringComparer.Ordinal)));
 
         folder.Write("norule.sarif", Log(Run("Tool", """{"message":{"text":"m"}}""")));
         Equal("'norule.sarif' run 0 result 0: the result names no rule: it has no ruleId, rule.id or rule descriptor with an id.",
@@ -307,9 +349,23 @@ public static class SarifConverterTests
         using var folder = new Folder();
         folder.Write("m.sarif", Log(RunWithRules("T", rules, [given, missing])));
         var result = SarifConverter.Read(folder.Root, "m.sarif", maximumKeys: null, maximumTextLength: null);
-        Equal("'m.sarif' run 0 result 1: the result's message has no text, and no message string of its rule that its id names.", result.Problems.Single());
+        Equal("'m.sarif' run 0 result 1: the result's message has no text, and no message string of its rule or tool component that its id names.", result.Problems.Single());
         folder.Write("m.sarif", Log(RunWithRules("T", rules, [given])));
         Equal("'x' is unused in f; {literal} {5}", Findings(SarifConverter.Read(folder.Root, "m.sarif", maximumKeys: null, maximumTextLength: null).Data!).Single().GetProperty("message").GetString());
+
+        // A message string the rule lacks is looked up in the global message strings of the
+        // component that defines the rule, here an extension, else of the driver.
+        var global = """
+            {"tool":{"driver":{"name":"T","globalMessageStrings":{"g":{"text":"driver {0}"}},"rules":[{"id":"R"}]},
+              "extensions":[{"name":"e","globalMessageStrings":{"g":{"text":"extension {0}"}},"rules":[{"id":"X"}]}]},
+             "results":[
+              {"ruleId":"R","message":{"id":"g","arguments":["a"]}},
+              {"rule":{"index":0,"toolComponent":{"index":0}},"message":{"id":"g","arguments":["b"]}},
+              {"ruleId":"Q","message":{"id":"g","arguments":["c"]}}]}
+            """;
+        folder.Write("m.sarif", Log(global));
+        Equal("driver a,driver c,extension b", string.Join(",", Findings(SarifConverter.Read(folder.Root, "m.sarif", maximumKeys: null, maximumTextLength: null).Data!)
+            .Select(finding => finding.GetProperty("message").GetString()).Order(StringComparer.Ordinal)));
 
         // Text with arguments is filled the same way; text without them is kept as written.
         folder.Write("m.sarif", Log(Run("T",
@@ -439,6 +495,23 @@ public static class SarifConverterTests
         var once = SarifConverter.Read(folder.Root, "*.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, fillLimit: 10_500);
         Equal(null, once.Data);
         Equal("'m.sarif' run 0 result 10: the messages filled from their arguments would hold more than 10,500 characters, the most one entry may.", once.Problems.Single());
+    }
+
+    // The keys and messages the findings keep are bounded as they are added, so that many results
+    // with a long tool name cannot fill memory before maxKeys is checked; the limit is reported once.
+    private static void RejectsFindingsKeptPastTheLimit()
+    {
+        Equal(64L * 1024 * 1024, SarifConverter.MaximumKeptCharacters);
+        var tool = new string('t', 1000);
+        var results = Enumerable.Range(0, 100).Select(index => $$$$"""{"ruleId":"R","message":{"text":"m"},"fingerprints":{"f":"{{{{index}}}}"}}""").ToArray();
+        using var folder = new Folder();
+        folder.Write("k.sarif", Log(Run(tool, results)));
+        Equal(100, Findings(SarifConverter.Read(folder.Root, "k.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes).Data!).Count);
+        var over = SarifConverter.Read(folder.Root, "k.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, keptLimit: 50_000);
+        Equal(null, over.Data);
+        var problem = over.Problems.Single();
+        Equal(true, problem.StartsWith("'k.sarif' run 0 result ", StringComparison.Ordinal)
+            && problem.EndsWith(": the findings would keep more than 50,000 characters of keys and messages, the most one entry may.", StringComparison.Ordinal));
     }
 
     // A placeholder is read only as far as its few digits, so a long text of '{' with no '}' is

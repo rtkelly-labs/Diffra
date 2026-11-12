@@ -40,6 +40,9 @@ internal static partial class RecordCommand
 
     private static readonly string[] Numeric = ["count", "integer", "decimal", "bytes", "duration", "ratio"];
 
+    // The units a duration literal in the root file may have.
+    private static readonly string[] DurationUnits = ["ns", "us", "ms", "s", "m", "h", "d"];
+
     private static readonly JsonWriterOptions WriterOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     [GeneratedRegex("^(?:[0-9a-f]{40}|[0-9a-f]{64})\\z", RegexOptions.CultureInvariant)]
@@ -446,7 +449,7 @@ internal static partial class RecordCommand
             CheckDeclared(context, document, dimensions, value is null ? null : canonical, unit, key, problems);
 
             // The declared unit applies when none is given, so stating it is the same as leaving it out.
-            if (unit is not null && document.Datasets.TryGetValue(context.Dataset, out var declared) && string.Equals(unit, declared.Unit, StringComparison.Ordinal))
+            if (unit is not null && document.Datasets.TryGetValue(context.Dataset, out var declared) && string.Equals(unit, DeclaredUnit(declared), StringComparison.Ordinal))
             {
                 unit = null;
             }
@@ -454,6 +457,10 @@ internal static partial class RecordCommand
 
         return new Source(status, canonical, unit, key, reason, replaces);
     }
+
+    // The unit a dataset is measured in: the one it declares, or B for bytes, whose unit is fixed.
+    // A duration or ratio declares none.
+    private static string? DeclaredUnit(RootDataset dataset) => dataset.Unit ?? (dataset.TypeName == "bytes" ? "B" : null);
 
     private static void CheckDeclared(
         Context context,
@@ -526,9 +533,21 @@ internal static partial class RecordCommand
             problems.Add($"Dataset '{dataset.Name}' has type '{dataset.TypeName}', which cannot be negative.");
         }
 
-        if (unit is not null && dataset.Unit is not null && !string.Equals(unit, dataset.Unit, StringComparison.Ordinal))
+        if (unit is not null)
         {
-            problems.Add($"Dataset '{dataset.Name}' is measured in '{dataset.Unit}', not '{unit}'.");
+            var declared = DeclaredUnit(dataset);
+            if (declared is not null && !string.Equals(unit, declared, StringComparison.Ordinal))
+            {
+                problems.Add($"Dataset '{dataset.Name}' is measured in '{declared}', not '{unit}'.");
+            }
+            else if (dataset.TypeName == "ratio")
+            {
+                problems.Add($"Dataset '{dataset.Name}' is a ratio, which has no unit.");
+            }
+            else if (dataset.TypeName == "duration" && Array.IndexOf(DurationUnits, unit) < 0)
+            {
+                problems.Add($"Dataset '{dataset.Name}' is a duration; its unit is one of {string.Join(", ", DurationUnits)}, not '{unit}'.");
+            }
         }
 
         if (dataset.Keyed && key is null)

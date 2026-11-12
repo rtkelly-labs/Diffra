@@ -37,7 +37,7 @@ diffra record --name <dataset> [source] [--project <name>] [--key <key>]
 | --- | --- |
 | *(none)* | Read the files the dataset's `from` names, with the converter it names. |
 | `--from <path-or-glob>` | Read these files instead of the paths in `from`, still with the converter `from` names. |
-| `--value <number> [--unit <unit>]` | One number. Numbers are typed normally; the CLI writes the canonical form. Without `--unit`, the dataset's declared unit applies and none is written; giving the declared unit is the same as leaving it out. |
+| `--value <number> [--unit <unit>]` | One number. Numbers are typed normally; the CLI writes the canonical form. Without `--unit`, the dataset's declared unit applies and none is written; giving the declared unit is the same as leaving it out. A `bytes` dataset is measured in `B`; a `duration` takes one of `ns`, `us`, `ms`, `s`, `m`, `h` or `d`; a `ratio` takes no unit. |
 | `--skipped --reason <text>` | The dataset was deliberately not collected in this job. |
 | `--failed --reason <text>` | The collector broke. |
 

@@ -20,7 +20,6 @@ public static class RecordCommandTests
         datasets:
           packageSize:
             type: bytes
-            unit: B
             stratify: [os]
             from: { payload: "artifacts/size.json" }
           suiteTime:
@@ -91,7 +90,7 @@ public static class RecordCommandTests
         Equal(0, stratified.Record("--name", "packageSize", "--value", "1024", "--unit", "B", "--dimension", "os=linux").ExitCode);
         var size = Single(stratified.Entries());
         Equal("linux", size.Dimensions["os"]);
-        Equal(null, size.Value!.Unit); // The declared unit, so it is not written.
+        Equal(null, size.Value!.Unit); // B is the fixed unit of bytes, so it is not written.
         Equal(true, File.Exists(Path.Combine(stratified.Directory, "run", "entries", EntriesFile.FileName("pack", 1))));
     }
 
@@ -155,6 +154,8 @@ public static class RecordCommandTests
             (["--name", "warnings", "--value", "1.5"], "takes whole numbers only"),
             (["--name", "warnings", "--value", "-1"], "cannot be negative"),
             (["--name", "warnings", "--value", "1", "--unit", "errors"], "is measured in 'warnings', not 'errors'."),
+            (["--name", "packageSize", "--value", "1", "--unit", "s", "--dimension", "os=linux"], "is measured in 'B', not 's'."),
+            (["--name", "suiteTime", "--value", "1", "--key", "a", "--unit", "B"], "is a duration; its unit is one of ns, us, ms, s, m, h, d, not 'B'."),
             (["--name", "suiteTime", "--value", "1"], "is keyed; give the member with --key."),
             (["--name", "ratio", "--value", "1", "--key", "a"], "is not keyed"),
             (["--name", "ratio", "--value", "1", "--key", " a"], "--key must be"),
@@ -453,7 +454,9 @@ public static class RecordCommandTests
 
     private static (int ExitCode, string Output, string Error) RunCli(string workingDirectory, Dictionary<string, string> environment, params string[] arguments)
     {
-        var cliAssembly = Path.Combine(FindRepositoryRoot(), "src", "Cli", "bin", "Release", "net10.0", "Diffra.Cli.dll");
+        // The CLI built in the same configuration as these tests.
+        var configuration = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar)).Parent?.Name ?? "Debug";
+        var cliAssembly = Path.Combine(FindRepositoryRoot(), "src", "Cli", "bin", configuration, "net10.0", "Diffra.Cli.dll");
         if (!File.Exists(cliAssembly))
         {
             throw new FileNotFoundException("Build Diffra.slnx before running RecordCommandTests.", cliAssembly);

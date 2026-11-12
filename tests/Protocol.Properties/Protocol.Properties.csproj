@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
-    Property-based and metamorphic checks for canonical JSON, keyed comparison and diff then eval.
-    Runs in CI only (see the properties job). Not part of Diffra.slnx while it is an experiment.
+    Property-based and metamorphic checks for canonical JSON, keyed comparison, diff then eval,
+    number equality and record entries. Runs in CI only (see the properties job). Not part of
+    Diffra.slnx while it is an experiment.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>

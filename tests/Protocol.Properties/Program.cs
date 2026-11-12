@@ -1,12 +1,16 @@
 // Property-based and metamorphic checks (CsCheck) for canonical JSON, keyed structural comparison,
 // and the numeric diff then eval pipeline.
 //
-//   Diffra.Protocol.Properties [iterations] [seed]
+//   Diffra.Protocol.Properties [iterations] [seed] [filter]
+//
+// The seed is a whole number, or "random" (the default) to draw one. The same seed checks the same
+// inputs on every run, so a pull request passes a fixed seed and the nightly run draws one. The
+// filter keeps the properties whose name contains it.
 //
 // Every property runs to completion so that one failure does not hide another. A failing property
-// prints CsCheck's shrunk counterexample and the seed that reproduces it.
-using System.Diagnostics;
+// prints the root seed, the failing input and CsCheck's shrunk counterexample.
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using CsCheck;
@@ -14,8 +18,11 @@ using Diffra.Protocol;
 using Diffra.Protocol.Properties;
 
 var iterations = args.Length > 0 ? long.Parse(args[0], CultureInfo.InvariantCulture) : 2000;
-var seed = args.Length > 1 && args[1].Length > 0 ? args[1] : null;
-var results = new List<PropertyResult>();
+var seed = args.Length > 1 && args[1].Length > 0 && args[1] != "random"
+    ? ulong.Parse(args[1], CultureInfo.InvariantCulture)
+    : BitConverter.ToUInt64(RandomNumberGenerator.GetBytes(sizeof(ulong)));
+var runner = new Runner(iterations, seed, args.Length > 2 && args[2].Length > 0 ? args[2] : null);
+var results = runner.Results;
 
 // ---- Canonical JSON -------------------------------------------------------------------------
 
@@ -193,24 +200,38 @@ Check(
     },
     input => Json.Render(input.Item1));
 
+// ---- Suites in their own files ------------------------------------------------------------------
+
+foreach (var suite in typeof(IPropertySuite).Assembly.GetTypes()
+    .Where(type => type is { IsClass: true, IsAbstract: false } && typeof(IPropertySuite).IsAssignableFrom(type))
+    .OrderBy(type => type.FullName, StringComparer.Ordinal))
+{
+    ((IPropertySuite)Activator.CreateInstance(suite)!).Register(runner);
+}
+
 // ---- Report -------------------------------------------------------------------------------------
 
 var report = new StringBuilder();
 report.AppendLine("## Property and metamorphic checks");
 report.AppendLine();
-report.AppendLine(CultureInfo.InvariantCulture, $"Iterations per property: {iterations}; seed: {seed ?? "random"}.");
+report.AppendLine(CultureInfo.InvariantCulture, $"Iterations per property: {iterations}; seed: {seed}.");
 report.AppendLine();
-report.AppendLine("| Property | Result | Seconds |");
-report.AppendLine("| --- | --- | --- |");
+report.AppendLine("| Property | Result | Seconds | Cases |");
+report.AppendLine("| --- | --- | --- | --- |");
 foreach (var result in results)
 {
-    report.AppendLine(CultureInfo.InvariantCulture, $"| {result.Name} | {(result.Failure is null ? "pass" : "**FAIL**")} | {result.Elapsed.TotalSeconds:F1} |");
+    report.AppendLine(CultureInfo.InvariantCulture, $"| {result.Name} | {(result.Failure is null ? "pass" : "**FAIL**")} | {result.Elapsed.TotalSeconds:F1} | {result.Cases} |");
 }
 
 report.AppendLine();
 report.AppendLine(CultureInfo.InvariantCulture, $"Non-vacuity: keyed diff pairs with at least one change: {keyedNonEmpty}.");
 report.AppendLine(CultureInfo.InvariantCulture, $"Diff-eval outcomes (plain payloads): {Describe(outcomes)}.");
 report.AppendLine(CultureInfo.InvariantCulture, $"Diff-eval status/outcome (payloads with keyed collections): {Describe(keyedOutcomes)}.");
+foreach (var note in runner.Notes)
+{
+    report.AppendLine(note);
+}
+
 report.AppendLine();
 foreach (var result in results.Where(result => result.Failure is not null))
 {
@@ -235,27 +256,11 @@ return results.Exists(result => result.Failure is not null) ? 1 : 0;
 static string Describe(System.Collections.Concurrent.ConcurrentDictionary<string, long> counts) =>
     string.Join(", ", counts.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => $"{pair.Key} {pair.Value}"));
 
-void Check<T>(string name, Gen<T> gen, Action<T> assert, Func<T, string> print)
-{
-    var watch = Stopwatch.StartNew();
-    try
-    {
-        gen.Sample(assert, seed: seed, iter: iterations, print: print);
-        results.Add(new PropertyResult(name, null, watch.Elapsed));
-        Console.WriteLine($"PASS {name}");
-    }
-    catch (Exception exception)
-    {
-        var message = exception.Message.Length > 4000 ? exception.Message[..4000] + "..." : exception.Message;
-        results.Add(new PropertyResult(name, message, watch.Elapsed));
-        Console.WriteLine($"FAIL {name}");
-        Console.WriteLine(message);
-    }
-}
+void Check<T>(string name, Gen<T> gen, Action<T> assert, Func<T, string> print) => runner.Check(name, gen, assert, print);
 
 namespace Diffra.Protocol.Properties
 {
-    internal sealed record PropertyResult(string Name, string? Failure, TimeSpan Elapsed);
+    internal sealed record PropertyResult(string Name, string? Failure, TimeSpan Elapsed, long Cases);
 
     /// <summary>A JSON value inside Diffra's v1 subset.</summary>
     internal abstract record J;
@@ -271,6 +276,9 @@ namespace Diffra.Protocol.Properties
     internal sealed record JArr(IReadOnlyList<J> Items) : J;
 
     internal sealed record JObj(IReadOnlyList<(string Name, J Value)> Members) : J;
+
+    /// <summary>A number written as given, so that one value can be spelt in several ways.</summary>
+    internal sealed record JNum(string Token) : J;
 
     /// <summary>Which semantics-preserving rewrites to apply when rendering.</summary>
     internal sealed record Noise(int Seed, bool Reorder, bool Whitespace, bool Escapes, bool NegativeZero)
@@ -304,6 +312,9 @@ namespace Diffra.Protocol.Properties
                     builder.Append(integer.Value == 0 && noise is { NegativeZero: true } && random!.Next(2) == 0
                         ? "-0"
                         : integer.Value.ToString(CultureInfo.InvariantCulture));
+                    break;
+                case JNum number:
+                    builder.Append(number.Token);
                     break;
                 case JStr text:
                     WriteString(builder, text.Value, noise, random);

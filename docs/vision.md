@@ -51,7 +51,8 @@ at the end rather than failing the job. One collecting job in each workflow file
 records for the commit; the root file is to say which workflow file is responsible for which
 datasets, so that a workflow does not report another's datasets as missing. A required dataset
 that is missing or only rejected counts as a warning, so it fails the step under `fail-on: warn`
-and not under `fail-on: fail`.
+and not under `fail-on: fail`. One whose collector reported that it failed is a failure of the
+build, so it counts as `fail` and fails the step under either setting.
 
 Diffra is to read the formats tools already write: test results, coverage, lint findings, sizes,
 tables such as benchmark results and OpenMetrics, with declared columns, and flame graphs as
@@ -88,7 +89,8 @@ or Markdown, and as the one-screen comment and agent formats headed by an attent
 Nothing posts the comment yet. `bundle` moves evidence through a content-addressed store, and
 `present` builds and serves a review bundle. The root file has a schema and a loader that checks
 its cross-references, which `diffra record` uses; `diffra merge` reads the `fail-on`
-setting and fails the step on a required dataset not collected when it is `warn`; and `diffra record` records a number given with `--value`, or a skipped or failed dataset,
+setting and fails the step on a required dataset not collected when it is `warn`, and on one
+recorded as failed when it is `fail` or `warn`; and `diffra record` records a number given with `--value`, or a skipped or failed dataset,
 checked against the root file, and `diffra merge` merges the entries files of every job,
 reporting every disagreement in values or statuses, naming each job involved, and listing the
 planned datasets no job collected. Nothing yet carries the jobs' files to a collecting job or

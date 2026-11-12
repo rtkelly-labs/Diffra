@@ -37,6 +37,7 @@ public static class RecordEntryTests
         ReportsEveryStatusAndEveryJob();
         GivesTheSameResultInAnyOrder();
         ReportsWhatWasNotCollected();
+        ReportsRequiredDatasetsWhoseCollectionFailed();
         MatchesAPlanOnTheListedDimensions();
         KeepsRejectedEntriesOutOfConflicts();
         Console.WriteLine("PASS record entries, entries files and the merge");
@@ -488,6 +489,50 @@ public static class RecordEntryTests
         Equal(2, missing.Count);
         Equal("main/coverage was not collected.", missing[0]);
         Equal("main/packageSize (os=windows) was not collected.", missing[1]);
+    }
+
+    // A planned value with any failed entry is a failed collection, not a missing one, whatever
+    // other jobs or entries say and in any order; skipped is collected.
+    private static void ReportsRequiredDatasetsWhoseCollectionFailed()
+    {
+        var linux = new Dictionary<string, string>(StringComparer.Ordinal) { ["os"] = "linux" };
+        var windows = new Dictionary<string, string>(StringComparer.Ordinal) { ["os"] = "windows" };
+        var none = System.Collections.ObjectModel.ReadOnlyDictionary<string, string>.Empty;
+        var result = EntryMerge.Merge(
+            Commit,
+            [
+                RecordEntries.Parse(Entry("test-linux", 1, status: "failed", dimension: "linux")),
+                RecordEntries.Parse(Entry("test-windows", 1, value: "1", dimension: "windows")),
+                RecordEntries.Parse(Entry("other-windows", 1, status: "failed", dimension: "windows")),
+                RecordEntries.Parse(Entry("lint", 1, dataset: "warnings", status: "skipped")),
+                RecordEntries.Parse(Entry("cover", 1, dataset: "coverage", status: "failed")),
+            ],
+            [
+                new ExpectedEntry("main", "packageSize", linux),
+                new ExpectedEntry("main", "packageSize", windows),
+                new ExpectedEntry("main", "warnings", none),
+                new ExpectedEntry("main", "coverage", none),
+            ]);
+        var failed = result.Findings.Where(finding => finding.Kind == MergeFindingKind.CollectionFailed).Select(finding => finding.Message).ToList();
+        Equal(3, failed.Count);
+        Equal("main/coverage was recorded as failed in job 'cover'.", failed[0]);
+        Equal("main/packageSize (os=linux) was recorded as failed in job 'test-linux'.", failed[1]);
+        Equal("main/packageSize (os=windows) was recorded as failed in job 'other-windows'.", failed[2]);
+        Equal(false, result.Findings.Any(finding => finding.Kind == MergeFindingKind.NotCollected));
+        Equal(true, result.Findings.Any(finding => finding.Kind == MergeFindingKind.StatusConflict));
+
+        // Within one job, failed then recorded and recorded then failed give the same findings.
+        ExpectedEntry[] plan = [new("main", "warnings", none)];
+        var failedFirst = EntryMerge.Merge(Commit, [RecordEntries.Parse(Entry("a", 1, dataset: "warnings", status: "failed")), RecordEntries.Parse(Entry("a", 1, dataset: "warnings", value: "3"))], plan);
+        var failedLast = EntryMerge.Merge(Commit, [RecordEntries.Parse(Entry("a", 1, dataset: "warnings", value: "3")), RecordEntries.Parse(Entry("a", 1, dataset: "warnings", status: "failed"))], plan);
+        Equal(string.Join("|", failedFirst.Findings.Select(finding => finding.Kind)), string.Join("|", failedLast.Findings.Select(finding => finding.Kind)));
+        Equal(true, failedFirst.Findings.Any(finding => finding.Kind == MergeFindingKind.CollectionFailed));
+
+        // Failed in one job and skipped in another still broke; a later attempt that recorded it does not.
+        var withSkip = EntryMerge.Merge(Commit, [RecordEntries.Parse(Entry("a", 1, dataset: "warnings", status: "failed")), RecordEntries.Parse(Entry("b", 1, dataset: "warnings", status: "skipped"))], plan);
+        Equal(true, withSkip.Findings.Any(finding => finding.Kind == MergeFindingKind.CollectionFailed));
+        var retried = EntryMerge.Merge(Commit, [RecordEntries.Parse(Entry("a", 1, dataset: "warnings", status: "failed")), RecordEntries.Parse(Entry("a", 2, dataset: "warnings", value: "3"))], plan);
+        Equal(false, retried.Findings.Any(finding => finding.Kind == MergeFindingKind.CollectionFailed));
     }
 
     // A dataset stratified by an observed dimension is planned by its listed dimensions only.

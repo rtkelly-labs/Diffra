@@ -26,6 +26,9 @@ is an agent asked to make CI pass, and branch protection already decides what bl
    workflow is optional and not part of the standard install.
 5. **A required dataset that was not collected counts as a warning.** That includes one collected
    only as rejected entries. It fails the step under `fail-on: warn` and not under `fail-on: fail`.
+   **One whose collector reported that it failed counts as `fail`**, because a broken collection is
+   a failure of the build: it fails the step under `fail` and `warn`. A dataset recorded as
+   `skipped` was left out on purpose and counts as collected.
 6. **Approval and promotion are not part of the open tool.** A person or an agent decides whether
    to proceed with the findings.
 7. **Restricting who may edit the project file is the repository's business** (code owners,
@@ -39,8 +42,7 @@ is an agent asked to make CI pass, and branch protection already decides what bl
   and the merge's other findings never do. Today a comparison with no usable reference is
   reported as `inconclusive`, so `fail-on: warn` fails the step on it and `fail-on: fail` does
   not.
-- Whether a required dataset recorded only as `failed` or `skipped` counts as missing. Today it
-  counts as collected, so it does not fail the step.
+- Whether an optional dataset recorded as `failed` is reported or counts towards `fail-on`.
 - Whether a change to the scripts that collect the data is also surfaced, and how it is detected.
 - The fate of the promotion code and of the Baseline reference's trust fields.
 

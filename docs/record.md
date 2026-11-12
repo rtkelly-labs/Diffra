@@ -148,7 +148,9 @@ another commit is a finding.
    within a job does not hide them. Each finding names every job involved.
 5. A required dataset with no entry for a dimension value the root file plans for is reported as
    not collected. This is found from the root file, not from the CI host, so a job that died before
-   uploading anything is still noticed.
+   uploading anything is still noticed. A planned value that any job's last attempt recorded as
+   `failed` is reported as a failed collection instead, whatever other entries say for it; a
+   `skipped` entry counts as collected, and a rejected entry counts as neither.
 
 The merged entries become the partial record for the commit that the workflow file writes. They
 travel in the same bundle format as every other stage
@@ -225,7 +227,8 @@ A finding's `kind` is one of:
 | `conflict` | Entries for one dataset, key and dimensions disagree; no value is chosen. |
 | `status-conflict` | Entries for one dataset and dimensions have different statuses. |
 | `value-and-data` | A dataset was given with `--value` in one job and read from files in another. |
-| `not-collected` | The root file plans for a dataset and dimensions that no job recorded. |
+| `not-collected` | The root file plans for a required dataset and dimensions that no job recorded. |
+| `collection-failed` | The root file plans for a required dataset and dimensions that a job recorded as `failed`. |
 | `rejected` | A job gave something `record` could not record. The rejected entry is kept in the merged file, and the finding names the job and shows the first three of its problems. |
 
 Failing the step:
@@ -234,7 +237,10 @@ Failing the step:
 `DIFFRA_FAIL_ON` variable, set to `never`, `fail` or `warn` (see
 [decision 0005](adr/0005-surface-do-not-enforce.md)). A required dataset that no job collected,
 including one collected only as rejected entries, is a `not-collected` finding and counts as a
-warning: it fails the step under `warn` and not under `fail`. When the findings fail the step,
+warning: it fails the step under `warn` and not under `fail`. A required dataset with a `failed`
+entry for a planned dimension value is a `collection-failed` finding and counts as `fail`,
+whatever other jobs recorded for it, because the collector broke: it fails the step under `fail` and `warn`. A `skipped` entry
+was left out on purpose and counts as collected. When the findings fail the step,
 `merge` still writes the merged file and the report, says so on standard error, and exits 3. No
 other finding counts towards `fail-on` yet; see "Not yet decided" below. Any other value of the
 setting is an error, so a misspelling never turns enforcement off.
@@ -253,6 +259,8 @@ Not yet decided:
 - Whether a conflict, a status conflict, a dataset given two ways, an entry for another commit or
   a rejected entry for an optional dataset counts towards `fail-on`. Until it is decided, none of
   them does.
+- Whether an optional dataset recorded as `failed` is reported. Today it is merged with no
+  finding.
 - How jobs' entries files reach the collecting job. A CI integration owns that transport; on
   GitHub, each job uploads its file as an artifact and the collecting job downloads them into one
   folder.

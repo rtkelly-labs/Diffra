@@ -79,19 +79,25 @@ public static class Enforcement
     /// <summary>
     /// The status a merge finding counts with under <c>fail-on</c>, or null when it does not count.
     /// A required dataset that was not collected, including one collected only as rejected
-    /// entries, counts as <c>warn</c>. Other merge findings do not count yet.
+    /// entries, counts as <c>warn</c>. One whose collector reported that it failed counts as
+    /// <c>fail</c>, because the collection broke. Other merge findings do not count yet.
     /// </summary>
     public static string? Status(MergeFindingKind kind) => kind switch
     {
         MergeFindingKind.NotCollected => "warn",
+        MergeFindingKind.CollectionFailed => "fail",
         _ => null,
     };
 
     /// <summary>Whether the merge findings fail the step under the setting.</summary>
-    public static bool MergeFailsStep(FailOn setting, IEnumerable<MergeFinding> findings)
+    public static bool MergeFailsStep(FailOn setting, IEnumerable<MergeFinding> findings) =>
+        Counted(setting, findings).Any();
+
+    /// <summary>The merge findings that count towards failing the step under the setting.</summary>
+    public static IEnumerable<MergeFinding> Counted(FailOn setting, IEnumerable<MergeFinding> findings)
     {
         ArgumentNullException.ThrowIfNull(findings);
-        return findings.Any(finding => Status(finding.Kind) is { } status && Trips(setting, status));
+        return findings.Where(finding => Status(finding.Kind) is { } status && Trips(setting, status));
     }
 
     private static bool Trips(FailOn setting, string status) => setting switch

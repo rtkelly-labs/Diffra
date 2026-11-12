@@ -479,6 +479,24 @@ public static class MergeCommandTests
         Equal(1, notCollected.Count);
         Equal(true, notCollected[0].GetProperty("message").GetString()!.StartsWith("main/warnings", StringComparison.Ordinal));
         Equal("warn", notCollected[0].GetProperty("countsAs").GetString());
+
+        // A required dataset recorded as failed counts as fail: the collection broke. The missing
+        // packageSize (os=windows) counts only under warn.
+        using var broke = new Folder();
+        broke.Record("a", 1, "--name", "packageSize", "--value", "10", "--dimension", "os=linux", "--dimension", "runner=a");
+        broke.Record("a", 1, "--name", "warnings", "--failed", "--reason", "the linter crashed");
+        Equal(0, broke.Merge().ExitCode);
+        Equal(0, broke.Merge("--fail-on", "never").ExitCode);
+        var failedCollection = broke.Merge("--fail-on", "fail", "--json");
+        Equal(3, failedCollection.ExitCode);
+        Equal(true, failedCollection.Error.Contains("fail-on is fail and 1 finding counts", StringComparison.Ordinal));
+        Equal(true, broke.Merge("--fail-on", "warn").Error.Contains("fail-on is warn and 2 findings count", StringComparison.Ordinal));
+        using var brokeDocument = JsonDocument.Parse(failedCollection.Output);
+        var failedFindings = brokeDocument.RootElement.GetProperty("findings").EnumerateArray()
+            .Where(finding => finding.GetProperty("kind").GetString() == "collection-failed").ToList();
+        Equal(1, failedFindings.Count);
+        Equal("main/warnings was recorded as failed in job 'a'.", failedFindings[0].GetProperty("message").GetString());
+        Equal("fail", failedFindings[0].GetProperty("countsAs").GetString());
     }
 
     private static (int ExitCode, string Output, string Error) MergeWithEnvironment(Folder run, string failOn, params string[] arguments)

@@ -359,8 +359,8 @@ benchmark's `FullName`. One file can hold the same benchmark under several jobs,
 runtimes; whether the job then becomes part of the case or a dimension is open.
 
 An OpenMetrics row is the sample's label set, written in label-name order as `name="value"` pairs
-joined by `,`; an empty label set is the case `{}`. Histogram and summary families have no default column; a declared column may name one
-of their samples, such as `request_seconds_sum`.
+joined by `,`; an empty label set is the case `{}`. Histogram and summary families have no default
+column; a declared column may name one of their samples, such as `request_seconds_sum`.
 
 ### Comparison
 

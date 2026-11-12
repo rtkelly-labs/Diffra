@@ -71,8 +71,8 @@ is not decided. The standard dataset types are those of the earlier project file
 (decision 11), and CI timing and the job graph (decision 6) have no type yet.
 [Dataset types and converters](../datasets.md) specifies the standard types, with
 `diffra/table@1` in place of `diffra/benchmark@1`, and proposes each one's shape, identity,
-converters, comparison and tests; none of it is built. The Baseline reference and bundle manifest schemas
-still allow a `previous-release` role (decision 13).
+converters, comparison and tests; none of it is built. The Baseline reference and bundle
+manifest schemas still allow a `previous-release` role (decision 13).
 
 `src/RootFile/` loads the root file. It checks what the schema cannot: that each dataset a
 project selects is declared, that each rule set a project applies is defined on that dataset,

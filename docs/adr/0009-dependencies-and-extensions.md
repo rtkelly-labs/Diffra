@@ -31,6 +31,9 @@ code-first builder and a graph executor, which the root project file replaces.
 7. **Parquet is read by a separate converter package.** It is built from this repository on
    Parquet.Net, which stays out of the core; a fork of that library can replace it once it is
    ready.
+8. **Converters for tool formats are built in.** They are part of Diffra and released with it,
+   not separately versioned packages. Parquet is the one exception (decision 7). OpenMetrics text
+   is read in the core.
 
 ## Not yet decided
 

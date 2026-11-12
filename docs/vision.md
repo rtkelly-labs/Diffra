@@ -57,9 +57,10 @@ build, so it counts as `fail` and fails the step under either setting.
 Diffra is to read the formats tools already write: test results, coverage, lint findings, sizes,
 tables such as benchmark results and OpenMetrics, with declared columns, and flame graphs as
 collapsed stacks. Readers that need a large library, such as Parquet, ship as separate packages
-outside the core. History is to be stored in a branch of the repository by default, one record
-per commit, and the adopter can choose another store. On GitHub, provider work starts as Action
-steps and moves into a small companion, `diffra-github`, beside the one core CLI when it
+outside the core. [Dataset types and converters](datasets.md) specifies each type and the
+converters that fill it. History is to be stored in a branch of the repository by default, one
+record per commit, and the adopter can choose another store. On GitHub, provider work starts as
+Action steps and moves into a small companion, `diffra-github`, beside the one core CLI when it
 outgrows them. CI already schedules jobs; Diffra records the job graph and its timing as data
 and does not run work itself. Measures that are noisy from run to run are judged against a
 window of recent history rather than one earlier value.

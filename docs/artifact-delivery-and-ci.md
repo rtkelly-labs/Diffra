@@ -208,7 +208,10 @@ The shallow tier is the build and unit tests, the schema fixtures, the
 canonical JSON differential test, the property tests, the smoke test of the
 packed tool, and the dogfood gate. It stays under ten minutes. A new shallow job
 joins the `needs` list of the `build` job in `ci.yml`, so the required check
-covers it without a ruleset change. The deep tier runs via `.github/workflows/deep.yml`
+covers it without a ruleset change. The property tests on a pull request use a fixed
+seed, so they check the same inputs on every run and a failure is caused by the change
+under review; the deep tier draws a new seed each night and prints it, and passing that
+seed to `tests/Protocol.Properties` replays the run. The deep tier runs via `.github/workflows/deep.yml`
 on a nightly schedule on `main`, on demand via `workflow_dispatch`, and as a reusable
 workflow (`workflow_call`) for release gating. Platform legs are light: each of the five
 platforms (Linux x64, Linux arm64, macOS arm64, macOS x64, Windows x64) publishes and

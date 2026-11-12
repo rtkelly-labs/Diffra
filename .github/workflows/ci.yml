@@ -293,8 +293,10 @@ jobs:
         with:
           global-json-file: global.json
 
+      # A fixed seed, so that the same inputs are checked on every run and a failure is caused by the
+      # change under review. The deep workflow draws a new seed each night.
       - name: Run property and metamorphic checks
-        run: dotnet run --project tests/Protocol.Properties/Protocol.Properties.csproj --configuration Release -- 2000
+        run: dotnet run --project tests/Protocol.Properties/Protocol.Properties.csproj --configuration Release -- 2000 20261112
 
   regression-corpus:
     name: regression-corpus

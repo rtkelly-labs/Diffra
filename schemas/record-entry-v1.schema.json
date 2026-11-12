@@ -350,7 +350,8 @@
         "attempt": {
           "description": "The attempt number. 1 unless the CI host re-ran the job.",
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 2147483647
         }
       }
     },

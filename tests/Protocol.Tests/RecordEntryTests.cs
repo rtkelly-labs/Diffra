@@ -19,6 +19,8 @@ public static class RecordEntryTests
         ReadsAnEntry();
         ReportsInvalidJson();
         CountsLengthsInCodePoints();
+        MatchesTheSchemasPatternEngine();
+        ReadsPastBadBytes();
         NamesEntriesFiles();
         AppendsAndReadsEntriesFiles();
         RefusesToAppendAnInvalidEntry();
@@ -29,6 +31,7 @@ public static class RecordEntryTests
         ReportsDifferentValuesWithoutChoosing();
         ReportsRecordedAgainstSkipped();
         ReportsValueAgainstData();
+        ReportsValueAgainstDataPastAConflict();
         ReportsWhatWasNotCollected();
         KeepsRejectedEntriesOutOfConflicts();
         Console.WriteLine("PASS record entries, entries files and the merge");
@@ -97,6 +100,55 @@ public static class RecordEntryTests
         Equal(1, RecordEntries.Validate(Entry(name + "x", 1, value: "1")).Count);
     }
 
+    // The schema's patterns are ECMA-262, where $ does not match before a final line break and \s
+    // includes U+FEFF but not U+0085. CI's schema validator uses Python's engine, which differs on
+    // both, so these cases are checked here rather than as files in examples/record/invalid/.
+    private static void MatchesTheSchemasPatternEngine()
+    {
+        Equal(true, RecordEntries.Validate(Entry("build\n", 1, value: "1")).Count > 0);
+        Equal(true, RecordEntries.Validate(Entry("pack", 1, value: "12\n")).Count > 0);
+        Equal(true, RecordEntries.Validate(Entry("pack", 1, value: "1", key: "﻿Suite.Case")).Count > 0);
+        Equal(0, RecordEntries.Validate(Entry("pack", 1, value: "1", key: "Suite.Case\u0085")).Count);
+        Equal(false, RecordEntries.IsSafeSourcePath("a/b\n"));
+
+        var whole = Entry("pack", 1, value: "1").Replace("\"attempt\":1", "\"attempt\":1.0", StringComparison.Ordinal);
+        Equal(0, RecordEntries.Validate(whole).Count);
+        Equal(1, RecordEntries.Parse(whole).Attempt);
+        var huge = Entry("pack", 1, value: "1").Replace("\"attempt\":1", "\"attempt\":2147483648", StringComparison.Ordinal);
+        Equal(1, RecordEntries.Validate(huge).Count);
+        var fraction = Entry("pack", 1, value: "1").Replace("\"attempt\":1", "\"attempt\":1.5", StringComparison.Ordinal);
+        Equal(1, RecordEntries.Validate(fraction).Count);
+
+        var deep = string.Concat(Enumerable.Repeat("[", 200)) + string.Concat(Enumerable.Repeat("]", 200));
+        Equal(0, RecordEntries.Validate(DataEntry("test", deep)).Count);
+        var tooDeep = string.Concat(Enumerable.Repeat("[", 300)) + string.Concat(Enumerable.Repeat("]", 300));
+        Equal(1, RecordEntries.Validate(DataEntry("test", tooDeep)).Count);
+
+        var loneSurrogate = Entry("lint", 1, status: "skipped").Replace("Not run on this platform.", "\\ud800", StringComparison.Ordinal);
+        Equal(1, RecordEntries.Validate(loneSurrogate).Count);
+    }
+
+    private static void ReadsPastBadBytes()
+    {
+        var path = TempFile();
+        try
+        {
+            File.WriteAllBytes(path, [0xFF, (byte)'\n']);
+            EntriesFile.Append(path, Entry("pack", 1, value: "1"));
+            File.AppendAllText(path, Entry("lint", 1, status: "skipped").Replace("Not run on this platform.", "\\udc00", StringComparison.Ordinal) + "\n");
+            EntriesFile.Append(path, Entry("pack", 1, value: "1", dataset: "warnings"));
+            var content = EntriesFile.Read(path);
+            Equal(2, content.Entries.Count);
+            Equal(2, content.Problems.Count);
+            Equal(true, content.Problems[0].StartsWith("Line 1:", StringComparison.Ordinal));
+            Equal(true, content.Problems[1].StartsWith("Line 3:", StringComparison.Ordinal));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     private static void NamesEntriesFiles()
     {
         var name = EntriesFile.FileName("test (linux)", 2);
@@ -163,10 +215,11 @@ public static class RecordEntryTests
         var result = Merge(
             Entry("pack", 1, value: "1"),
             Entry("pack", 1, value: "5", dataset: "warnings"),
-            Entry("pack", 2, value: "2"));
+            Entry("pack", 10, value: "2"),
+            Entry("pack", 2, value: "3"));
         Equal(1, result.Entries.Count);
         Equal("2", result.Entries[0].Value!.Value);
-        Equal("pack attempt 1", Single(result.SupersededAttempts));
+        Equal("pack attempt 1,pack attempt 2", string.Join(",", result.SupersededAttempts));
         Equal(0, result.Findings.Count);
     }
 
@@ -176,8 +229,9 @@ public static class RecordEntryTests
         Equal("2", Single(replaced.Entries).Value!.Value);
         Equal(0, replaced.Findings.Count);
 
-        var unreplaced = Merge(Entry("pack", 1, value: "1"), Entry("pack", 1, value: "2"));
+        var unreplaced = Merge(Entry("pack", 1, value: "1"), Entry("pack", 1, value: "2"), Entry("other", 1, value: "1"));
         Equal(MergeFindingKind.Conflict, Single(unreplaced.Findings).Kind);
+        Equal(0, unreplaced.Entries.Count);
     }
 
     private static void KeepsIdenticalEntriesOnceFromTheFirstJob()
@@ -229,6 +283,20 @@ public static class RecordEntryTests
             DataEntry("test", "{\"a\":1}"));
         Equal(0, result.Entries.Count);
         Equal(MergeFindingKind.ValueAndData, Single(result.Findings).Kind);
+    }
+
+    private static void ReportsValueAgainstDataPastAConflict()
+    {
+        var keyless = Merge(Entry("pack", 1, value: "1", dataset: "tests"), DataEntry("test", "{\"a\":1}"));
+        Equal(0, keyless.Entries.Count);
+        Equal(MergeFindingKind.ValueAndData, Single(keyless.Findings).Kind);
+
+        var conflicted = Merge(
+            Entry("pack-a", 1, value: "1", dataset: "tests", key: "Suite.Case"),
+            Entry("pack-b", 1, value: "2", dataset: "tests", key: "Suite.Case"),
+            DataEntry("test-c", "{\"a\":1}"));
+        Equal(0, conflicted.Entries.Count);
+        Equal(MergeFindingKind.ValueAndData, Single(conflicted.Findings).Kind);
     }
 
     private static void ReportsWhatWasNotCollected()

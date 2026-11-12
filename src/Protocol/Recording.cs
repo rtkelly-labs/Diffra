@@ -95,8 +95,9 @@ public sealed class RecordEntry
 
 /// <summary>
 /// Reads and validates record entries. The checks mirror
-/// <c>schemas/record-entry-v1.schema.json</c>; the examples in <c>examples/record/</c> keep the
-/// two in step.
+/// <c>schemas/record-entry-v1.schema.json</c>, and the tests check both against
+/// <c>examples/record/</c>. The code adds two limits the schema does not state: an entry nests at
+/// most <see cref="MaximumDepth"/> deep, and its text must be valid Unicode.
 /// </summary>
 public static partial class RecordEntries
 {
@@ -109,10 +110,15 @@ public static partial class RecordEntries
         "value", "sources", "data", "reason", "input", "problems",
     };
 
+    /// <summary>
+    /// How deep an entry may nest. The schema sets no depth; this is a safety limit the code adds.
+    /// </summary>
+    public const int MaximumDepth = 256;
+
     private static readonly JsonDocumentOptions DocumentOptions = new()
     {
         AllowDuplicateProperties = false,
-        MaxDepth = 64,
+        MaxDepth = MaximumDepth,
     };
 
     /// <summary>
@@ -132,6 +138,11 @@ public static partial class RecordEntries
         catch (JsonException exception)
         {
             return [$"The entry is not valid JSON: {exception.Message}"];
+        }
+        catch (InvalidOperationException)
+        {
+            // An escaped lone surrogate, such as "\ud800", parses but is not text.
+            return ["The entry holds text that is not valid Unicode."];
         }
     }
 
@@ -170,7 +181,7 @@ public static partial class RecordEntries
             root.GetProperty("dataset").GetString()!,
             root.GetProperty("commit").GetString()!,
             job.GetProperty("name").GetString()!,
-            job.GetProperty("attempt").GetInt32(),
+            (int)job.GetProperty("attempt").GetDecimal(),
             dimensions,
             root.TryGetProperty("key", out var key) ? key.GetString() : null,
             ParseStatus(root.GetProperty("status").GetString()!),
@@ -469,9 +480,13 @@ public static partial class RecordEntries
         {
             problems.Add("'job.attempt' is required.");
         }
-        else if (attempt.ValueKind != JsonValueKind.Number || !attempt.TryGetInt32(out var number) || number < 1)
+        else if (attempt.ValueKind != JsonValueKind.Number
+            || !attempt.TryGetDecimal(out var number)
+            || number < 1
+            || number > int.MaxValue
+            || number != decimal.Truncate(number))
         {
-            problems.Add("'job.attempt' must be a whole number of at least 1.");
+            problems.Add("'job.attempt' must be a whole number from 1 to 2147483647.");
         }
     }
 
@@ -734,31 +749,32 @@ public static partial class RecordEntries
         }
     }
 
-    // JSON Schema counts lengths in Unicode code points, not UTF-16 units.
+    // JSON Schema counts lengths in Unicode code points, not UTF-16 units. The patterns use \z, not
+    // $, and spell out ECMA-262's \s, because .NET's $ and \s differ from the schema's.
     private static int CodePoints(string text) => text.EnumerateRunes().Count();
 
-    [GeneratedRegex("^[a-z][A-Za-z0-9]*$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^[a-z][A-Za-z0-9]*\z", RegexOptions.CultureInvariant)]
     private static partial Regex NamePattern();
 
-    [GeneratedRegex("^([0-9a-f]{40}|[0-9a-f]{64})$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^([0-9a-f]{40}|[0-9a-f]{64})\z", RegexOptions.CultureInvariant)]
     private static partial Regex CommitPattern();
 
-    [GeneratedRegex("^[0-9a-f]{64}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^[0-9a-f]{64}\z", RegexOptions.CultureInvariant)]
     private static partial Regex DigestPattern();
 
-    [GeneratedRegex("^[a-z][a-z0-9-]*$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^[a-z][a-z0-9-]*\z", RegexOptions.CultureInvariant)]
     private static partial Regex OptionPattern();
 
-    [GeneratedRegex(@"^(0|-?[1-9][0-9]*(\.[0-9]*[1-9])?|-?0\.[0-9]*[1-9])$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^(0|-?[1-9][0-9]*(\.[0-9]*[1-9])?|-?0\.[0-9]*[1-9])\z", RegexOptions.CultureInvariant)]
     private static partial Regex CanonicalNumberPattern();
 
-    [GeneratedRegex(@"^[^\s\x00-\x1f\x7f]([^\x00-\x1f\x7f]*[^\s\x00-\x1f\x7f])?$", RegexOptions.CultureInvariant | RegexOptions.Singleline)]
+    [GeneratedRegex(@"^[^\t\n\v\f\r    -     　﻿\x00-\x1f\x7f]([^\x00-\x1f\x7f]*[^\t\n\v\f\r    -     　﻿\x00-\x1f\x7f])?\z", RegexOptions.CultureInvariant | RegexOptions.Singleline)]
     private static partial Regex TrimmedPattern();
 
-    [GeneratedRegex(@"^[^/\\~\x00-\x1f\x7f][^\\\x00-\x1f\x7f]*$", RegexOptions.CultureInvariant | RegexOptions.Singleline)]
+    [GeneratedRegex(@"^[^/\\~\x00-\x1f\x7f][^\\\x00-\x1f\x7f]*\z", RegexOptions.CultureInvariant | RegexOptions.Singleline)]
     private static partial Regex SourcePathPattern();
 
-    [GeneratedRegex(@"(^|/)\.{1,2}(/|$)|//|/$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"(^|/)\.{1,2}(/|\z)|//|/\z", RegexOptions.CultureInvariant)]
     private static partial Regex UnsafeSegmentPattern();
 }
 
@@ -797,18 +813,37 @@ public static partial class EntriesFile
     }
 
     /// <summary>
-    /// Appends one entry as a single line in one write, so concurrent writers cannot interleave
-    /// within a line. Throws <see cref="JsonException"/> when the entry is not valid; the file is
-    /// then left as it was.
+    /// Appends one entry as a single line. The file is opened for this process alone while the line
+    /// is written, so two steps of one job that record at once wait for each other rather than
+    /// overwrite each other's line. Throws <see cref="JsonException"/> when the entry is not valid;
+    /// the file is then left as it was.
     /// </summary>
     public static void Append(string path, string entryJson)
     {
         ArgumentNullException.ThrowIfNull(path);
         var entry = RecordEntries.Parse(entryJson);
         var bytes = Encoding.UTF8.GetBytes(entry.Json + "\n");
-        using var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+        using var stream = OpenAlone(path);
+        stream.Seek(0, SeekOrigin.End);
         stream.Write(bytes);
         stream.Flush(flushToDisk: true);
+    }
+
+    private static FileStream OpenAlone(string path)
+    {
+        const int attempts = 200;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return new FileStream(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.None);
+            }
+            catch (IOException) when (attempt < attempts && File.Exists(path))
+            {
+                // Another writer holds the file; wait for it to finish its line.
+                Thread.Sleep(10);
+            }
+        }
     }
 
     /// <summary>
@@ -820,12 +855,34 @@ public static partial class EntriesFile
         ArgumentNullException.ThrowIfNull(path);
         var entries = new List<RecordEntry>();
         var problems = new List<string>();
+        var strict = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+        var bytes = File.ReadAllBytes(path);
         var number = 0;
-        foreach (var line in File.ReadLines(path, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true)))
+        var start = 0;
+        while (start < bytes.Length)
         {
-            number++;
-            if (line.Length == 0)
+            var end = Array.IndexOf(bytes, (byte)'\n', start);
+            if (end < 0)
             {
+                end = bytes.Length;
+            }
+
+            number++;
+            var span = bytes.AsSpan(start, end - start);
+            start = end + 1;
+            if (span.IsEmpty)
+            {
+                continue;
+            }
+
+            string line;
+            try
+            {
+                line = strict.GetString(span);
+            }
+            catch (DecoderFallbackException)
+            {
+                problems.Add($"Line {number.ToString(CultureInfo.InvariantCulture)}: The line is not valid UTF-8.");
                 continue;
             }
 
@@ -888,8 +945,8 @@ public static class EntryMerge
 {
     /// <summary>
     /// Merges <paramref name="entries"/> for <paramref name="commit"/>. The result's entries are
-    /// ordered by identity, then rejected entries by job name. Conflicting values are left out and
-    /// reported; neither is chosen.
+    /// ordered by identity, then rejected entries by job name. Values that conflict, whether within
+    /// one job or between jobs, are left out and reported; neither is chosen.
     /// </summary>
     public static MergeResult Merge(string commit, IEnumerable<RecordEntry> entries, IEnumerable<ExpectedEntry> expected)
     {
@@ -914,34 +971,49 @@ public static class EntryMerge
         }
 
         // Rule 1: a later attempt of the same job replaces every entry of the earlier attempt.
-        var superseded = new SortedSet<string>(StringComparer.Ordinal);
+        // Rule 2: within the attempt that is kept, --replace replaces an earlier recorded entry.
+        var superseded = new List<string>();
+        var conflicted = new HashSet<string>(StringComparer.Ordinal);
         var latest = new List<RecordEntry>();
         foreach (var job in forCommit.GroupBy(entry => entry.JobName, StringComparer.Ordinal)
             .OrderBy(group => group.Key, StringComparer.Ordinal))
         {
             var lastAttempt = job.Max(entry => entry.Attempt);
-            foreach (var attempt in job.Select(entry => entry.Attempt).Where(attempt => attempt < lastAttempt).Distinct())
+            foreach (var attempt in job.Select(entry => entry.Attempt).Where(attempt => attempt < lastAttempt).Distinct().Order())
             {
                 superseded.Add($"{job.Key} attempt {attempt.ToString(CultureInfo.InvariantCulture)}");
             }
 
-            latest.AddRange(MergeWithinJob(job.Where(entry => entry.Attempt == lastAttempt), findings));
+            latest.AddRange(MergeWithinJob(job.Where(entry => entry.Attempt == lastAttempt), findings, conflicted));
+        }
+
+        var rejected = latest.Where(entry => entry.Status == EntryStatus.Rejected).ToList();
+        var stated = latest.Where(entry => entry.Status != EntryStatus.Rejected).ToList();
+
+        // Rule 4: a --value entry against data read from files for the same dataset and dimensions.
+        // Checked before anything is chosen, so a conflict elsewhere cannot hide it.
+        var blocked = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var group in stated
+            .Where(entry => entry.Status == EntryStatus.Recorded)
+            .GroupBy(DatasetIdentity, StringComparer.Ordinal))
+        {
+            var value = group.FirstOrDefault(entry => entry.Value is not null);
+            var files = group.FirstOrDefault(entry => entry.Data is not null);
+            if (value is not null && files is not null)
+            {
+                findings.Add(new MergeFinding(
+                    MergeFindingKind.ValueAndData,
+                    $"{Describe(files)} was given with --value in job '{value.JobName}' and read from files in job '{files.JobName}'."));
+                blocked.Add(group.Key);
+            }
         }
 
         // Rules 3 and 4: across jobs, in job name order.
         var chosen = new Dictionary<string, RecordEntry>(StringComparer.Ordinal);
-        var conflicted = new HashSet<string>(StringComparer.Ordinal);
-        var rejected = new List<RecordEntry>();
-        foreach (var entry in latest)
+        foreach (var entry in stated)
         {
-            if (entry.Status == EntryStatus.Rejected)
-            {
-                rejected.Add(entry);
-                continue;
-            }
-
             var identity = entry.Identity;
-            if (conflicted.Contains(identity))
+            if (blocked.Contains(DatasetIdentity(entry)) || conflicted.Contains(identity))
             {
                 continue;
             }
@@ -967,33 +1039,9 @@ public static class EntryMerge
             conflicted.Add(identity);
         }
 
-        // Rule 4: a --value entry against data read from files for the same dataset and dimensions.
-        foreach (var group in chosen.Values
-            .Where(entry => entry.Status == EntryStatus.Recorded)
-            .GroupBy(entry => RecordEntries.IdentityOf(entry.Project, entry.Dataset, null, entry.Dimensions), StringComparer.Ordinal)
-            .ToList())
-        {
-            var values = group.Where(entry => entry.Value is not null).ToList();
-            var files = group.Where(entry => entry.Data is not null).ToList();
-            if (values.Count == 0 || files.Count == 0)
-            {
-                continue;
-            }
-
-            findings.Add(new MergeFinding(
-                MergeFindingKind.ValueAndData,
-                $"{Describe(files[0])} was given with --value in job '{values[0].JobName}' and read from files in job '{files[0].JobName}'."));
-            foreach (var entry in group)
-            {
-                chosen.Remove(entry.Identity);
-            }
-        }
-
-        // Rule 5: a required dataset with no entry for a planned dimension value.
-        var collected = new HashSet<string>(
-            latest.Where(entry => entry.Status != EntryStatus.Rejected)
-                .Select(entry => RecordEntries.IdentityOf(entry.Project, entry.Dataset, null, entry.Dimensions)),
-            StringComparer.Ordinal);
+        // Rule 5: a required dataset with no entry for a planned dimension value. An entry that
+        // conflicts was still collected; a rejected entry was not.
+        var collected = new HashSet<string>(stated.Select(DatasetIdentity), StringComparer.Ordinal);
         foreach (var plan in expected)
         {
             if (!collected.Contains(RecordEntries.IdentityOf(plan.Project, plan.Dataset, null, plan.Dimensions)))
@@ -1010,11 +1058,19 @@ public static class EntryMerge
             .OrderBy(finding => finding.Kind)
             .ThenBy(finding => finding.Message, StringComparer.Ordinal)
             .ToList();
-        return new MergeResult(merged, orderedFindings, superseded.ToList());
+        return new MergeResult(merged, orderedFindings, superseded);
     }
 
-    // Rule 2, and identical repeats, within one job and attempt, in file order.
-    private static List<RecordEntry> MergeWithinJob(IEnumerable<RecordEntry> entries, List<MergeFinding> findings)
+    private static string DatasetIdentity(RecordEntry entry) =>
+        RecordEntries.IdentityOf(entry.Project, entry.Dataset, null, entry.Dimensions);
+
+    // Rule 2, and identical repeats, within one job and attempt, in file order. Two different
+    // values without --replace can only come from a hand-edited file, since `record` refuses
+    // them; the identity is marked conflicted and no value is chosen.
+    private static List<RecordEntry> MergeWithinJob(
+        IEnumerable<RecordEntry> entries,
+        List<MergeFinding> findings,
+        HashSet<string> conflicted)
     {
         var result = new List<RecordEntry>();
         var byIdentity = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -1042,13 +1098,11 @@ public static class EntryMerge
             {
                 result[index] = entry;
             }
-            else if (!RecordEntries.AreIdentical(earlier, entry))
+            else if (!RecordEntries.AreIdentical(earlier, entry) && conflicted.Add(entry.Identity))
             {
-                // `record` refuses this without --replace, so it only arises from a hand-edited file.
                 findings.Add(new MergeFinding(
                     MergeFindingKind.Conflict,
                     $"{Describe(entry)} has different values within job '{entry.JobName}' attempt {entry.Attempt.ToString(CultureInfo.InvariantCulture)}."));
-                result[index] = entry;
             }
         }
 

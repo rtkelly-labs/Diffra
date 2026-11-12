@@ -132,7 +132,9 @@ Every file a converter reads is untrusted, even when it came from the adopter's 
 - JSON is read with a nesting limit of 256 and no comments or trailing commas, unless the format's
   own tools write them. SARIF messages filled from their arguments hold at most 64 Mi characters
   together in one entry, and the findings kept from SARIF hold at most 64 Mi characters of keys,
-  paths, fingerprints and messages.
+  `byRule` keys, paths, fingerprints and messages. Reading one SARIF file takes at most 16
+  characters of work for each of its bytes, plus 1 Mi, counted as each character is decoded,
+  scanned or built, and a tool name, rule id or fingerprint holds at most 1,024 characters.
 - Text formats limit one line to 1 MiB.
 - Archives, when a converter reads one, are expanded at most 100 times their stored size and to
   at most 1 GiB, and a member whose path escapes the archive is rejected.

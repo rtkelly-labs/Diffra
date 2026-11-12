@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace Diffra.Converters;
@@ -23,9 +22,11 @@ internal static partial class SarifPath
     /// <summary>
     /// The recorded path of <paramref name="uri"/>, resolved against <paramref name="uriBaseId"/>
     /// in <paramref name="bases"/>, the run's <c>originalUriBaseIds</c> by name. A relative URI
-    /// whose base the run does not define is relative to the repository root.
+    /// whose base the run does not define is relative to the repository root. Each character
+    /// built or scanned is passed to <paramref name="charge"/>, so that the caller can bound the
+    /// work.
     /// </summary>
-    public static string Resolve(string uri, string? uriBaseId, IReadOnlyDictionary<string, JsonElement> bases, string root)
+    public static string Resolve(string uri, string? uriBaseId, IReadOnlyDictionary<string, SarifBase> bases, string root, Action<long> charge)
     {
         if (uri.Contains('\\', StringComparison.Ordinal))
         {
@@ -36,24 +37,29 @@ internal static partial class SarifPath
         var baseId = uriBaseId;
         for (var step = 0; step < MaximumBases && baseId is not null && !HasScheme(written) && !written.StartsWith('/') && !IsDrive(written); step++)
         {
-            if (!bases.TryGetValue(baseId, out var entry)
-                || entry.ValueKind != JsonValueKind.Object
-                || !entry.TryGetProperty("uri", out var baseUri)
-                || baseUri.ValueKind != JsonValueKind.String)
+            if (!bases.TryGetValue(baseId, out var entry) || (entry.Problem is null && entry.Uri is null))
             {
                 break;
             }
 
-            var prefix = baseUri.GetString()!;
+            if (entry.Problem is { } problem)
+            {
+                throw new FormatException(problem);
+            }
+
+            var prefix = entry.Uri!;
             if (prefix.Contains('\\', StringComparison.Ordinal))
             {
                 throw new FormatException($"the base URI '{Shown(prefix)}' has a backslash; a SARIF URI separates folders with '/'.");
             }
 
+            charge(prefix.Length + written.Length + 1);
             written = (prefix.EndsWith('/') || prefix.Length == 0 ? prefix : prefix + "/") + written;
-            baseId = entry.TryGetProperty("uriBaseId", out var next) && next.ValueKind == JsonValueKind.String ? next.GetString() : null;
+            baseId = entry.UriBaseId;
         }
 
+        // The passes below each read the URI a bounded number of times.
+        charge(4L * written.Length);
         var path = StripQuery(written);
         if (HasScheme(path))
         {
@@ -206,3 +212,9 @@ internal static partial class SarifPath
     [GeneratedRegex("^[A-Za-z][A-Za-z0-9+.-]+:", RegexOptions.CultureInvariant)]
     private static partial Regex SchemePattern();
 }
+
+/// <summary>
+/// One of a run's <c>originalUriBaseIds</c>, read once: its URI and the base it is relative to, or
+/// the problem that kept it from being read.
+/// </summary>
+internal sealed record SarifBase(string? Uri, string? UriBaseId, string? Problem);

@@ -10,7 +10,8 @@ namespace Diffra.Protocol.Tests;
 /// tools and files, keyed by tool, rule, path and fingerprint; SARIF's level rules; duplicate
 /// results kept once with their occurrences; paths made relative to the repository root; the same
 /// data whatever order the input comes in; and the entry rejected for malformed or unsupported
-/// input, input past the safety limits, or more findings than the <c>maxKeys</c> budget.
+/// input, input past the safety limits, including the work a file may take, or more findings than
+/// the <c>maxKeys</c> budget.
 /// </summary>
 public static class SarifConverterTests
 {
@@ -32,6 +33,9 @@ public static class SarifConverterTests
         RejectsMessagesFilledPastTheLimit();
         ReadsBracesWithoutPlaceholdersOnce();
         RejectsFindingsKeptPastTheLimit();
+        RejectsWorkPastTheLimit();
+        ReadsSharedPartsOnce();
+        RejectsKeyPartsPastTheLimit();
         RejectsWhatItCannotTellApart();
         RejectsExternalizedResults();
         ListsTheFirstProblemsOfAFile();
@@ -155,6 +159,23 @@ public static class SarifConverterTests
               {"ruleId":"R1","provenance":{},"message":{"text":"no index"}}]}
             """;
         Equal("no index=error,no provenance=error", string.Join(",", Findings(Data(Log(single)))
+            .Select(finding => $"{finding.GetProperty("message").GetString()}={finding.GetProperty("level").GetString()}")
+            .Order(StringComparer.Ordinal)));
+
+        // The first override that names a rule decides, as SARIF 2.1.0 §3.27.10 reads: one with no
+        // level leaves the rule's default level, even when a later override gives one.
+        var unset = """
+            {"tool":{"driver":{"name":"Tool","rules":[{"id":"R1","defaultConfiguration":{"level":"note"}},{"id":"R2"}]}},
+             "invocations":[{"executionSuccessful":true,"ruleConfigurationOverrides":[
+               {"descriptor":{"index":0},"configuration":{"enabled":true}},
+               {"descriptor":{"id":"R2"}},
+               {"descriptor":{"id":"R1"},"configuration":{"level":"error"}},
+               {"descriptor":{"index":1},"configuration":{"level":"error"}}]}],
+             "results":[
+              {"ruleId":"R1","message":{"text":"default kept"}},
+              {"ruleId":"R2","message":{"text":"warning kept"}}]}
+            """;
+        Equal("default kept=note,warning kept=warning", string.Join(",", Findings(Data(Log(unset)))
             .Select(finding => $"{finding.GetProperty("message").GetString()}={finding.GetProperty("level").GetString()}")
             .Order(StringComparer.Ordinal)));
     }
@@ -487,16 +508,16 @@ public static class SarifConverterTests
         string Filled(string fingerprint) => $$$$"""{"ruleId":"R","message":{"id":"m","arguments":["{{{{argument}}}}"]},"fingerprints":{"f":"{{{{fingerprint}}}}"}}""";
         using var folder = new Folder();
         folder.Write("m.sarif", Log(RunWithRules("T", rules, [Filled("one")])));
-        var within = SarifConverter.Read(folder.Root, "m.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, fillLimit: 4_000_000);
+        var within = SarifConverter.Read(folder.Root, "m.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, workAllowance: Unbounded, fillLimit: 4_000_000);
         Equal(0, within.Problems.Count);
         Equal(4_000_000, Findings(within.Data!).Single().GetProperty("message").GetString()!.Length);
 
-        var over = SarifConverter.Read(folder.Root, "m.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, fillLimit: 3_999_999);
+        var over = SarifConverter.Read(folder.Root, "m.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, workAllowance: Unbounded, fillLimit: 3_999_999);
         Equal(null, over.Data);
         Equal("'m.sarif' run 0 result 0: the messages filled from their arguments would hold more than 3,999,999 characters, the most one entry may.", over.Problems.Single());
 
         folder.Write("m.sarif", Log(RunWithRules("T", rules, [Filled("one"), Filled("two")])));
-        var together = SarifConverter.Read(folder.Root, "m.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, fillLimit: 7_999_999);
+        var together = SarifConverter.Read(folder.Root, "m.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, workAllowance: Unbounded, fillLimit: 7_999_999);
         Equal("'m.sarif' run 0 result 1: the messages filled from their arguments would hold more than 7,999,999 characters, the most one entry may.", together.Problems.Single());
 
         // Literal text counts as it is copied. Once the limit is passed, the file's other results
@@ -505,7 +526,7 @@ public static class SarifConverterTests
         var many = Enumerable.Range(0, 50).Select(index => $$$$"""{"ruleId":"R","message":{"id":"m"},"fingerprints":{"f":"{{{{index}}}}"}}""").ToArray();
         folder.Write("m.sarif", Log(RunWithRules("T", literal, many), RunWithRules("U", literal, many)));
         folder.Write("n.sarif", Log(RunWithRules("V", literal, many)));
-        var once = SarifConverter.Read(folder.Root, "*.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, fillLimit: 10_500);
+        var once = SarifConverter.Read(folder.Root, "*.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, workAllowance: Unbounded, fillLimit: 10_500);
         Equal(null, once.Data);
         Equal("'m.sarif' run 0 result 10: the messages filled from their arguments would hold more than 10,500 characters, the most one entry may.", once.Problems.Single());
     }
@@ -527,7 +548,7 @@ public static class SarifConverterTests
             && problem.EndsWith(": the findings would keep more than 50,000 characters of keys and messages, the most one entry may.", StringComparison.Ordinal));
 
         // A finding that replaces the one kept under its key is charged for its longer message, so
-        // the outcome does not depend on the order the results arrive in.
+        // the entry is charged the same whichever of the two arrives first.
         var note = """{"ruleId":"R","level":"note","message":{"text":"m"},"fingerprints":{"f":"1"}}""";
         var error = $$$"""{"ruleId":"R","level":"error","message":{"text":"{{{new string('e', 10_000)}}}"},"fingerprints":{"f":"1"}}""";
         folder.Write("first.sarif", Log(Run("T", note, error)));
@@ -540,20 +561,91 @@ public static class SarifConverterTests
     }
 
     // A placeholder is read only as far as its few digits, so a long text of '{' with no '}' is
-    // read once rather than searched again from each '{'.
+    // read once rather than searched again from each '{'; the file is read within the work its
+    // size allows, with no allowance beyond it.
     private static void ReadsBracesWithoutPlaceholdersOnce()
     {
-        var text = string.Concat(Enumerable.Repeat("{a", 2_000_000));
+        var text = string.Concat(Enumerable.Repeat("{a", 200_000));
         using var folder = new Folder();
         folder.Write("b.sarif", Log(Run("T", $$$$"""{"ruleId":"R","message":{"text":"{{{{text}}}}{0}","arguments":["z"]}}""")));
-        var clock = System.Diagnostics.Stopwatch.StartNew();
-        var result = SarifConverter.Read(folder.Root, "b.sarif", maximumKeys: null, maximumTextLength: null);
-        Equal(0, result.Problems.Count);
+        var result = SarifConverter.Read(folder.Root, "b.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, workAllowance: 0);
+        Equal(string.Empty, string.Join(" | ", result.Problems));
         Equal(text + "z", Findings(result.Data!).Single().GetProperty("message").GetString());
-        if (clock.Elapsed > TimeSpan.FromSeconds(30))
-        {
-            throw new InvalidOperationException($"Reading 4,000,000 characters of braces took {clock.Elapsed}.");
-        }
+    }
+
+    // Every character the converter reads, decodes, scans or builds is charged to the file, which
+    // may take at most WorkPerByte for each of its bytes and WorkAllowance more. A message string
+    // that each of many results fills again is charged each time, so the file is rejected once.
+    private static void RejectsWorkPastTheLimit()
+    {
+        Equal(16L, SarifConverter.WorkPerByte);
+        Equal(1024L * 1024, SarifConverter.WorkAllowance);
+        var rules = $$$$"""[{"id":"R","messageStrings":{"m":{"text":"{{{{string.Concat(Enumerable.Repeat("{0}", 1000))}}}}"}}}]""";
+        var results = Enumerable.Range(0, 2000).Select(index => $$$$"""{"ruleId":"R","message":{"id":"m","arguments":[""]},"fingerprints":{"f":"{{{{index}}}}"}}""").ToArray();
+        using var folder = new Folder();
+        folder.Write("w.sarif", Log(RunWithRules("T", rules, results)));
+        folder.Write("x.sarif", Log(RunWithRules("T", rules, results)));
+        var over = SarifConverter.Read(folder.Root, "*.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, workAllowance: 0);
+        Equal(null, over.Data);
+        var problem = over.Problems.Single();
+        Equal(true, problem.StartsWith("'w.sarif' run 0 result ", StringComparison.Ordinal)
+            && problem.Contains(": reading it would take more than ", StringComparison.Ordinal)
+            && problem.EndsWith(" (16 for each byte and 0 more); it was not read further.", StringComparison.Ordinal));
+
+        // A few such results stay well within it.
+        folder.Write("w.sarif", Log(RunWithRules("T", rules, results[..5])));
+        Equal(0, SarifConverter.Read(folder.Root, "w.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, workAllowance: 0).Problems.Count);
+    }
+
+    // What a run's results share, such as the tool components they name by guid and an
+    // invocation's overrides, is read once per run, so that many results that name a large
+    // shared part stay within the work the file may take. An override that cannot be read is a
+    // problem for each result that needs it, without being read again.
+    private static void ReadsSharedPartsOnce()
+    {
+        var extensions = string.Join(",", Enumerable.Range(0, 200).Select(index =>
+            $$$$"""{"name":"E{{{{index}}}}","guid":"{{{{index:D8}}}}-0000-4000-8000-000000000000","rules":[{"id":"X{{{{index}}}}","defaultConfiguration":{"level":"note"}}]}"""));
+        var named = Enumerable.Range(0, 2000).Select(index =>
+            $$$$"""{"rule":{"index":0,"toolComponent":{"guid":"00000199-0000-4000-8000-000000000000"}},"message":{"text":"m"},"fingerprints":{"f":"{{{{index}}}}"}}""").ToArray();
+        using var folder = new Folder();
+        folder.Write("g.sarif", Log($$$"""{"tool":{"driver":{"name":"T"},"extensions":[{{{extensions}}}]},"results":[{{{string.Join(",", named)}}}]}"""));
+        var found = SarifConverter.Read(folder.Root, "g.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, workAllowance: 0);
+        Equal(string.Empty, string.Join(" | ", found.Problems));
+        Equal(2000, Findings(found.Data!).Count(finding => finding.GetProperty("rule").GetString() == "X199" && finding.GetProperty("level").GetString() == "note"));
+
+        var overrides = string.Join(",", Enumerable.Range(0, 2000).Select(index => $$$$"""{"descriptor":{"id":"Rule{{{{index:D6}}}}"},"configuration":{"level":"error"}}"""))
+            + """,{"descriptor":{"id":"\ud800"},"configuration":{"level":"error"}}""";
+        var results = Enumerable.Range(0, 2000).Select(index => $$$$"""{"ruleId":"R","message":{"text":"m"},"fingerprints":{"f":"{{{{index}}}}"}}""");
+        folder.Write("o.sarif", Log($$$"""
+            {"tool":{"driver":{"name":"T","rules":[{"id":"R"}]}},
+             "invocations":[{"executionSuccessful":true,"ruleConfigurationOverrides":[{{{overrides}}}]}],
+             "results":[{{{string.Join(",", results)}}}]}
+            """));
+        var problems = SarifConverter.Read(folder.Root, "o.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, workAllowance: 0).Problems;
+        Equal(11, problems.Count);
+        Equal("'o.sarif' run 0 result 9: a string in the file is not valid UTF-8.", problems[9]);
+        Equal("'o.sarif' has 1990 more problems that are not listed.", problems[10]);
+    }
+
+    // A tool name, rule id or fingerprint is part of every key it is in, so each holds at most
+    // MaximumKeyPartLength characters; a longer one is a problem rather than a key built and kept.
+    private static void RejectsKeyPartsPastTheLimit()
+    {
+        Equal(1024, SarifConverter.MaximumKeyPartLength);
+        var most = new string('a', 1024);
+        var over = new string('a', 1025);
+        Equal(1, Findings(Data(Log(Run(most, $$$$"""{"ruleId":"{{{{most}}}}","message":{"text":"m"},"fingerprints":{"f":"{{{{most}}}}"}}""")))).Count);
+
+        using var folder = new Folder();
+        folder.Write("t.sarif", Log(Run(over, """{"ruleId":"R","message":{"text":"m"}}""")));
+        Equal("'t.sarif' run 0: the tool name is 1,025 characters, more than the 1,024 a key part may hold.",
+            SarifConverter.Read(folder.Root, "t.sarif", maximumKeys: null, maximumTextLength: null).Problems.Single());
+        folder.Write("t.sarif", Log(Run("T", $$$$"""{"ruleId":"{{{{over}}}}","message":{"text":"m"}}""")));
+        Equal("'t.sarif' run 0 result 0: the rule id is 1,025 characters, more than the 1,024 a key part may hold.",
+            SarifConverter.Read(folder.Root, "t.sarif", maximumKeys: null, maximumTextLength: null).Problems.Single());
+        folder.Write("t.sarif", Log(Run("T", $$$$"""{"ruleId":"R","message":{"text":"m"},"partialFingerprints":{"p":"{{{{over}}}}"}}""")));
+        Equal("'t.sarif' run 0 result 0: the partialFingerprints value 'p' is 1,025 characters, more than the 1,024 a key part may hold.",
+            SarifConverter.Read(folder.Root, "t.sarif", maximumKeys: null, maximumTextLength: null).Problems.Single());
     }
 
     // Two findings whose parts join to the same key, or two tool and rule pairs that join to the
@@ -732,7 +824,7 @@ public static class SarifConverterTests
             """{"byRule":{"CodeQL/js/sql-injection":{"value":"1"},"CodeQL/js/unused-local-variable":{"value":"1"}},"results":{"""
             + "\"CodeQL/js/sql-injection/src/server.js/5f2b8a1c9d3e7f40:1\":{\"value\":{\"level\":\"error\",\"line\":\"42\",\"message\":\"This query string depends on a [user-provided value](1).\",\"path\":\"src/server.js\",\"rule\":\"js/sql-injection\",\"tool\":\"CodeQL\"}},"
             + "\"CodeQL/js/unused-local-variable/src/util.js/a07c33e1b2d4f561:1\":{\"value\":{\"level\":\"note\",\"line\":\"7\",\"message\":\"Unused variable tmp.\",\"path\":\"src/util.js\",\"rule\":\"js/unused-local-variable\",\"tool\":\"CodeQL\"}}},\"total\":{\"value\":\"2\"}}",
-            Data(log));
+            Data(log, workAllowance: 0));
     }
 
     // A synthetic log in the shape Ruff writes with --output-format sarif: absolute file URIs, a
@@ -783,7 +875,7 @@ public static class SarifConverterTests
             }
             """;
         folder.Write("ruff.sarif", log);
-        var result = SarifConverter.Read(folder.Root, "ruff.sarif", maximumKeys: null, maximumTextLength: null);
+        var result = SarifConverter.Read(folder.Root, "ruff.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, workAllowance: 0);
         Equal(string.Empty, string.Join(" | ", result.Problems));
 
         // The two long lines differ only in digits, so without fingerprints they are one finding
@@ -798,6 +890,9 @@ public static class SarifConverterTests
             """.TrimEnd(),
             result.Data);
     }
+
+    // A work allowance no test file reaches, for tests of the other limits.
+    private const long Unbounded = 1L << 40;
 
     private static string Log(params string[] runs) => $$$"""{"version":"2.1.0","runs":[{{{string.Join(",", runs)}}}]}""";
 
@@ -819,11 +914,11 @@ public static class SarifConverterTests
 
     private static string Hex(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
 
-    private static string Data(string log)
+    private static string Data(string log, long workAllowance = SarifConverter.WorkAllowance)
     {
         using var folder = new Folder();
         folder.Write("log.sarif", log);
-        var result = SarifConverter.Read(folder.Root, "log.sarif", maximumKeys: null, maximumTextLength: null);
+        var result = SarifConverter.Read(folder.Root, "log.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, workAllowance: workAllowance);
         if (result.Problems.Count > 0)
         {
             throw new InvalidOperationException($"The log was rejected: {string.Join(" | ", result.Problems)}");

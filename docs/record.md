@@ -97,10 +97,18 @@ The `sarif` converter reads SARIF 2.1.0 logs, as CodeQL and Ruff write them:
   taken over the bytes as written. A file over 64 MiB, or files that together pass 256 MiB,
   reject the entry and are not read. A property name that is not valid UTF-8, or that escapes a
   lone surrogate, rejects the entry.
+- Reading one file may take at most 16 characters of work for each of its bytes, plus 1 Mi
+  characters, a safety limit: every character the converter decodes, scans or builds is counted
+  as it is, including message strings filled again for each result that names them. What a run's
+  results share, such as rule descriptors, message strings, tool components by `guid`,
+  `originalUriBaseIds`, artifacts and each invocation's overrides, is read once per run, so
+  ordinary logs stay far below the limit. Passing it rejects the entry, and the rest of the logs
+  are not read.
 - A log must be an object whose `version` is `2.1.0` and whose `runs` is an array. Any other
   version, or none, rejects the entry and names the version read. `runs: null`, which SARIF uses
   when the tool could not run, rejects the entry too. Each run needs `tool.driver.name`, the
-  tool's name. A run whose `results` is absent or `null`, which SARIF uses when the analysis did
+  tool's name. A tool name, rule id or fingerprint longer than 1,024 characters rejects the
+  entry, since each is part of every key it is in. A run whose `results` is absent or `null`, which SARIF uses when the analysis did
   not start, rejects the entry; an empty `results` array is a clean run. A run that keeps results
   in external property files (`externalPropertyFileReferences.results`) rejects the entry, since
   they are not read.
@@ -111,12 +119,15 @@ The `sarif` converter reads SARIF 2.1.0 logs, as CodeQL and Ruff write them:
   a `name` uses the driver, and a `guid` that matches none finds no descriptor. A result with no
   rule rejects the entry.
 - The level is the result's `level` when given. Otherwise, when `kind` is absent or `fail`, it is
-  the level of the invocation's `ruleConfigurationOverrides` entry for the rule, the invocation
-  being the one the result's `provenance.invocationIndex` names, or the run's only invocation
-  when it names none, else the rule's `defaultConfiguration.level`, else `warning`; any other
-  `kind` gives `none`. The first override for a rule is used.
+  the level of the invocation's `ruleConfigurationOverrides` entry for the rule, else the rule's
+  `defaultConfiguration.level`, else `warning`, as SARIF 2.1.0 §3.27.10 specifies; any other
+  `kind` gives `none`. The invocation is the one the result's `provenance.invocationIndex`
+  names, or, when it names none, the run's only invocation if it has exactly one (§3.48.6). The
+  first override that names the rule decides: one with no `configuration.level` leaves the rule's
+  default level, even when a later override for the rule gives one.
 - The message is `message.text`, or else the `messageStrings` entry its `message.id` names in the
-  rule, or else in the tool component's `globalMessageStrings`, with `{0}`, `{1}` and so on
+  rule, or else in the `globalMessageStrings` of the tool component that defines the rule, as
+  SARIF 2.1.0 §3.11.7 looks them up, with `{0}`, `{1}` and so on
   filled from `message.arguments`; `message.text` with no `arguments` is kept as written. A
   placeholder is `{`, at most ten digits and `}`; any other brace is kept as written. The
   messages filled this way hold at most 64 Mi characters together in one entry, a safety limit
@@ -143,8 +154,8 @@ The `sarif` converter reads SARIF 2.1.0 logs, as CodeQL and Ruff write them:
   or two tool and rule pairs that join to the same `byRule` key, reject the entry.
 - `total` and each `byRule` count include every result, whatever its `kind` or level.
 - More findings by key than the root file's `maxKeys` budget reject the entry, as for size.
-- The findings kept in one entry hold at most 64 Mi characters of keys, paths, fingerprints and
-  messages, a safety limit counted as each finding is kept; passing it rejects the entry, and the
+- The findings kept in one entry hold at most 64 Mi characters of keys, `byRule` keys, paths,
+  fingerprints and messages, a safety limit counted as each finding is kept; passing it rejects the entry, and the
   rest of the logs are not read.
 - `suppressions` and `baselineState` are not read, and the root file's `fields` selection is not
   applied, so `byRule`, `results` and `total` are always written. The entry holds every log as a

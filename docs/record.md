@@ -1,7 +1,9 @@
 # Recording a run
 
 This page specifies `diffra record`, the one command each job that produces data runs, and the
-entries file it writes. It is a specification: the command does not exist yet.
+entries file it writes. It is a specification: the command does not exist yet. The protocol
+library's `Recording.cs` validates entries, writes and reads entries files, and merges them by the
+rules below.
 
 ## What is decided
 

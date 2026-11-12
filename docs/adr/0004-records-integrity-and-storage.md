@@ -60,8 +60,10 @@ domain-separated SHA-256 over canonical JSON, environment included, decimals as 
 includes a Baseline reference. There is no storage setting in the root file and no storage
 strategy in the CLI. The self-evaluation workflow stores one file per commit on an orphan
 branch. `src/Protocol/Recording.cs` merges the jobs' entries files by the proposed rules in
-[Recording a run](../record.md), which this record still lists as not yet decided; no collecting
-job runs it.
+[Recording a run](../record.md), which this record still lists as not yet decided, and
+`diffra merge` runs that merge for a collecting job (decision 7). It writes the merged entries as
+an entries file; the partial record for the commit has no format yet, and nothing gathers the
+jobs' files into the collecting job or writes to history.
 
 `schemas/root-file-v1.schema.json` uses a `diffra.net` identifier. The other schemas and the
 documents that cite them still use the earlier `diffra.dev` identifiers; changing them changes

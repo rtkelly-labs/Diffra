@@ -47,8 +47,11 @@ One root file in the repository defines the datasets, the rule sets on each data
 projects that select them. Each CI job that produces data runs one command, `diffra record`,
 which reads the tool's output through the converter the root file declares, or takes a single
 number with `--value`. A value that does not fit the root file is saved as rejected and reported
-at the end rather than failing the job. A collecting job in each workflow file gathers the
-records for the commit.
+at the end rather than failing the job. One collecting job in each workflow file gathers the
+records for the commit; the root file is to say which workflow file is responsible for which
+datasets, so that a workflow does not report another's datasets as missing. A required dataset
+that is missing or only rejected counts as a warning, so it fails the step under `fail-on: warn`
+and not under `fail-on: fail`.
 
 Diffra is to read the formats tools already write: test results, coverage, lint findings, sizes,
 tables such as benchmark results and OpenMetrics, with declared columns, and flame graphs as
@@ -86,10 +89,11 @@ Nothing posts the comment yet. `bundle` moves evidence through a content-address
 `present` builds and serves a review bundle. The root file has a schema and a loader that checks
 its cross-references, which `diffra record` uses; the `fail-on` decision is library code with no
 step to read it; and `diffra record` records a number given with `--value`, or a skipped or failed dataset,
-checked against the root file, with library code that merges the entries files of every job,
-reporting every disagreement in values or statuses and naming each job involved. There is no
-collecting job yet, and no converter for a tool's own format, so `record` cannot yet read the
-files a dataset's `from` names. The names Evidence, Delta and Assessment come from the earlier design; the
+checked against the root file, and `diffra merge` merges the entries files of every job,
+reporting every disagreement in values or statuses, naming each job involved, and listing the
+planned datasets no job collected. Nothing yet carries the jobs' files to a collecting job or
+writes the merged entries to history, and no converter for a tool's own format exists, so
+`record` cannot yet read the files a dataset's `from` names. The names Evidence, Delta and Assessment come from the earlier design; the
 glossary gives the words that replace them. The [sample
 workflow](../examples/sample-project/workflow/) contains inputs and checked-in outputs, the
 [protocol](protocol.md) describes the current document shapes, and the [CLI reference](cli.md)

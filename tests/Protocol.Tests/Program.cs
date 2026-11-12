@@ -49,6 +49,7 @@ ExternalCommandAdapterTests.RunAll();
 BaselineTrustTests.RunAll();
 DogfoodPipelineTests.RunAll();
 RecordCommandTests.RunAll();
+MergeCommandTests.RunAll();
 
 static void CanonicalizesObjectsAndStrings()
 {

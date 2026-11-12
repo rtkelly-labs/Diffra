@@ -133,6 +133,13 @@ public static partial class RecordEntries
             using var document = JsonDocument.Parse(json, DocumentOptions);
             var problems = new List<string>();
             Check(document.RootElement, problems);
+            if (problems.Count == 0)
+            {
+                // Writing the entry out reads every string in it, so a lone surrogate anywhere, such
+                // as in a data value that Check does not look into, is found here.
+                Compact(document.RootElement);
+            }
+
             return problems;
         }
         catch (JsonException exception)
@@ -225,7 +232,16 @@ public static partial class RecordEntries
             return first.Value == second.Value;
         }
 
-        return JsonElement.DeepEquals(first.Data!.Value, second.Data!.Value);
+        try
+        {
+            return JsonElement.DeepEquals(first.Data!.Value, second.Data!.Value);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            // A number whose exponent is too large to compare: the data is the same only when it is
+            // written the same way.
+            return string.Equals(Compact(first.Data!.Value), Compact(second.Data!.Value), StringComparison.Ordinal);
+        }
     }
 
     internal static string IdentityOf(
@@ -862,7 +878,7 @@ public static partial class EntriesFile
         var existing = new byte[stream.Length];
         stream.ReadExactly(existing);
         var held = entry is { Status: EntryStatus.Recorded, Replaces: false }
-            ? ReadLines(existing).Entries.LastOrDefault(other =>
+            ? ReadLines(existing, int.MaxValue).Entries.LastOrDefault(other =>
                 other.Status == EntryStatus.Recorded
                 && other.Attempt == entry.Attempt
                 && string.Equals(other.JobName, entry.JobName, StringComparison.Ordinal)
@@ -904,10 +920,22 @@ public static partial class EntriesFile
     public static EntriesFileContent Read(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
-        return ReadLines(File.ReadAllBytes(path));
+        return ReadLines(File.ReadAllBytes(path), int.MaxValue);
     }
 
-    private static EntriesFileContent ReadLines(byte[] bytes)
+    /// <summary>
+    /// Reads the entries in the bytes of an entries file from another job, which may be hostile:
+    /// reading stops after <paramref name="maximumProblems"/> lines that are not valid entries, and
+    /// <see cref="EntriesFileContent.Stopped"/> says so.
+    /// </summary>
+    public static EntriesFileContent Read(byte[] bytes, int maximumProblems)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumProblems);
+        return ReadLines(bytes, maximumProblems);
+    }
+
+    private static EntriesFileContent ReadLines(byte[] bytes, int maximumProblems)
     {
         var entries = new List<RecordEntry>();
         var problems = new List<string>();
@@ -924,6 +952,11 @@ public static partial class EntriesFile
             }
 
             number++;
+            if (problems.Count == maximumProblems)
+            {
+                return new EntriesFileContent(entries, problems) { Stopped = true };
+            }
+
             var span = bytes.AsSpan(start, end - start);
             start = end + 1;
             if (span.IsEmpty)
@@ -960,9 +993,16 @@ public static partial class EntriesFile
 }
 
 /// <summary>The valid entries of an entries file, in file order, and the lines that were not valid.</summary>
-public sealed record EntriesFileContent(IReadOnlyList<RecordEntry> Entries, IReadOnlyList<string> Problems);
+public sealed record EntriesFileContent(IReadOnlyList<RecordEntry> Entries, IReadOnlyList<string> Problems)
+{
+    /// <summary>Whether reading stopped at the limit of lines that are not valid entries.</summary>
+    public bool Stopped { get; init; }
+}
 
-/// <summary>A dataset the root file plans for, for one combination of dimension values.</summary>
+/// <summary>
+/// A dataset the root file plans for, for one combination of the values of the dimensions whose
+/// values it lists. An entry matches when it has these values, whatever its other dimensions are.
+/// </summary>
 public sealed record ExpectedEntry(string Project, string Dataset, IReadOnlyDictionary<string, string> Dimensions);
 
 /// <summary>What kind of problem a merge found.</summary>
@@ -982,6 +1022,9 @@ public enum MergeFindingKind
 
     /// <summary>A required dataset has no entry for a dimension value the root file plans for.</summary>
     NotCollected,
+
+    /// <summary>A job gave something for a dataset that could not be recorded.</summary>
+    Rejected,
 }
 
 /// <summary>One problem a merge found.</summary>
@@ -1094,11 +1137,21 @@ public static class EntryMerge
                 list.FindAll(entry => entry is { Status: EntryStatus.Recorded, Data: not null }),
             })
             {
+                // Entries are bucketed by a hash of what they say, so that a file of many jobs takes
+                // linear time rather than comparing every pair.
                 var distinct = new List<RecordEntry>();
+                var buckets = new Dictionary<int, List<RecordEntry>>();
                 foreach (var entry in form)
                 {
-                    if (!distinct.Exists(other => RecordEntries.AreIdentical(other, entry)))
+                    var hash = entry.Value is { } value ? value.GetHashCode() : StructuralHash(entry.Data!.Value);
+                    if (!buckets.TryGetValue(hash, out var bucket))
                     {
+                        buckets[hash] = bucket = [];
+                    }
+
+                    if (!bucket.Exists(other => RecordEntries.AreIdentical(other, entry)))
+                    {
+                        bucket.Add(entry);
                         distinct.Add(entry);
                     }
                 }
@@ -1129,16 +1182,29 @@ public static class EntryMerge
         }
 
         // Rule 5: a required dataset with no entry for a planned dimension value. An entry that
-        // conflicts was still collected; a rejected entry was not.
-        var collected = new HashSet<string>(stated.Select(DatasetIdentity), StringComparer.Ordinal);
+        // conflicts was still collected; a rejected entry was not. A plan names only the dimensions
+        // whose values the root file lists, so an entry matches it when it has those values,
+        // whatever value it has for an observed dimension.
+        var collected = stated.ToLookup(entry => (entry.Project, entry.Dataset));
         foreach (var plan in expected)
         {
-            if (!collected.Contains(RecordEntries.IdentityOf(plan.Project, plan.Dataset, null, plan.Dimensions)))
+            if (!collected[(plan.Project, plan.Dataset)].Any(entry => plan.Dimensions.All(
+                    dimension => entry.Dimensions.TryGetValue(dimension.Key, out var value)
+                        && string.Equals(value, dimension.Value, StringComparison.Ordinal))))
             {
                 findings.Add(new MergeFinding(
                     MergeFindingKind.NotCollected,
                     $"{Describe(plan.Project, plan.Dataset, null, plan.Dimensions)} was not collected."));
             }
+        }
+
+        // A rejected entry is kept in the merged file and reported with the problems record found,
+        // so that a value that could not be recorded is not lost without a word.
+        foreach (var entry in rejected)
+        {
+            findings.Add(new MergeFinding(
+                MergeFindingKind.Rejected,
+                $"{Describe(entry)} was rejected in job '{entry.JobName}' attempt {entry.Attempt.ToString(CultureInfo.InvariantCulture)}: {RejectionProblems(entry)}"));
         }
 
         var merged = chosen.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => pair.Value).ToList();
@@ -1150,10 +1216,91 @@ public static class EntryMerge
         return new MergeResult(merged, orderedFindings, superseded);
     }
 
-    // The jobs, in name order and each once: "job 'a'" or "jobs 'a', 'b' and 'c'".
+    // A hash that agrees with JsonElement.DeepEquals: object members in any order give the same
+    // hash, and every number hashes alike, since equal numbers can be written differently.
+    private static int StructuralHash(JsonElement element)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                var sum = 17;
+                foreach (var property in element.EnumerateObject())
+                {
+                    sum = unchecked(sum + HashCode.Combine(StringComparer.Ordinal.GetHashCode(property.Name), StructuralHash(property.Value)));
+                }
+
+                return sum;
+            case JsonValueKind.Array:
+                var combined = new HashCode();
+                foreach (var item in element.EnumerateArray())
+                {
+                    combined.Add(StructuralHash(item));
+                }
+
+                return combined.ToHashCode();
+            case JsonValueKind.String:
+                return StringComparer.Ordinal.GetHashCode(element.GetString()!);
+            case JsonValueKind.Number:
+                return NumberHash(element.GetRawText());
+            default:
+                return (int)element.ValueKind;
+        }
+    }
+
+    // A hash of a JSON number's exact value, so that numbers DeepEquals finds equal, such as 1, 1.0,
+    // 10e-1 and 1e400 against 10e399, hash alike and different values rarely share a bucket: the
+    // sign, the significant digits and the exponent, with leading and trailing zeros removed.
+    private static int NumberHash(string raw)
+    {
+        var text = raw.AsSpan();
+        var negative = text[0] == '-';
+        if (negative)
+        {
+            text = text[1..];
+        }
+
+        var exponent = 0L;
+        var e = text.IndexOfAny('e', 'E');
+        if (e >= 0)
+        {
+            if (!long.TryParse(text[(e + 1)..], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out exponent))
+            {
+                // An exponent too long for a long: rare enough to share one bucket per sign.
+                return HashCode.Combine(negative, "exponent");
+            }
+
+            text = text[..e];
+        }
+
+        var point = text.IndexOf('.');
+        var digits = point < 0 ? text.ToString() : string.Concat(text[..point], text[(point + 1)..]);
+        if (point >= 0)
+        {
+            exponent -= text.Length - point - 1;
+        }
+
+        digits = digits.TrimStart('0');
+        if (digits.Length == 0)
+        {
+            return 0;
+        }
+
+        var trimmed = digits.TrimEnd('0');
+        exponent += digits.Length - trimmed.Length;
+        return HashCode.Combine(negative, StringComparer.Ordinal.GetHashCode(trimmed), exponent);
+    }
+
+    // The jobs, in name order and each once: "job 'a'" or "jobs 'a', 'b' and 'c'". After ten names,
+    // the rest are counted rather than named.
     private static string Jobs(IEnumerable<RecordEntry> entries)
     {
+        const int named = 10;
         var names = entries.Select(entry => $"'{entry.JobName}'").Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        if (names.Count > named)
+        {
+            return $"jobs {string.Join(", ", names.Take(named))} and {(names.Count - named).ToString(CultureInfo.InvariantCulture)} more";
+        }
+
         return names.Count == 1
             ? $"job {names[0]}"
             : $"jobs {string.Join(", ", names.Take(names.Count - 1))} and {names[^1]}";
@@ -1172,11 +1319,13 @@ public static class EntryMerge
     {
         var result = new List<RecordEntry>();
         var byIdentity = new Dictionary<string, int>(StringComparer.Ordinal);
+        var rejectedSeen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var entry in entries)
         {
             if (entry.Status == EntryStatus.Rejected)
             {
-                if (!result.Any(earlier => RecordEntries.AreIdentical(earlier, entry)))
+                // Two rejected entries are identical exactly when their JSON is.
+                if (rejectedSeen.Add(entry.Json))
                 {
                     result.Add(entry);
                 }
@@ -1205,6 +1354,20 @@ public static class EntryMerge
         }
 
         return result;
+    }
+
+    // The first problems a rejected entry lists, then how many more there are.
+    private static string RejectionProblems(RecordEntry entry)
+    {
+        const int shown = 3;
+        using var document = JsonDocument.Parse(entry.Json);
+        var problems = document.RootElement.TryGetProperty("problems", out var list) && list.ValueKind == JsonValueKind.Array
+            ? list.EnumerateArray().Select(problem => problem.ToString()).ToList()
+            : [];
+        var text = string.Join(" ", problems.Take(shown));
+        return problems.Count > shown
+            ? $"{text} ({(problems.Count - shown).ToString(CultureInfo.InvariantCulture)} more problems.)"
+            : text;
     }
 
     private static string Describe(RecordEntry entry) =>

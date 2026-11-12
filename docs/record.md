@@ -4,8 +4,8 @@ This page specifies `diffra record`, the one command each job that produces data
 entries file it writes. The command is built for `--value`, `--skipped` and `--failed`. No
 converter exists yet, so it cannot read the files a dataset's `from` names: `--from`, or giving no
 source, is saved as a rejected entry that says so. The protocol library's `Recording.cs` validates
-entries, writes and reads entries files, and merges them by the rules below; no collecting job
-runs the merge yet.
+entries, writes and reads entries files, and merges them by the rules below, and `diffra merge`
+runs that merge for a collecting job.
 
 ## What is decided
 
@@ -153,3 +153,93 @@ another commit is a finding.
 The merged entries become the partial record for the commit that the workflow file writes. They
 travel in the same bundle format as every other stage
 ([0004](adr/0004-records-integrity-and-storage.md) decision 6), with its import checks.
+
+## The collecting step
+
+Each workflow file has one collecting job. It runs one command, `diffra merge`, after the jobs
+that produce data, whether they succeeded or not.
+
+```sh
+diffra merge [--commit <id>] [--root-file <file>] [--run-dir <dir>] [--entries <dir>]...
+  [-o <file>] [--json]
+```
+
+- `--entries` names a folder holding the jobs' entries files, and may be repeated; a folder named
+  twice, with or without a trailing separator, is read once. Without it, `merge` reads
+  `<run-dir>/entries`, which may not exist when no job recorded anything. The run folder, the
+  commit and the root file are found as for `record`. An option given with an empty value is an
+  error.
+- Every file whose name ends in `.jsonl` directly in each folder is read, in name order. Entries
+  files come from other jobs and are read as untrusted data: links are not followed and folders
+  are not searched. Only the first 1,000 such files in all are read, and how many more there were
+  is reported. A file over 16 MiB, or one that would take the total past 256 MiB, is reported and
+  not read. A file with the same bytes as one already read is reported and not read again. A file
+  that cannot be read is reported, and the merge goes on without it.
+- A file whose entries are the first entries of another file, in the same order, is an earlier
+  copy of that file, such as an artifact uploaded twice. It is reported and not merged. Every other
+  file is merged, even two that hold the same job and attempt, so that where they disagree the
+  merge reports it as a finding.
+- Each line that is not a valid entry is reported and left out, up to 20 lines for each file and
+  then one line saying how many more there were. Reading a file stops after 100 such lines. After
+  1,000 problems in all, one line says that there were more.
+- `merge` checks each entry against the entry schema and the rules above, not against the root
+  file. `record` checked the entries it saved against the root file in force when it ran, so an
+  entry for a dataset the root file no longer declares is merged as it is.
+- The plan for rule 5 is every required dataset of every project, once for each combination of
+  the listed values of the dimensions it is stratified by. An observed dimension lists no values,
+  so the plan leaves it out, and an entry with any value for it matches.
+- The merged entries are written to `-o`, or `<run-dir>/merged.jsonl`, as an entries file: one
+  valid entry per line, in the merge's order. The same entries give the same file. The output
+  must be a file path, and may be neither the root file nor in an entries folder the merge reads,
+  with links followed.
+- `merge` prints one line for the result and one for each superseded attempt, finding and
+  problem, listing at most 1,000 superseded attempts and 1,000 findings and then saying how many
+  more there were. Text that comes from the entries files, file names or the command line is
+  printed with control characters, the Unicode line and paragraph separators and the
+  bidirectional controls written as `\uXXXX`, so that no line can pass for another.
+- What it finds never changes the exit code: it exits 0, 1 when it cannot read the entries
+  folders or write its output, and 2 when there is no usable commit, root file, run folder,
+  entries folder or output path, or an option is wrong.
+
+With `--json`, `merge` prints one JSON object instead:
+
+| Field | Meaning |
+| --- | --- |
+| `commit` | The commit merged for. |
+| `entriesFile` | The full path of the merged entries file. |
+| `entries` | How many entries it holds. |
+| `entriesFiles` | How many entries files were read. |
+| `supersededAttempts` | Each superseded attempt, as `<job> attempt <n>`, up to 1,000. |
+| `supersededAttemptsNotListed` | How many more superseded attempts there were. |
+| `findings` | Each finding, as `{ "kind", "message" }`, up to 1,000. |
+| `findingsNotListed` | How many more findings there were. |
+| `unreadable` | Each problem met while reading, as `{ "file", "message" }`. The `file` is empty for the line that says more problems were found. |
+
+A finding's `kind` is one of:
+
+| Kind | Meaning |
+| --- | --- |
+| `other-commit` | An entry names another commit; it is left out. |
+| `conflict` | Entries for one dataset, key and dimensions disagree; no value is chosen. |
+| `status-conflict` | Entries for one dataset and dimensions have different statuses. |
+| `value-and-data` | A dataset was given with `--value` in one job and read from files in another. |
+| `not-collected` | The root file plans for a dataset and dimensions that no job recorded. |
+| `rejected` | A job gave something `record` could not record. The rejected entry is kept in the merged file, and the finding names the job and shows the first three of its problems. |
+
+Decided and not built yet:
+
+- Datasets produced by another workflow file. Each workflow file has its own collecting job; the
+  root file will say which workflow file is responsible for which datasets, and a collecting job
+  will not report a dataset another workflow file is responsible for as not collected. Until the
+  root file can say so, a collecting job reports a required dataset produced elsewhere as not
+  collected.
+- With the Action's `fail-on` setting, a required dataset that is not collected, or is collected
+  only as rejected entries, counts as a warning: it fails the step with `fail-on: warn` and not
+  with `fail-on: fail`.
+
+Not yet decided:
+
+- The format of the partial record, and how it travels and is written to history.
+- How jobs' entries files reach the collecting job. A CI integration owns that transport; on
+  GitHub, each job uploads its file as an artifact and the collecting job downloads them into one
+  folder.

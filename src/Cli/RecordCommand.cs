@@ -46,7 +46,7 @@ internal static partial class RecordCommand
     private static readonly JsonWriterOptions WriterOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     [GeneratedRegex("^(?:[0-9a-f]{40}|[0-9a-f]{64})\\z", RegexOptions.CultureInvariant)]
-    private static partial Regex CommitPattern();
+    internal static partial Regex CommitPattern();
 
     [GeneratedRegex("^([+-]?)([0-9]*)(?:\\.([0-9]*))?(?:[eE]([+-]?[0-9]{1,4}))?\\z", RegexOptions.CultureInvariant)]
     private static partial Regex NumberPattern();
@@ -227,7 +227,7 @@ internal static partial class RecordCommand
         return true;
     }
 
-    private static bool TryRunDirectory(Dictionary<string, List<string>> given, out string directory, out string failure)
+    internal static bool TryRunDirectory(Dictionary<string, List<string>> given, out string directory, out string failure)
     {
         directory = string.Empty;
         failure = string.Empty;
@@ -288,7 +288,7 @@ internal static partial class RecordCommand
         return null;
     }
 
-    private static RootFileDocument? LoadRootFile(Dictionary<string, List<string>> given, List<string> problems)
+    internal static RootFileDocument? LoadRootFile(Dictionary<string, List<string>> given, List<string> problems)
     {
         if (given.TryGetValue("root-file", out var values) && values.Count > 1)
         {

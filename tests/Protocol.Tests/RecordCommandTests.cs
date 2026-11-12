@@ -47,9 +47,12 @@ public static class RecordCommandTests
           packages:
             type: diffra/size@1
             from: { files: "artifacts/*.nupkg" }
+          lint:
+            type: diffra/findings@1
+            from: { sarif: "reports/**/*.sarif" }
         projects:
           main:
-            datasets: { packageSize: null, suiteTime: null, warnings: null, ratio: null, mode: null, byRunner: null, packages: null }
+            datasets: { packageSize: null, suiteTime: null, warnings: null, ratio: null, mode: null, byRunner: null, packages: null, lint: null }
         """;
 
     public static void RunAll()
@@ -65,6 +68,8 @@ public static class RecordCommandTests
         AnswersInJson();
         ReadsFilesWithTheConverter();
         RejectsFilesItCannotRead();
+        ReadsFindingsWithTheSarifConverter();
+        RejectsFindingsItCannotRead();
         Console.WriteLine("PASS diffra record");
     }
 
@@ -472,6 +477,86 @@ public static class RecordCommandTests
         budget.Write("artifacts/a.nupkg", "1");
         budget.Write("artifacts/b.nupkg", "2");
         Equal(0, budget.Record("--name", "packages").ExitCode);
+        Equal(true, Problems(Single(budget.Entries()))[0].Contains("maxKeys budget of 1", StringComparison.Ordinal));
+    }
+
+    // The findings dataset's SARIF files are read with the sarif converter, from the glob in the
+    // root file or from --from.
+    private static void ReadsFindingsWithTheSarifConverter()
+    {
+        const string ruff = """{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"ruff"}},"results":[{"ruleId":"F401","level":"error","message":{"text":"unused"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"app/a.py"},"region":{"startLine":3}}}]}]}]}""";
+        const string clean = """{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"biome"}},"results":[]}]}""";
+        using var run = new Run();
+        run.MakeRepository();
+        run.Write("reports/python/ruff.sarif", ruff);
+        run.Write("reports/biome.sarif", clean);
+        run.Write("reports/notes.txt", "ignored");
+
+        var result = run.Record("--name", "lint");
+        Equal(0, result.ExitCode);
+        Equal(true, result.Output.Contains("Recorded main/lint from 2 files, 1 finding.", StringComparison.Ordinal));
+        var line = File.ReadAllLines(run.EntriesFile).Single();
+        Equal(0, RecordEntries.Validate(line).Count);
+        var entry = RecordEntries.Parse(line);
+        Equal(EntryStatus.Recorded, entry.Status);
+        var digest = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData("unused"u8));
+        Equal(
+            $$$$"""{"byRule":{"ruff/F401":{"value":"1"}},"results":{"ruff/F401/app/a.py/{{{{digest}}}}":{"value":{"level":"error","line":"3","message":"unused","path":"app/a.py","rule":"F401","tool":"ruff"}}},"total":{"value":"1"}}""",
+            entry.Data!.Value.GetRawText());
+        using (var document = JsonDocument.Parse(line))
+        {
+            var sources = document.RootElement.GetProperty("sources").EnumerateArray().ToList();
+            Equal("reports/biome.sarif,reports/python/ruff.sarif", string.Join(",", sources.Select(item => item.GetProperty("path").GetString())));
+            Equal("sarif", sources[0].GetProperty("format").GetString());
+            Equal(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(ruff))), sources[1].GetProperty("sha256").GetString());
+        }
+
+        // A new finding is a different value, refused unless replaced.
+        run.Write("reports/biome.sarif", ruff.Replace("ruff", "biome", StringComparison.Ordinal));
+        Equal(true, run.Record("--name", "lint").Output.Contains("already recorded a different value", StringComparison.Ordinal));
+        var replaced = run.Record("--name", "lint", "--replace");
+        Equal(true, replaced.Output.Contains("Recorded main/lint from 2 files, 2 findings.", StringComparison.Ordinal));
+        Equal("recorded,rejected,recorded replaces", string.Join(",", run.Entries().Select(item =>
+            RecordEntries.Token(item.Status) + (item.Replaces ? " replaces" : string.Empty))));
+
+        // --from replaces the root file's glob.
+        var only = run.Record("--name", "lint", "--from", "reports/python/*.sarif", "--replace", "--json");
+        using var answer = JsonDocument.Parse(only.Output);
+        Equal("1", answer.RootElement.GetProperty("entry").GetProperty("data").GetProperty("total").GetProperty("value").GetString());
+    }
+
+    private static void RejectsFindingsItCannotRead()
+    {
+        var cases = new (string Content, string Problem)[]
+        {
+            ("""{"version":"2.0.0","runs":[]}""", "'reports/a.sarif': the file is SARIF version '2.0.0'; only SARIF 2.1.0 is read."),
+            ("""{"version":"2.1.0","runs":[] // done""", "'reports/a.sarif' is not valid JSON:"),
+        };
+        foreach (var (content, problem) in cases)
+        {
+            using var run = new Run();
+            run.MakeRepository();
+            run.Write("reports/a.sarif", content);
+            Equal(0, run.Record("--name", "lint").ExitCode);
+            var line = File.ReadAllLines(run.EntriesFile).Single();
+            Equal(0, RecordEntries.Validate(line).Count);
+            var entry = RecordEntries.Parse(line);
+            Equal(EntryStatus.Rejected, entry.Status);
+            if (!Problems(entry).Any(text => text.StartsWith(problem, StringComparison.Ordinal)))
+            {
+                throw new InvalidOperationException($"Expected a problem starting '{problem}', got: {string.Join(" | ", Problems(entry))}");
+            }
+
+            // The rejected entry keeps the file it read.
+            using var document = JsonDocument.Parse(line);
+            Equal("reports/a.sarif", document.RootElement.GetProperty("sources")[0].GetProperty("path").GetString());
+        }
+
+        // More findings by key than maxKeys rejects the entry.
+        using var budget = new Run(RootFile.Replace("\ndatasets:", "\nsettings: { limits: { maxKeys: 1 } }\ndatasets:", StringComparison.Ordinal));
+        budget.MakeRepository();
+        budget.Write("reports/a.sarif", """{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"t"}},"results":[{"ruleId":"A","message":{"text":"a"}},{"ruleId":"B","message":{"text":"b"}}]}]}""");
+        Equal(0, budget.Record("--name", "lint").ExitCode);
         Equal(true, Problems(Single(budget.Entries()))[0].Contains("maxKeys budget of 1", StringComparison.Ordinal));
     }
 

@@ -2,11 +2,12 @@
 
 This page specifies the standard dataset types and the converters that fill them: what each type
 holds in a record entry, what its items are keyed by, which formats it reads, how two records of
-it are compared, its limits, and how its converters are tested. Only the `files` converter for `diffra/size@1` is built, in
-`src/Converters/` ([Recording a run](record.md#reading-files)); the rest is not. The root file
-schema still lists the earlier types (`diffra/benchmark@1`, `diffra/coverage@1`,
-`diffra/findings@1`, `diffra/size@1` and `diffra/test-results@1`), and `diffra record` cannot
-yet read the files `from` names for any other type.
+it are compared, its limits, and how its converters are tested. Two converters are built, in
+`src/Converters/` ([Recording a run](record.md#reading-files)): `files` for `diffra/size@1` and
+`sarif` for `diffra/findings@1`. The rest is not. The root file schema still lists the earlier
+types (`diffra/benchmark@1`, `diffra/coverage@1`, `diffra/findings@1`, `diffra/size@1` and
+`diffra/test-results@1`), and `diffra record` cannot yet read the files `from` names for any
+other type.
 
 ## What is decided
 
@@ -270,7 +271,9 @@ about the findings it introduced. `total` and each `byRule` count are compared a
 ### Limits and budgets
 
 `maxKeys` caps `results`; errors are kept first, then warnings, then the rest. `total` and
-`byRule` stay exact.
+`byRule` stay exact. Until the entry has the `truncated` field proposed under
+[Budgets](#budgets), the built `sarif` converter rejects the entry instead when there are more
+findings by key than `maxKeys`.
 
 ### Tests
 

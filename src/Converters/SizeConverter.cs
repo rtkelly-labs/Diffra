@@ -1,10 +1,8 @@
 using System.Globalization;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using Microsoft.Win32.SafeHandles;
 
 namespace Diffra.Converters;
 
@@ -22,7 +20,7 @@ public sealed record ConverterResult(IReadOnlyList<ConverterSource> Sources, str
 /// file a glob matches, keyed by repository-relative path, and their total. It does not parse what
 /// it reads; it streams each file once to take its length and its SHA-256 digest.
 /// </summary>
-public static partial class SizeConverter
+public static class SizeConverter
 {
     /// <summary>The converter's name under <c>from</c> and in each source's <c>format</c>.</summary>
     public const string Name = "files";
@@ -31,7 +29,7 @@ public static partial class SizeConverter
     public const string DatasetType = "diffra/size@1";
 
     /// <summary>The most files one entry may read: the entry schema's limit on sources.</summary>
-    public const int MaximumFiles = 1000;
+    public const int MaximumFiles = SourceFiles.MaximumFiles;
 
     private static readonly JsonWriterOptions WriterOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
@@ -44,47 +42,15 @@ public static partial class SizeConverter
     {
         ArgumentNullException.ThrowIfNull(root);
         ArgumentNullException.ThrowIfNull(glob);
-        var segments = FileGlob.Parse(glob, out var problem);
-        if (segments is null)
-        {
-            return Rejected([], problem);
-        }
-
-        var match = FileGlob.Match(root, segments, MaximumFiles);
         var problems = new List<string>();
-        foreach (var link in match.Links)
-        {
-            problems.Add($"'{Display(link)}' is a link. Links are not followed, so that no file outside the repository is read; it was not read.");
-        }
-
-        foreach (var folder in match.Unreadable)
-        {
-            problems.Add($"The folder '{Display(folder)}' cannot be listed, so the files the glob matches in it are not known.");
-        }
-
-        if (match.OverLimit)
-        {
-            problems.Add($"More than {MaximumFiles.ToString(CultureInfo.InvariantCulture)} files match '{glob}', the most one entry can read.");
-        }
-        else if (match.Files.Count == 0 && match.Links.Count == 0 && match.Unreadable.Count == 0)
-        {
-            var folders = match.LinkedFolders == 0
-                ? string.Empty
-                : $" {match.LinkedFolders.ToString(CultureInfo.InvariantCulture)} linked {(match.LinkedFolders == 1 ? "folder was" : "folders were")} not searched.";
-            problems.Add($"No file matches '{glob}'.{folders}");
-        }
-        else if (maximumKeys is { } budget && match.Files.Count > budget)
+        var match = SourceFiles.Find(root, glob, problems);
+        if (match is not null && problems.Count == 0 && maximumKeys is { } budget && match.Files.Count > budget)
         {
             problems.Add($"{match.Files.Count.ToString(CultureInfo.InvariantCulture)} files match '{glob}', more than the root file's maxKeys budget of {budget.ToString(CultureInfo.InvariantCulture)}. "
                 + "Keeping only the largest needs the entry to state what was dropped, which the entry schema cannot do yet; narrow the glob or raise maxKeys.");
         }
 
-        foreach (var path in match.Files.Where(path => !IsSafePath(path)))
-        {
-            problems.Add($"The file name '{Display(path)}' cannot be recorded: a path must be at most 1000 characters of valid Unicode, with no backslash or control character.");
-        }
-
-        return problems.Count > 0 ? Rejected([], [.. problems]) : Convert(root, match.Files);
+        return problems.Count > 0 || match is null ? Rejected([], [.. problems]) : Convert(root, match.Files);
     }
 
     // Reads the given repository-relative files, in ordinal order whatever order they are given
@@ -146,16 +112,10 @@ public static partial class SizeConverter
         return Encoding.UTF8.GetString(stream.ToArray());
     }
 
-    // The length and SHA-256 digest of a regular file, both from one read of its bytes. A pipe,
-    // a socket or a device is refused rather than read, since reading one may never end.
+    // The length and SHA-256 digest of a regular file, both from one read of its bytes.
     private static (long Length, string Digest) Measure(string path)
     {
-        using var stream = Open(path);
-        if (!stream.CanSeek)
-        {
-            throw new IOException("it is not a regular file, such as a pipe or a device.");
-        }
-
+        using var stream = SourceFiles.OpenRegular(path);
         var expected = stream.Length;
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         var buffer = new byte[81920];
@@ -179,67 +139,8 @@ public static partial class SizeConverter
         return (length, System.Convert.ToHexStringLower(hash.GetHashAndReset()));
     }
 
-    // Opens a file to read. On Unix it is opened without blocking, because opening a named pipe
-    // to read waits for a writer; a pipe then shows as a stream that cannot seek.
-    private static FileStream Open(string path)
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1, FileOptions.SequentialScan);
-        }
-
-        var nonBlocking = OperatingSystem.IsLinux() ? 0x800 : 0x4;
-        var descriptor = OpenNative([.. Encoding.UTF8.GetBytes(path), 0], nonBlocking);
-        if (descriptor < 0)
-        {
-            throw new IOException(Marshal.GetLastPInvokeErrorMessage());
-        }
-
-        return new FileStream(new SafeFileHandle(descriptor, ownsHandle: true), FileAccess.Read, 1);
-    }
-
-    // open(2) with O_RDONLY (0) and the given flags. No mode is passed, since O_CREAT is not set.
-    [LibraryImport("libc", EntryPoint = "open", SetLastError = true)]
-    private static partial int OpenNative(byte[] path, int flags);
-
-    // A path as it can be shown in a problem: a lone surrogate, which JSON cannot hold, becomes U+FFFD.
-    private static string Display(string path)
-    {
-        var builder = new StringBuilder(path.Length);
-        foreach (var rune in path.EnumerateRunes())
-        {
-            builder.Append(rune.ToString());
-        }
-
-        return builder.ToString();
-    }
-
-    // The entry schema's rule for a source path: at most 1000 characters, no backslash and no
-    // control character. The glob already keeps out '.' and '..' segments and empty ones. A lone
-    // surrogate cannot be written as JSON, so a name holding one is refused too.
-    internal static bool IsSafePath(string path) =>
-        !HasLoneSurrogate(path)
-        && path.EnumerateRunes().Count() <= 1000
-        && !path.Contains('\\', StringComparison.Ordinal)
-        && !path.StartsWith('~')
-        && !path.EnumerateRunes().Any(Rune.IsControl);
-
-    private static bool HasLoneSurrogate(string text)
-    {
-        for (var index = 0; index < text.Length; index++)
-        {
-            if (char.IsHighSurrogate(text[index]) && index + 1 < text.Length && char.IsLowSurrogate(text[index + 1]))
-            {
-                index++;
-            }
-            else if (char.IsSurrogate(text[index]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    // The entry schema's rule for a source path (see SourceFiles.IsSafePath).
+    internal static bool IsSafePath(string path) => SourceFiles.IsSafePath(path);
 
     private static ConverterResult Rejected(IReadOnlyList<ConverterSource> sources, params string[] problems) =>
         new(sources, null, problems);

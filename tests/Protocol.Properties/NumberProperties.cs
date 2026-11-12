@@ -182,12 +182,13 @@ internal static class DataTrees
 
     /// <summary>
     /// The same tree written another way: object members in another order and every number respelt.
-    /// One time in three, a single leaf is also varied, which changes its value about half the time.
+    /// One time in three, unless <paramref name="keepValue"/> is set, a single leaf is also varied,
+    /// which changes its value about half the time.
     /// </summary>
-    public static J Respell(J tree, Random random)
+    public static J Respell(J tree, Random random, bool keepValue = false)
     {
         var leaves = CountLeaves(tree);
-        var changed = random.Next(3) == 0 && leaves > 0 ? random.Next(leaves) : -1;
+        var changed = !keepValue && random.Next(3) == 0 && leaves > 0 ? random.Next(leaves) : -1;
         var index = 0;
         return Rewrite(tree);
 

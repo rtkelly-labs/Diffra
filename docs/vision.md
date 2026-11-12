@@ -90,7 +90,7 @@ Nothing posts the comment yet. `bundle` moves evidence through a content-address
 `present` builds and serves a review bundle. The root file has a schema and a loader that checks
 its cross-references, which `diffra record` uses; `diffra merge` reads the `fail-on`
 setting and fails the step on a required dataset not collected when it is `warn`, and on one
-recorded only as failed when it is `fail` or `warn`; and `diffra record` records a number given with `--value`, or a skipped or failed dataset,
+recorded as failed when it is `fail` or `warn`; and `diffra record` records a number given with `--value`, or a skipped or failed dataset,
 checked against the root file, and `diffra merge` merges the entries files of every job,
 reporting every disagreement in values or statuses, naming each job involved, and listing the
 planned datasets no job collected. Nothing yet carries the jobs' files to a collecting job or

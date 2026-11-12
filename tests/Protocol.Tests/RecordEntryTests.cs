@@ -491,8 +491,8 @@ public static class RecordEntryTests
         Equal("main/packageSize (os=windows) was not collected.", missing[1]);
     }
 
-    // A planned value recorded only as failed is a failed collection, not a missing one; a value
-    // recorded in one job and failed in another is a status conflict, and skipped is collected.
+    // A planned value with any failed entry is a failed collection, not a missing one, whatever
+    // other jobs or entries say and in any order; skipped is collected.
     private static void ReportsRequiredDatasetsWhoseCollectionFailed()
     {
         var linux = new Dictionary<string, string>(StringComparer.Ordinal) { ["os"] = "linux" };
@@ -514,11 +514,25 @@ public static class RecordEntryTests
                 new ExpectedEntry("main", "coverage", none),
             ]);
         var failed = result.Findings.Where(finding => finding.Kind == MergeFindingKind.CollectionFailed).Select(finding => finding.Message).ToList();
-        Equal(2, failed.Count);
+        Equal(3, failed.Count);
         Equal("main/coverage was recorded as failed in job 'cover'.", failed[0]);
         Equal("main/packageSize (os=linux) was recorded as failed in job 'test-linux'.", failed[1]);
+        Equal("main/packageSize (os=windows) was recorded as failed in job 'other-windows'.", failed[2]);
         Equal(false, result.Findings.Any(finding => finding.Kind == MergeFindingKind.NotCollected));
         Equal(true, result.Findings.Any(finding => finding.Kind == MergeFindingKind.StatusConflict));
+
+        // Within one job, failed then recorded and recorded then failed give the same findings.
+        ExpectedEntry[] plan = [new("main", "warnings", none)];
+        var failedFirst = EntryMerge.Merge(Commit, [RecordEntries.Parse(Entry("a", 1, dataset: "warnings", status: "failed")), RecordEntries.Parse(Entry("a", 1, dataset: "warnings", value: "3"))], plan);
+        var failedLast = EntryMerge.Merge(Commit, [RecordEntries.Parse(Entry("a", 1, dataset: "warnings", value: "3")), RecordEntries.Parse(Entry("a", 1, dataset: "warnings", status: "failed"))], plan);
+        Equal(string.Join("|", failedFirst.Findings.Select(finding => finding.Kind)), string.Join("|", failedLast.Findings.Select(finding => finding.Kind)));
+        Equal(true, failedFirst.Findings.Any(finding => finding.Kind == MergeFindingKind.CollectionFailed));
+
+        // Failed in one job and skipped in another still broke; a later attempt that recorded it does not.
+        var withSkip = EntryMerge.Merge(Commit, [RecordEntries.Parse(Entry("a", 1, dataset: "warnings", status: "failed")), RecordEntries.Parse(Entry("b", 1, dataset: "warnings", status: "skipped"))], plan);
+        Equal(true, withSkip.Findings.Any(finding => finding.Kind == MergeFindingKind.CollectionFailed));
+        var retried = EntryMerge.Merge(Commit, [RecordEntries.Parse(Entry("a", 1, dataset: "warnings", status: "failed")), RecordEntries.Parse(Entry("a", 2, dataset: "warnings", value: "3"))], plan);
+        Equal(false, retried.Findings.Any(finding => finding.Kind == MergeFindingKind.CollectionFailed));
     }
 
     // A dataset stratified by an observed dimension is planned by its listed dimensions only.

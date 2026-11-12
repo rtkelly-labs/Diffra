@@ -42,6 +42,7 @@ is an agent asked to make CI pass, and branch protection already decides what bl
   and the merge's other findings never do. Today a comparison with no usable reference is
   reported as `inconclusive`, so `fail-on: warn` fails the step on it and `fail-on: fail` does
   not.
+- Whether an optional dataset recorded as `failed` is reported or counts towards `fail-on`.
 - Whether a change to the scripts that collect the data is also surfaced, and how it is detected.
 - The fate of the promotion code and of the Baseline reference's trust fields.
 

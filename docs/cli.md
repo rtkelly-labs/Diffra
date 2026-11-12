@@ -58,7 +58,7 @@ diffra merge [--commit <id>] [--root-file <file>] [--run-dir <dir>] [--entries <
 ```
 
 What the merge finds fails the command only when the adopter opts in with `--fail-on`, or
-`DIFFRA_FAIL_ON`: a required dataset recorded only as failed exits 3 under `fail` or `warn`, and
+`DIFFRA_FAIL_ON`: a required dataset recorded as failed exits 3 under `fail` or `warn`, and
 one that was not collected exits 3 under `warn`, after the output is written. It exits 1 when it
 cannot read the entries folders or write its output, and 2 when there is no usable commit, root
 file, run folder, entries folder or output path, or an option is wrong. [Recording a run](record.md#the-collecting-step) gives the

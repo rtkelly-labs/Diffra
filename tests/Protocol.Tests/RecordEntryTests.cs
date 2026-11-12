@@ -275,6 +275,14 @@ public static class RecordEntryTests
         var result = Merge(Entry("pack", 1, value: "1"), Entry("other", 1, status: "failed"));
         Equal(0, result.Entries.Count);
         Equal(MergeFindingKind.StatusConflict, Single(result.Findings).Kind);
+
+        // A skipped entry has no key, so it conflicts with every keyed value of its dataset.
+        var keyed = Merge(
+            Entry("pack", 1, value: "1", dataset: "tests", key: "Suite.Case"),
+            Entry("pack", 1, value: "2", dataset: "tests", key: "Suite.Other"),
+            Entry("test", 1, dataset: "tests", status: "skipped"));
+        Equal(0, keyed.Entries.Count);
+        Equal(MergeFindingKind.StatusConflict, Single(keyed.Findings).Kind);
     }
 
     private static void ReportsValueAgainstData()

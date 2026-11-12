@@ -991,9 +991,24 @@ public static class EntryMerge
         var rejected = latest.Where(entry => entry.Status == EntryStatus.Rejected).ToList();
         var stated = latest.Where(entry => entry.Status != EntryStatus.Rejected).ToList();
 
-        // Rule 4: a --value entry against data read from files for the same dataset and dimensions.
-        // Checked before anything is chosen, so a conflict elsewhere cannot hide it.
+        // Rule 4: a recorded entry against a skipped or failed one, and a --value entry against
+        // data read from files, for the same dataset and dimensions. A skipped or failed entry has
+        // no key, so these are found per dataset rather than per identity. Checked before anything
+        // is chosen, so a conflict elsewhere cannot hide them.
         var blocked = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var group in stated.GroupBy(DatasetIdentity, StringComparer.Ordinal))
+        {
+            var first = group.First();
+            var otherStatus = group.FirstOrDefault(entry => entry.Status != first.Status);
+            if (otherStatus is not null)
+            {
+                findings.Add(new MergeFinding(
+                    MergeFindingKind.StatusConflict,
+                    $"{Describe(first.Project, first.Dataset, null, first.Dimensions)} is {RecordEntries.Token(first.Status)} in job '{first.JobName}' and {RecordEntries.Token(otherStatus.Status)} in job '{otherStatus.JobName}'."));
+                blocked.Add(group.Key);
+            }
+        }
+
         foreach (var group in stated
             .Where(entry => entry.Status == EntryStatus.Recorded)
             .GroupBy(DatasetIdentity, StringComparer.Ordinal))
@@ -1010,8 +1025,8 @@ public static class EntryMerge
         }
 
         // Rules 3 and 4: across jobs, in job name order. The entries for one identity are compared
-        // as a whole, so that each kind of disagreement is reported: a status against another
-        // status, and different values within the --value entries and within the data entries.
+        // as a whole, so that different values are reported within the --value entries and within
+        // the data entries.
         var chosen = new Dictionary<string, RecordEntry>(StringComparer.Ordinal);
         foreach (var group in stated.GroupBy(entry => entry.Identity, StringComparer.Ordinal))
         {
@@ -1023,14 +1038,6 @@ public static class EntryMerge
             var list = group.ToList();
             var first = list[0];
             var found = false;
-            var otherStatus = list.Find(entry => entry.Status != first.Status);
-            if (otherStatus is not null)
-            {
-                findings.Add(new MergeFinding(
-                    MergeFindingKind.StatusConflict,
-                    $"{Describe(first)} is {RecordEntries.Token(first.Status)} in job '{first.JobName}' and {RecordEntries.Token(otherStatus.Status)} in job '{otherStatus.JobName}'."));
-                found = true;
-            }
 
             foreach (var form in new[]
             {
@@ -1058,7 +1065,7 @@ public static class EntryMerge
             }
         }
 
-        // A dataset given both ways keeps neither, after its other conflicts are reported.
+        // A dataset given two ways keeps nothing, after its other conflicts are reported.
         foreach (var identity in chosen.Where(pair => blocked.Contains(DatasetIdentity(pair.Value))).Select(pair => pair.Key).ToList())
         {
             chosen.Remove(identity);

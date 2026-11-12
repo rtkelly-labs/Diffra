@@ -133,8 +133,10 @@ another commit is a finding.
    identical and are kept once, whether they came from one job or several; the first job in name
    order is kept.
 4. Two different values with the same identity are a finding; neither value is chosen. Within one
-   job and attempt this arises only from a hand-edited file, since `record` refuses it. So is a `recorded` entry from one job against a `skipped` or `failed` entry from another,
-   and a `--value` entry against data read from files for the same dataset and dimensions.
+   job and attempt this arises only from a hand-edited file, since `record` refuses it. Two more
+   cases are findings for the whole dataset and dimensions, whatever the key, and keep none of its
+   entries: a `recorded` entry from one job against a `skipped` or `failed` entry from another, and
+   a `--value` entry against data read from files.
 5. A required dataset with no entry for a dimension value the root file plans for is reported as
    not collected. This is found from the root file, not from the CI host, so a job that died before
    uploading anything is still noticed.

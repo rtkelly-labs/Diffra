@@ -113,7 +113,9 @@ matched by a glob are read in ordinal path order. Keys are written in ordinal or
 
 Every file a converter reads is untrusted, even when it came from the adopter's own job.
 
-- A file is read only when it lies inside the repository, with links not followed out of it. A
+- A file is read only when it lies inside the repository. No link is followed, even one that
+  points inside the repository: a matched link rejects the entry, and a linked folder is not
+  searched, with the entry saying how many were skipped when nothing else matches. A
   file over 64 MiB, or files that together pass 256 MiB in one entry, are not read and the entry
   is rejected. The `files` converter for `diffra/size@1` does not parse what it reads: it streams
   each file once to take its length and the SHA-256 digest its source needs, so these byte limits

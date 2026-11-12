@@ -24,8 +24,8 @@ public sealed record FileGlobMatch(
 /// segments separated by <c>/</c>. In a segment, <c>*</c> matches any run of characters and
 /// <c>?</c> one character, never a <c>/</c>; a segment that is exactly <c>**</c> matches any
 /// number of folders, none included, and a final <c>**</c> matches every file below. Matching is
-/// ordinal and case-sensitive against the names on disk, whatever the file system. Folders named
-/// <c>.git</c> are never searched.
+/// ordinal and case-sensitive against the names on disk, whatever the file system. Nothing named
+/// <c>.git</c>, folder or file, is ever searched or matched.
 /// </summary>
 public static class FileGlob
 {
@@ -63,7 +63,10 @@ public static class FileGlob
             return null;
         }
 
-        if (text.StartsWith('/') || text.StartsWith('~') || Path.IsPathRooted(text) || (text.Length > 1 && text[1] == ':'))
+        // A drive such as C: or C:/ is refused everywhere; on Windows, Path.IsPathRooted also
+        // refuses any glob that starts with a letter and a colon.
+        var drive = text.Length >= 2 && char.IsAsciiLetter(text[0]) && text[1] == ':' && (text.Length == 2 || text[2] == '/');
+        if (text.StartsWith('/') || text.StartsWith('~') || drive || Path.IsPathRooted(text))
         {
             problem = $"The glob '{glob}' is not relative to the repository root.";
             return null;
@@ -88,7 +91,17 @@ public static class FileGlob
             return null;
         }
 
-        return segments;
+        // Consecutive ** segments match the same folders as one.
+        var collapsed = new List<string>(segments.Length);
+        foreach (var segment in segments)
+        {
+            if (segment != "**" || collapsed.Count == 0 || collapsed[^1] != "**")
+            {
+                collapsed.Add(segment);
+            }
+        }
+
+        return collapsed;
     }
 
     /// <summary>
@@ -193,7 +206,7 @@ public static class FileGlob
                         return;
                     }
 
-                    if (child is DirectoryInfo folder && folder.Name != ".git")
+                    if (child is DirectoryInfo folder)
                     {
                         if (IsLink(folder))
                         {
@@ -235,7 +248,7 @@ public static class FileGlob
                         (IsLink(child) ? Links : Files).Add(path);
                     }
                 }
-                else if (child is DirectoryInfo folder && folder.Name != ".git")
+                else if (child is DirectoryInfo folder)
                 {
                     if (IsLink(folder))
                     {
@@ -249,13 +262,14 @@ public static class FileGlob
             }
         }
 
-        // The entries of a folder. A folder that cannot be listed is noted, so that a total is
+        // The entries of a folder, leaving out .git: a repository's folder, or the file a linked
+        // worktree or a submodule has. A folder that cannot be listed is noted, so that a total is
         // never quietly short; a folder that does not exist simply has none.
         private List<FileSystemInfo> Entries(DirectoryInfo directory, string prefix)
         {
             try
             {
-                return directory.EnumerateFileSystemInfos("*", Options).ToList();
+                return directory.EnumerateFileSystemInfos("*", Options).Where(entry => entry.Name != ".git").ToList();
             }
             catch (DirectoryNotFoundException)
             {

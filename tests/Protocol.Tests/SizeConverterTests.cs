@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 using Diffra.Converters;
 
@@ -19,11 +20,14 @@ public static class SizeConverterTests
         WritesKeysInOrdinalOrder();
         MatchesAnyDepthWithTwoStars();
         MatchesNamesAsTheyAreOnDisk();
+        MatchesDotfiles();
         RecordsEachFilesDigest();
         GivesTheSameDataInAnyOrder();
         RejectsAGlobThatMatchesNothing();
         DoesNotFollowLinks();
         RejectsAFolderItCannotList();
+        RejectsAFileThatIsNotRegular();
+        RefusesALoneSurrogate();
         RejectsMoreFilesThanTheLimit();
         RejectsMoreFilesThanTheBudget();
         Console.WriteLine("PASS size converter");
@@ -48,7 +52,12 @@ public static class SizeConverterTests
     private static void ParsesGlobs()
     {
         Equal("a/*.bin", string.Join("/", FileGlob.Parse("./a/*.bin", out _)!));
-        foreach (var glob in new[] { "", "/etc/passwd", "~/x", "C:/x", "../x", "a/../b", "a/./b", "a\\b", "a//b", "a/", "a\u0001" })
+        Equal("a/**/b", string.Join("/", FileGlob.Parse("a/**/**/b", out _)!));
+        Equal("**", string.Join("/", FileGlob.Parse("**/**", out _)!));
+
+        // A name with a colon is a name on Unix; a drive is refused everywhere.
+        Equal(!OperatingSystem.IsWindows(), FileGlob.Parse("a:b/x", out _) is not null);
+        foreach (var glob in new[] { "", "/etc/passwd", "~/x", "C:/x", "C:", "c:/x", "../x", "a/../b", "a/./b", "a\\b", "a//b", "a/", "a\u0001" })
         {
             if (FileGlob.Parse(glob, out var problem) is not null || problem.Length == 0)
             {
@@ -101,6 +110,22 @@ public static class SizeConverterTests
         Equal("other/x.nupkg,pkg/a/b/deep.nupkg,pkg/top.nupkg", Paths(folder, "**/*.nupkg"));
         Equal("pkg/a/b/deep.nupkg", Paths(folder, "pkg/*/*/*.nupkg"));
         Equal("pkg/a/b/deep.nupkg", Paths(folder, "pkg/**/b/**/de?p.nupkg"));
+        Equal("other/x.nupkg,pkg/a/b/deep.nupkg,pkg/top.nupkg", Paths(folder, "**/**/*.nupkg"));
+
+        // A .git file, as a linked worktree or a submodule has, is never matched either.
+        folder.Write("pkg/sub/.git", 32);
+        Equal("pkg/a/b/deep.nupkg,pkg/a/readme.md,pkg/top.nupkg", Paths(folder, "pkg/**"));
+        Equal("No file matches 'pkg/sub/.git'.", SizeConverter.Read(folder.Root, "pkg/sub/.git", maximumKeys: null).Problems.Single());
+    }
+
+    private static void MatchesDotfiles()
+    {
+        using var folder = new Folder();
+        folder.Write("out/.hidden.bin", 1);
+        folder.Write("out/a.bin", 2);
+        folder.Write(".cache/c.bin", 4);
+        Equal("out/.hidden.bin,out/a.bin", Paths(folder, "out/*.bin"));
+        Equal(".cache/c.bin,out/.hidden.bin,out/a.bin", Paths(folder, "**/*.bin"));
     }
 
     private static void MatchesNamesAsTheyAreOnDisk()
@@ -166,19 +191,22 @@ public static class SizeConverterTests
 
     private static void DoesNotFollowLinks()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            // Creating a link needs a privilege that Windows runners may not have.
-            return;
-        }
-
         using var outside = new Folder();
         outside.Write("secret.bin", 5);
         outside.Write("folder/inner.bin", 6);
         using var folder = new Folder();
         folder.Write("out/real.bin", 1);
-        File.CreateSymbolicLink(Path.Combine(folder.Root, "out", "secret.bin"), Path.Combine(outside.Root, "secret.bin"));
-        Directory.CreateSymbolicLink(Path.Combine(folder.Root, "linked"), Path.Combine(outside.Root, "folder"));
+        try
+        {
+            File.CreateSymbolicLink(Path.Combine(folder.Root, "out", "secret.bin"), Path.Combine(outside.Root, "secret.bin"));
+            Directory.CreateSymbolicLink(Path.Combine(folder.Root, "linked"), Path.Combine(outside.Root, "folder"));
+        }
+        catch (Exception exception) when (OperatingSystem.IsWindows() && exception is IOException or UnauthorizedAccessException)
+        {
+            // Creating a link on Windows needs a privilege or developer mode the runner may not have.
+            Console.WriteLine("SKIP size converter links: links cannot be created here.");
+            return;
+        }
 
         // A matched link rejects the entry, and the file it points to is not read.
         var linked = SizeConverter.Read(folder.Root, "out/*.bin", maximumKeys: null);
@@ -188,8 +216,25 @@ public static class SizeConverterTests
 
         // A linked folder is not searched.
         Equal("No file matches 'linked/*.bin'. 1 linked folder was not searched.", SizeConverter.Read(folder.Root, "linked/*.bin", maximumKeys: null).Problems.Single());
+        Equal("No file matches '**/inner.bin'. 1 linked folder was not searched.", SizeConverter.Read(folder.Root, "**/inner.bin", maximumKeys: null).Problems.Single());
+        Equal("No file matches 'linked/**'. 1 linked folder was not searched.", SizeConverter.Read(folder.Root, "linked/**", maximumKeys: null).Problems.Single());
+        Equal("No file matches '*/inner.bin'. 1 linked folder was not searched.", SizeConverter.Read(folder.Root, "*/inner.bin", maximumKeys: null).Problems.Single());
         Equal("out/real.bin", Paths(folder, "**/real.bin"));
-        Equal("out/real.bin", Paths(folder, "*/*l.bin"));
+
+        // A file link matched under ** rejects the entry too.
+        var any = SizeConverter.Read(folder.Root, "**/*.bin", maximumKeys: null);
+        Equal(null, any.Data);
+        Equal(true, any.Problems.Single().StartsWith("'out/secret.bin' is a link.", StringComparison.Ordinal));
+
+        // A link that points inside the repository is not followed either.
+        using var inside = new Folder();
+        inside.Write("out/real.bin", 1);
+        File.CreateSymbolicLink(Path.Combine(inside.Root, "out", "alias.bin"), Path.Combine(inside.Root, "out", "real.bin"));
+        Directory.CreateSymbolicLink(Path.Combine(inside.Root, "again"), Path.Combine(inside.Root, "out"));
+        var alias = SizeConverter.Read(inside.Root, "out/*.bin", maximumKeys: null);
+        Equal(null, alias.Data);
+        Equal(true, alias.Problems.Single().StartsWith("'out/alias.bin' is a link.", StringComparison.Ordinal));
+        Equal("No file matches 'again/real.bin'. 1 linked folder was not searched.", SizeConverter.Read(inside.Root, "again/real.bin", maximumKeys: null).Problems.Single());
     }
 
     private static void RejectsAFolderItCannotList()
@@ -228,6 +273,35 @@ public static class SizeConverterTests
         {
             File.SetUnixFileMode(locked, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
+    }
+
+    // A named pipe is not read, since reading one waits for a writer; the entry is rejected.
+    private static void RejectsAFileThatIsNotRegular()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var folder = new Folder();
+        folder.Write("out/a.bin", 1);
+        using (var mkfifo = Process.Start(new ProcessStartInfo("mkfifo", [Path.Combine(folder.Root, "out", "pipe.bin")]) { UseShellExecute = false }))
+        {
+            mkfifo!.WaitForExit();
+            Equal(0, mkfifo.ExitCode);
+        }
+
+        var result = SizeConverter.Read(folder.Root, "out/*.bin", maximumKeys: null);
+        Equal(null, result.Data);
+        Equal("'out/pipe.bin' cannot be read: it is not a regular file, such as a pipe or a device.", result.Problems.Single());
+    }
+
+    private static void RefusesALoneSurrogate()
+    {
+        Equal(true, SizeConverter.IsSafePath("a/\U0001F600.bin"));
+        Equal(false, SizeConverter.IsSafePath("a/\uD800.bin"));
+        Equal(false, SizeConverter.IsSafePath("a/\uDC00x.bin"));
+        Equal(false, SizeConverter.IsSafePath("a/x\uD83D"));
     }
 
     private static void RejectsMoreFilesThanTheLimit()

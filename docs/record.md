@@ -58,16 +58,22 @@ Built for the `files` converter of `diffra/size@1`:
   (a folder, or the file a linked worktree has). With no such folder, no file is read and the
   entry is rejected.
 - The glob in `from`, or in `--from`, is relative to the repository root wherever `record` runs.
-  A glob that is absolute, starts with `~`, has a backslash, an empty segment or a `.` or `..`
-  segment is rejected; a leading `./` is allowed.
+  A glob that is absolute, starts with `~` or a drive such as `C:/`, has a backslash, an empty
+  segment or a `.` or `..` segment is rejected; a leading `./` is allowed. On Windows, any glob
+  that starts with a letter and a colon is a drive and is rejected; elsewhere `a:b/x` is a name.
 - In a segment, `*` matches any run of characters and `?` one character, never a `/`. A segment
   that is exactly `**` matches any number of folders, none included, and a final `**` matches
-  every file below. A `*` also matches names that start with a dot. Matching is ordinal and
-  case-sensitive against the names on disk, on every file system. A folder named `.git` is never
-  searched.
+  every file below; `**/**` is the same as `**`. A `*` also matches names that start with a dot.
+  Matching is ordinal and case-sensitive against the names on disk, on every file system. Nothing
+  named `.git` is searched or matched: neither the repository's folder nor the `.git` file a linked
+  worktree or a submodule has.
 - Links are not followed. A linked folder is not searched, and a link the glob matches rejects
   the entry, so no file outside the repository is read. A link that points inside the repository
-  is not followed either.
+  is not followed either. A file swapped for a link between matching and reading is a known race
+  that these checks do not close.
+- Only regular files are read. A named pipe, socket or device the glob matches rejects the
+  entry, since reading one may never end, and so does a file whose length changes while it is
+  read.
 - A folder the glob reaches that cannot be listed rejects the entry, so a total is never short.
 - More than 1,000 matched files reject the entry before any file is read. The root file's
   `maxKeys` budget also rejects the entry when more files match: keeping only the largest files
@@ -76,7 +82,8 @@ Built for the `files` converter of `diffra/size@1`:
 - The files are read in ordinal path order. Each is read once, for its length and its SHA-256
   digest, and the entry holds every file as a source and
   `{ "files": { "<path>": { "value": "<bytes>" } }, "total": { "value": "<bytes>" } }` as its
-  `data`.
+  `data`. The root file's `fields` selection is not applied yet for size, so both `total` and
+  `files` are always written.
 - `--replace` applies to files read as it does to a `--value`.
 
 ### Context

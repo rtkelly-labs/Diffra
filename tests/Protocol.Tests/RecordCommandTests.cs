@@ -12,7 +12,7 @@ public static class RecordCommandTests
 {
     internal const string Commit = "0123456789abcdef0123456789abcdef01234567";
 
-    internal const string RootFile = """
+    private const string RootFile = """
         schema: https://diffra.net/schemas/root-file-v1.schema.json
         dimensions:
           os: { values: [linux, windows] }

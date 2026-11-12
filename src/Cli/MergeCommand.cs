@@ -143,7 +143,7 @@ internal static class MergeCommand
                     continue;
                 }
 
-                IEnumerable<Dictionary<string, string>> combinations = [new Dictionary<string, string>(StringComparer.Ordinal)];
+                IEnumerable<Dictionary<string, string>> combinations = [new(StringComparer.Ordinal)];
                 foreach (var dimension in dataset.Stratify)
                 {
                     if (rootFile.Dimensions.TryGetValue(dimension, out var declared) && declared.Values is { } values)
@@ -619,7 +619,7 @@ internal static class MergeCommand
     // The problems found while reading, up to a limit, then one line saying that there were more.
     private sealed class Problems
     {
-        private bool omitted;
+        private bool _omitted;
 
         public List<(string File, string Message)> Listed { get; } = [];
 
@@ -629,9 +629,9 @@ internal static class MergeCommand
             {
                 Listed.Add((file, message));
             }
-            else if (!omitted)
+            else if (!_omitted)
             {
-                omitted = true;
+                _omitted = true;
                 Listed.Add((string.Empty, "More problems were found than are listed."));
             }
         }

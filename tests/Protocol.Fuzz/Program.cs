@@ -361,7 +361,7 @@ namespace Diffra.Protocol.Fuzz
             Emit(corpusRoot, "document", fixtures.SelectMany(fixture => Enumerable.Range(0, 4).Select(kind => Prefix((byte)kind, fixture))));
             Emit(corpusRoot, "delivery-index", [.. fixtures, deliveryIndex]);
             Emit(corpusRoot, "payloads", [
-                .. fixtures.SelectMany(fixture => Enumerable.Range(0, 5).Select(kind => Prefix((byte)kind, fixture))),
+                .. fixtures.SelectMany(fixture => Enumerable.Range(0, 4).Select(kind => Prefix((byte)kind, fixture))),
                 .. PayloadSeeds.Select((seed, kind) => Prefix((byte)kind, Encoding.UTF8.GetBytes(seed)))]);
             Emit(corpusRoot, "line-ranges", [
                 "14-16, 25"u8.ToArray(), "1"u8.ToArray(), "3-1,7"u8.ToArray(), "0-2147483647"u8.ToArray(),

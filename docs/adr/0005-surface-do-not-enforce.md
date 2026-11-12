@@ -44,7 +44,6 @@ is an agent asked to make CI pass, and branch protection already decides what bl
   not.
 - Whether an optional dataset recorded as `failed` is reported or counts towards `fail-on`.
 - Whether a change to the scripts that collect the data is also surfaced, and how it is detected.
-- The fate of the promotion code and of the Baseline reference's trust fields.
 
 ## Current code
 

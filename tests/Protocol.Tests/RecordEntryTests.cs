@@ -299,6 +299,20 @@ public static class RecordEntryTests
         Equal(0, skipped.Entries.Count);
         Equal("StatusConflict,ValueAndData", string.Join(",", skipped.Findings.Select(finding => finding.Kind)));
 
+        var twoFiles = Merge(
+            Entry("a", 1, value: "1", dataset: "tests"),
+            DataEntry("b", "{\"a\":1}"),
+            DataEntry("c", "{\"a\":2}"));
+        Equal(0, twoFiles.Entries.Count);
+        Equal("Conflict,ValueAndData", string.Join(",", twoFiles.Findings.Select(finding => finding.Kind)));
+        Equal(true, twoFiles.Findings[0].Message.Contains("'b' and 'c'", StringComparison.Ordinal));
+
+        var twoValues = Merge(
+            DataEntry("a", "{\"a\":1}"),
+            Entry("b", 1, value: "1", dataset: "tests"),
+            Entry("c", 1, value: "2", dataset: "tests"));
+        Equal("Conflict,ValueAndData", string.Join(",", twoValues.Findings.Select(finding => finding.Kind)));
+
         var conflicted = Merge(
             Entry("pack-a", 1, value: "1", dataset: "tests", key: "Suite.Case"),
             Entry("pack-b", 1, value: "2", dataset: "tests", key: "Suite.Case"),

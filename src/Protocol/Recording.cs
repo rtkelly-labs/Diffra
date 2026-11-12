@@ -1009,38 +1009,53 @@ public static class EntryMerge
             }
         }
 
-        // Rules 3 and 4: across jobs, in job name order.
+        // Rules 3 and 4: across jobs, in job name order. The entries for one identity are compared
+        // as a whole, so that each kind of disagreement is reported: a status against another
+        // status, and different values within the --value entries and within the data entries.
         var chosen = new Dictionary<string, RecordEntry>(StringComparer.Ordinal);
-        foreach (var entry in stated)
+        foreach (var group in stated.GroupBy(entry => entry.Identity, StringComparer.Ordinal))
         {
-            var identity = entry.Identity;
-            if (conflicted.Contains(identity))
+            if (conflicted.Contains(group.Key))
             {
                 continue;
             }
 
-            if (!chosen.TryGetValue(identity, out var earlier))
+            var list = group.ToList();
+            var first = list[0];
+            var found = false;
+            var otherStatus = list.Find(entry => entry.Status != first.Status);
+            if (otherStatus is not null)
             {
-                chosen[identity] = entry;
-                continue;
+                findings.Add(new MergeFinding(
+                    MergeFindingKind.StatusConflict,
+                    $"{Describe(first)} is {RecordEntries.Token(first.Status)} in job '{first.JobName}' and {RecordEntries.Token(otherStatus.Status)} in job '{otherStatus.JobName}'."));
+                found = true;
             }
 
-            if (RecordEntries.AreIdentical(earlier, entry)
-                || (earlier.Status == EntryStatus.Recorded && entry.Status == EntryStatus.Recorded
-                    && (earlier.Value is null) != (entry.Value is null)))
+            foreach (var form in new[]
             {
-                // A --value against data is already reported as given both ways.
-                continue;
+                list.FindAll(entry => entry.Status == EntryStatus.Recorded && entry.Value is not null),
+                list.FindAll(entry => entry.Status == EntryStatus.Recorded && entry.Data is not null),
+            })
+            {
+                var differing = form.Skip(1).FirstOrDefault(entry => !RecordEntries.AreIdentical(form[0], entry));
+                if (differing is not null)
+                {
+                    findings.Add(new MergeFinding(
+                        MergeFindingKind.Conflict,
+                        $"{Describe(first)} has different values in jobs '{form[0].JobName}' and '{differing.JobName}'."));
+                    found = true;
+                }
             }
 
-            var statusConflict = earlier.Status != entry.Status;
-            findings.Add(new MergeFinding(
-                statusConflict ? MergeFindingKind.StatusConflict : MergeFindingKind.Conflict,
-                statusConflict
-                    ? $"{Describe(entry)} is {RecordEntries.Token(earlier.Status)} in job '{earlier.JobName}' and {RecordEntries.Token(entry.Status)} in job '{entry.JobName}'."
-                    : $"{Describe(entry)} has different values in jobs '{earlier.JobName}' and '{entry.JobName}'."));
-            chosen.Remove(identity);
-            conflicted.Add(identity);
+            if (found)
+            {
+                conflicted.Add(group.Key);
+            }
+            else
+            {
+                chosen[group.Key] = first;
+            }
         }
 
         // A dataset given both ways keeps neither, after its other conflicts are reported.

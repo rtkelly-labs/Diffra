@@ -2,9 +2,9 @@
 
 This page specifies `diffra record`, the one command each job that produces data runs, and the
 entries file it writes. The command is built for `--value`, `--skipped` and `--failed`, and reads
-files with one converter so far: `files`, for a `diffra/size@1` dataset (see "Reading files"
-below). For any other dataset type, `--from`, or giving no source, is saved as a rejected entry
-that says no converter is built yet for that type. The protocol library's `Recording.cs` validates
+files with two converters so far: `files`, for a `diffra/size@1` dataset, and `sarif`, for a
+`diffra/findings@1` dataset (see "Reading files" below). For any other dataset type, `--from`, or
+giving no source, is saved as a rejected entry that says no converter is built yet for that type. The protocol library's `Recording.cs` validates
 entries, writes and reads entries files, and merges them by the rules below, and `diffra merge`
 runs that merge for a collecting job.
 
@@ -52,7 +52,8 @@ match than the schema's safety limit. Giving two sources at once is also rejecte
 
 ### Reading files
 
-Built for the `files` converter of `diffra/size@1`:
+Built for the `files` converter of `diffra/size@1` and the `sarif` converter of
+`diffra/findings@1`. Both find files the same way:
 
 - The repository root is the nearest folder, from the current folder up, that holds `.git`
   (a folder, or the file a linked worktree has). With no such folder, no file is read and the
@@ -75,16 +76,95 @@ Built for the `files` converter of `diffra/size@1`:
   entry, since reading one may never end, and so does a file whose length changes while it is
   read.
 - A folder the glob reaches that cannot be listed rejects the entry, so a total is never short.
-- More than 1,000 matched files reject the entry before any file is read. The root file's
-  `maxKeys` budget also rejects the entry when more files match: keeping only the largest files
-  needs the `truncated` field [Dataset types](datasets.md#budgets) proposes, which the entry
-  schema does not have yet.
-- The files are read in ordinal path order. Each is read once, for its length and its SHA-256
-  digest, and the entry holds every file as a source and
+- More than 1,000 matched files reject the entry before any file is read. For `files`, the root
+  file's `maxKeys` budget also rejects the entry when more files match: keeping only the largest
+  files needs the `truncated` field [Dataset types](datasets.md#budgets) proposes, which the
+  entry schema does not have yet.
+- For `files`, the files are read in ordinal path order. Each is read once, for its length and
+  its SHA-256 digest, and the entry holds every file as a source and
   `{ "files": { "<path>": { "value": "<bytes>" } }, "total": { "value": "<bytes>" } }` as its
   `data`. The root file's `fields` selection is not applied yet for size, so both `total` and
   `files` are always written.
 - `--replace` applies to files read as it does to a `--value`.
+
+#### Findings from SARIF
+
+The `sarif` converter reads SARIF 2.1.0 logs, as CodeQL and Ruff write them:
+
+- The files are read in ordinal path order, each once, and parsed as JSON with
+  `System.Text.Json`: no comments, no trailing commas, no property named twice in one object, and
+  nesting at most 256 deep. A UTF-8 byte order mark is skipped; the source's SHA-256 digest is
+  taken over the bytes as written. A file over 64 MiB, or files that together pass 256 MiB,
+  reject the entry and are not read. A property name that is not valid UTF-8, or that escapes a
+  lone surrogate, rejects the entry.
+- Reading one file may take at most 16 characters of work for each of its bytes, plus 1 Mi
+  characters, a safety limit: every character the converter decodes, scans or builds is counted
+  as it is, including message strings filled again for each result that names them. What a run's
+  results share, such as rule descriptors, message strings, tool components by `guid`,
+  `originalUriBaseIds`, artifacts and each invocation's overrides, is read once per run, so
+  ordinary logs stay far below the limit. Passing it rejects the entry, and the rest of the logs
+  are not read.
+- A log must be an object whose `version` is `2.1.0` and whose `runs` is an array. Any other
+  version, or none, rejects the entry and names the version read. `runs: null`, which SARIF uses
+  when the tool could not run, rejects the entry too. Each run needs `tool.driver.name`, the
+  tool's name. A tool name, rule id or fingerprint longer than 1,024 characters rejects the
+  entry, since each is part of every key it is in. A run whose `results` is absent or `null`, which SARIF uses when the analysis did
+  not start, rejects the entry; an empty `results` array is a clean run. A run that keeps results
+  in external property files (`externalPropertyFileReferences.results`) rejects the entry, since
+  they are not read.
+- Each result needs a rule: its `ruleId`, else `rule.id`, else the id of the rule descriptor that
+  `rule.index` or `ruleIndex` names. The descriptor is looked up in the extension that
+  `rule.toolComponent.index` names, else in the driver or extension whose `guid` matches
+  `rule.toolComponent.guid`, ignoring case, else in the driver; a `toolComponent` that gives only
+  a `name` uses the driver, and a `guid` that matches none finds no descriptor. A result with no
+  rule rejects the entry.
+- The level is the result's `level` when given. Otherwise, when `kind` is absent or `fail`, it is
+  the level of the invocation's `ruleConfigurationOverrides` entry for the rule, else the rule's
+  `defaultConfiguration.level`, else `warning`, as SARIF 2.1.0 §3.27.10 specifies; any other
+  `kind` gives `none`. The invocation is the one the result's `provenance.invocationIndex`
+  names, or, when it names none, the run's only invocation if it has exactly one (§3.48.6). The
+  first override that names the rule decides: one with no `configuration.level` leaves the rule's
+  default level, even when a later override for the rule gives one.
+- The message is `message.text`, or else the `messageStrings` entry its `message.id` names in the
+  rule, or else in the `globalMessageStrings` of the tool component that defines the rule, as
+  SARIF 2.1.0 §3.11.7 looks them up, with `{0}`, `{1}` and so on
+  filled from `message.arguments`; `message.text` with no `arguments` is kept as written. A
+  placeholder is `{`, at most ten digits and `}`; any other brace is kept as written. The
+  messages filled this way hold at most 64 Mi characters together in one entry, a safety limit
+  counted as each character is copied; filling past it rejects the entry, and the rest of the
+  logs are not read. Control characters become spaces, and a message longer than the root file's
+  `maxTextLength` is cut and ends with `…`.
+- The path is the first location's `physicalLocation.artifactLocation`. Its `uri` is resolved
+  through `uriBaseId` and the run's `originalUriBaseIds`, following at most ten bases so that a
+  cycle ends; a base the run does not define leaves the URI relative to the repository root. A
+  `file:` URI, or an absolute path, under the repository root is recorded relative to it; any
+  other absolute path, a URI of another scheme, or a relative path that leaves the top is
+  recorded as `<outside>/<digest>/<file name>`. The digest is the first 12 hexadecimal
+  characters of the SHA-256 of the URI with its `uriBaseId` bases applied, query and fragment
+  included. A URI with no file name, such as one ending in `/`, is recorded as
+  `<outside>/<digest>`. Each segment is percent-decoded before `.` and `..` are applied, so
+  `%2e%2e` is `..`. A backslash in a URI, or a segment that decodes to `/` or `\`, rejects the
+  entry. A result with no physical location has the path `<none>`. The path is worked out from
+  the text alone; no file it names is opened.
+- The line is `region.startLine`, a whole number of at least 1, or absent.
+- A finding is keyed `<tool>/<rule>/<path>/<fingerprint>`, with the fingerprint chosen as
+  [Dataset types](datasets.md#identity-1) says. Findings with the same key are kept once: the
+  most severe level, then the lowest line, then the ordinally first message, with `occurrences`
+  written when there was more than one. Two findings whose parts differ but join to the same key,
+  or two tool and rule pairs that join to the same `byRule` key, reject the entry.
+- `total` and each `byRule` count include every result, whatever its `kind` or level.
+- More findings by key than the root file's `maxKeys` budget reject the entry, as for size.
+- The findings kept in one entry hold at most 64 Mi characters of keys, `byRule` keys, paths,
+  fingerprints and messages, a safety limit counted as each finding is kept; passing it rejects the entry, and the
+  rest of the logs are not read.
+- `suppressions` and `baselineState` are not read, and the root file's `fields` selection is not
+  applied, so `byRule`, `results` and `total` are always written. The entry holds every log as a
+  source and, with every number a decimal string,
+  `{ "byRule": { "<tool>/<rule>": { "value": "<count>" } }, "results": { "<key>": { "value": { "level", "line", "message", "occurrences", "path", "rule", "tool" } } }, "total": { "value": "<count>" } }`
+  as its `data`. A log whose runs have empty `results` records zero findings.
+- `diffra merge` reads an entries file of at most 16 MiB. A findings entry that would take the
+  file past that is saved as a rejected entry instead (see the entries file below); setting the
+  root file's `maxKeys` and `maxTextLength` budgets bounds the entry's size.
 
 ### Context
 
@@ -159,6 +239,11 @@ characters. The schema's length and count limits are safety limits: an entry tha
 them is rejected, as is an entry nested more than 256 deep or holding text that is not valid
 Unicode, and raw text kept in a rejected entry is cut to the limit, with the cut stated
 in `problems`.
+
+The file is kept within the 16 MiB that `diffra merge` reads. An entry, from any converter or
+from `--value`, that would make the file larger is not appended; a rejected entry saying so, with
+the options and sources given, is appended in its place, so that merge still reads the file and
+sees why. When not even that fits, nothing is written and `diffra record` exits 1.
 
 ## Merging the jobs' entries (proposed)
 

@@ -89,21 +89,27 @@ internal static partial class RecordCommand
             : Rejected(context, dimensions, given, problems, source.Sources);
 
         var path = Path.Combine(runDirectory, "entries", EntriesFile.FileName(context.Job, context.Attempt));
+        // An entry that would make the file larger than diffra merge reads is saved as a short
+        // rejected entry instead, so that merge still reads the file and sees why.
+        string? oversized = null;
+        string TooLarge() => oversized = Rejected(context, dimensions, given, [TooLargeProblem], source.Sources);
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             if (problems.Count == 0 && source.Status == EntryStatus.Recorded)
             {
                 string? rejection = null;
-                if (!EntriesFile.AppendUnlessConflicting(path, entry, held => rejection = Conflicting(context, dimensions, given, held, source.Sources)))
+                if (!EntriesFile.AppendUnlessConflicting(path, entry, held => rejection = Conflicting(context, dimensions, given, held, source.Sources), MergeCommand.MaximumFileBytes, TooLarge))
                 {
                     entry = rejection!;
                 }
             }
             else
             {
-                EntriesFile.Append(path, entry);
+                EntriesFile.Append(path, entry, MergeCommand.MaximumFileBytes, TooLarge);
             }
+
+            entry = oversized ?? entry;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or NotSupportedException)
         {
@@ -120,6 +126,9 @@ internal static partial class RecordCommand
         Report(RecordEntries.Parse(entry), path, json);
         return 0;
     }
+
+    private static readonly string TooLargeProblem =
+        $"The entry would make the entries file larger than {MergeCommand.MaximumFileBytes.ToString(CultureInfo.InvariantCulture)} bytes, the most diffra merge reads; it was not recorded.";
 
     private sealed record Context(string Dataset, string Project, string Commit, string Job, int Attempt);
 
@@ -487,7 +496,7 @@ internal static partial class RecordCommand
         ConverterResult? read = null;
         if (readsFiles && document is not null && document.Datasets.TryGetValue(context.Dataset, out var target))
         {
-            read = ReadFiles(target, First(given, "from"), document.Settings.MaxKeys, problems);
+            read = ReadFiles(target, First(given, "from"), document.Settings, problems);
         }
 
         return new Source(status, canonical, unit, key, reason, replaces, read?.Sources ?? [], read?.Data);
@@ -495,17 +504,23 @@ internal static partial class RecordCommand
 
     // Reads the files the dataset's from names, or --from instead of its glob, with the converter
     // from names. Globs are relative to the repository root.
-    private static ConverterResult? ReadFiles(RootDataset dataset, string? from, int? maximumKeys, List<string> problems)
+    private static ConverterResult? ReadFiles(RootDataset dataset, string? from, RootSettings settings, List<string> problems)
     {
-        if (dataset.TypeName != SizeConverter.DatasetType)
+        var converter = dataset.TypeName switch
+        {
+            SizeConverter.DatasetType => SizeConverter.Name,
+            SarifConverter.DatasetType => SarifConverter.Name,
+            _ => null,
+        };
+        if (converter is null)
         {
             problems.Add($"No converter is built yet for dataset type '{dataset.TypeName}', so its files cannot be read; give the number with --value.");
             return null;
         }
 
-        if (!dataset.From.TryGetValue(SizeConverter.Name, out var glob))
+        if (!dataset.From.TryGetValue(converter, out var glob))
         {
-            problems.Add($"Dataset '{dataset.Name}' does not read from '{SizeConverter.Name}', the converter for {SizeConverter.DatasetType}.");
+            problems.Add($"Dataset '{dataset.Name}' does not read from '{converter}', the converter for {dataset.TypeName}.");
             return null;
         }
 
@@ -526,7 +541,9 @@ internal static partial class RecordCommand
             return null;
         }
 
-        var result = SizeConverter.Read(root, from ?? glob, maximumKeys);
+        var result = converter == SarifConverter.Name
+            ? SarifConverter.Read(root, from ?? glob, settings.MaxKeys, settings.MaxTextLength)
+            : SizeConverter.Read(root, from ?? glob, settings.MaxKeys);
         problems.AddRange(result.Problems);
         return result;
     }
@@ -878,18 +895,25 @@ internal static partial class RecordCommand
         });
     }
 
-    // What a converter read, for the one-line report: how many files and, for a size, their total.
+    // What a converter read, for the one-line report: how many files and their total, in bytes
+    // for a size and in findings for findings.
     private static string Read(RecordEntry entry)
     {
         using var document = JsonDocument.Parse(entry.Json);
-        var count = document.RootElement.GetProperty("sources").GetArrayLength();
+        var sources = document.RootElement.GetProperty("sources");
+        var count = sources.GetArrayLength();
         var files = count == 1 ? "1 file" : $"{count.ToString(CultureInfo.InvariantCulture)} files";
-        return document.RootElement.GetProperty("data") is { ValueKind: JsonValueKind.Object } data
-            && data.TryGetProperty("total", out var total)
-            && total.ValueKind == JsonValueKind.Object
-            && total.TryGetProperty("value", out var value)
-            ? $"{files}, {value.GetString()} B in total"
-            : files;
+        if (document.RootElement.GetProperty("data") is not { ValueKind: JsonValueKind.Object } data
+            || !data.TryGetProperty("total", out var total)
+            || total.ValueKind != JsonValueKind.Object
+            || !total.TryGetProperty("value", out var value))
+        {
+            return files;
+        }
+
+        return sources[0].GetProperty("format").GetString() == SarifConverter.Name
+            ? $"{files}, {value.GetString()} {(value.GetString() == "1" ? "finding" : "findings")}"
+            : $"{files}, {value.GetString()} B in total";
     }
 
     private static IEnumerable<string> Problems(RecordEntry entry)

@@ -69,7 +69,8 @@ Each step is a set of small pull requests, each with tests. Smaller changes go f
 - The root YAML file: projects, datasets, named rule sets on each dataset, and settings.
 - `diffra record`: one command per job that produces data, built from the existing operations.
   Invalid input is reported, not fatal. Built for `--value`, `--skipped` and `--failed`, and reads
-  `from` for `diffra/size@1` with the `files` converter; the other types wait for their converters. `diffra merge` merges every job's entries in the collecting
+  `from` for `diffra/size@1` with the `files` converter and for `diffra/findings@1` with the
+  `sarif` converter; the other types wait for their converters. `diffra merge` merges every job's entries in the collecting
   job; the partial record it writes and the transport between jobs come with the Action.
 - Built-in converters for every standard dataset type before the first installation, each tested
   from the tool's validator and synthetic values.

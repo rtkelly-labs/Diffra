@@ -39,9 +39,11 @@ diffra record --name <dataset> [--value <number> [--unit <unit>] [--key <key>]
   [--run-dir <dir>] [--json]
 ```
 
-One converter is built: `files`, for a `diffra/size@1` dataset, which records the length and
-SHA-256 digest of every file the dataset's `from` glob, or `--from`, matches under the repository
-root ([Reading files](record.md#reading-files)). For any other dataset type a number is given with
+Two converters are built, and read the files the dataset's `from` glob, or `--from`, matches
+under the repository root ([Reading files](record.md#reading-files)): `files`, for a
+`diffra/size@1` dataset, which records the length and SHA-256 digest of every file, and `sarif`,
+for a `diffra/findings@1` dataset, which records the findings in SARIF 2.1.0 logs. For any other
+dataset type a number is given with
 `--value`, and `--from`, or giving no source, is saved as a rejected entry. `record` reads the
 root file from `--root-file`, then `DIFFRA_ROOT_FILE`, and checks the value against it.
 Every problem is saved in a rejected entry and `record` exits 0. It exits 2 when there is no

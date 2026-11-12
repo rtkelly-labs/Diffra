@@ -2,11 +2,12 @@
 
 This page specifies the standard dataset types and the converters that fill them: what each type
 holds in a record entry, what its items are keyed by, which formats it reads, how two records of
-it are compared, its limits, and how its converters are tested. Only the `files` converter for `diffra/size@1` is built, in
-`src/Converters/` ([Recording a run](record.md#reading-files)); the rest is not. The root file
-schema still lists the earlier types (`diffra/benchmark@1`, `diffra/coverage@1`,
-`diffra/findings@1`, `diffra/size@1` and `diffra/test-results@1`), and `diffra record` cannot
-yet read the files `from` names for any other type.
+it are compared, its limits, and how its converters are tested. Two converters are built, in
+`src/Converters/` ([Recording a run](record.md#reading-files)): `files` for `diffra/size@1` and
+`sarif` for `diffra/findings@1`. The rest is not. The root file schema still lists the earlier
+types (`diffra/benchmark@1`, `diffra/coverage@1`, `diffra/findings@1`, `diffra/size@1` and
+`diffra/test-results@1`), and `diffra record` cannot yet read the files `from` names for any
+other type.
 
 ## What is decided
 
@@ -91,8 +92,9 @@ object holding `value`.
   for a source path in an entry: relative to the repository root, forward slashes, no `.` or `..`
   segment. A path a tool wrote as absolute is made relative by removing the repository root. A
   path outside the repository is kept under the key `<outside>/<digest>/<file name>`, where the
-  digest is the first 12 hexadecimal characters of the SHA-256 of the full path as written, so two
-  outside files with the same name do not collide.
+  digest is the first 12 hexadecimal characters of the SHA-256 of the full path as written (for
+  SARIF, the URI with its bases applied, query and fragment included), so two outside files with
+  the same name do not collide.
 
 ### Converter names and versions
 
@@ -119,7 +121,7 @@ Every file a converter reads is untrusted, even when it came from the adopter's 
   file over 64 MiB, or files that together pass 256 MiB in one entry, are not read and the entry
   is rejected. The `files` converter for `diffra/size@1` does not parse what it reads: it streams
   each file once to take its length and the SHA-256 digest its source needs, so these byte limits
-  do not apply to it.
+  do not apply to it. The `sarif` converter for `diffra/findings@1` applies them.
 - A glob that matches more than the entry schema's 1,000 sources rejects the entry, as
   [Recording a run](record.md#the-command-proposed) says. This is a safety limit, not a budget,
   so a size dataset covers at most 1,000 files.
@@ -128,7 +130,11 @@ Every file a converter reads is untrusted, even when it came from the adopter's 
   is never loaded or expanded, there are no external entities and no resolver. Nesting is at most
   256 deep, and one attribute or text node holds at most 10 million characters.
 - JSON is read with a nesting limit of 256 and no comments or trailing commas, unless the format's
-  own tools write them.
+  own tools write them. SARIF messages filled from their arguments hold at most 64 Mi characters
+  together in one entry, and the findings kept from SARIF hold at most 64 Mi characters of keys,
+  `byRule` keys, paths, fingerprints and messages. Reading one SARIF file takes at most 16
+  characters of work for each of its bytes, plus 1 Mi, counted as each character is decoded,
+  scanned or built, and a tool name, rule id or fingerprint holds at most 1,024 characters.
 - Text formats limit one line to 1 MiB.
 - Archives, when a converter reads one, are expanded at most 100 times their stored size and to
   at most 1 GiB, and a member whose path escapes the archive is rejected.
@@ -258,7 +264,8 @@ Findings that share a key, such as the same message twice in one file, are kept 
 ### Default fields
 
 All of the fields above. The tool is the run's `tool.driver.name`. The level is the result's
-`level` when given. Otherwise, as SARIF specifies, the rule's default level or `warning` applies
+`level` when given. Otherwise, as SARIF specifies, the invocation's override for the rule, the
+rule's default level or `warning` applies
 only when the result's `kind` is absent or `fail`; a result of any other `kind` (such as `pass`
 or `informational`) has the level `none`.
 
@@ -270,7 +277,9 @@ about the findings it introduced. `total` and each `byRule` count are compared a
 ### Limits and budgets
 
 `maxKeys` caps `results`; errors are kept first, then warnings, then the rest. `total` and
-`byRule` stay exact.
+`byRule` stay exact. Until the entry has the `truncated` field proposed under
+[Budgets](#budgets), the built `sarif` converter rejects the entry instead when there are more
+findings by key than `maxKeys`.
 
 ### Tests
 

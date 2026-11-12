@@ -93,13 +93,16 @@ Nothing posts the comment yet. `bundle` moves evidence through a content-address
 its cross-references, which `diffra record` uses; `diffra merge` reads the `fail-on`
 setting and fails the step on a required dataset not collected when it is `warn`, and on one
 recorded as failed when it is `fail` or `warn`; and `diffra record` records a number given with `--value`, or a skipped or failed dataset,
-checked against the root file, and `diffra merge` merges the entries files of every job,
+checked against the root file, keeping the job's entries file within the size `diffra merge`
+reads by saving an entry that would cross it as a rejected entry instead, and `diffra merge`
+merges the entries files of every job,
 reporting every disagreement in values or statuses, naming each job involved, and listing the
 planned datasets no job collected. Nothing yet carries the jobs' files to a collecting job or
-writes the merged entries to history. One converter exists: `files`, with which `record` reads
-the files a `diffra/size@1` dataset's `from` names and records each file's length and the total.
-No converter for a tool's own format exists, so `record` cannot yet read the files `from` names
-for any other type. The names Evidence, Delta and Assessment come from the earlier design; the
+writes the merged entries to history. Two converters exist: `files`, with which `record` reads
+the files a `diffra/size@1` dataset's `from` names and records each file's length and the total,
+and `sarif`, with which it reads SARIF 2.1.0 logs for a `diffra/findings@1` dataset and records
+each finding, keyed by tool, rule, path and fingerprint, with counts by rule and in total. No
+other converter exists, so `record` cannot yet read the files `from` names for the other types. The names Evidence, Delta and Assessment come from the earlier design; the
 glossary gives the words that replace them. The [sample
 workflow](../examples/sample-project/workflow/) contains inputs and checked-in outputs, the
 [protocol](protocol.md) describes the current document shapes, and the [CLI reference](cli.md)

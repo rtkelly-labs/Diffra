@@ -84,7 +84,8 @@ the owner does not own tests whether the setup works for someone else.
 ## What exists today
 
 Most of the above is direction, not code. The current .NET CLI accepts a bounded structured
-numeric payload. `collect` creates Evidence, `diff` records a Delta against a supplied baseline,
+numeric payload. `collect` creates Evidence, `diff` records a Delta against a supplied Baseline reference, whose trust fields remain from the
+earlier design although the promotion code that went with them has been removed;
 `eval` creates an Assessment under separate rules, and `report` renders the result as HTML, JSON
 or Markdown, and as the one-screen comment and agent formats headed by an attention level.
 Nothing posts the comment yet. `bundle` moves evidence through a content-addressed store, and

@@ -26,7 +26,7 @@ internal static partial class RecordCommand
     private const int MaximumValueLength = 100;
     private const int MaximumExponent = 100;
 
-    internal const string Usage = "Usage: record --name <dataset> [--value <number> [--unit <unit>] [--key <key>] [--replace] | --from <path-or-glob> | --skipped --reason <text> | --failed --reason <text>] "
+    internal const string Usage = "Usage: record --name <dataset> [--value <number> [--unit <unit>] [--key <key>] | --from <path-or-glob> | --skipped --reason <text> | --failed --reason <text>] [--replace] "
         + "[--project <name>] [--commit <id>] [--job <name>] [--attempt <n>] [--dimension <name>=<value>]... [--root-file <file>] [--run-dir <dir>] [--json]";
 
     private static readonly string[] Flags = ["skipped", "failed", "replace", "json"];

@@ -66,7 +66,9 @@ Built for the `files` converter of `diffra/size@1`:
   case-sensitive against the names on disk, on every file system. A folder named `.git` is never
   searched.
 - Links are not followed. A linked folder is not searched, and a link the glob matches rejects
-  the entry, so no file outside the repository is read.
+  the entry, so no file outside the repository is read. A link that points inside the repository
+  is not followed either.
+- A folder the glob reaches that cannot be listed rejects the entry, so a total is never short.
 - More than 1,000 matched files reject the entry before any file is read. The root file's
   `maxKeys` budget also rejects the entry when more files match: keeping only the largest files
   needs the `truncated` field [Dataset types](datasets.md#budgets) proposes, which the entry

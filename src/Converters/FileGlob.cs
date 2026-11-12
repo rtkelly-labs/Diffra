@@ -11,11 +11,13 @@ namespace Diffra.Converters;
 /// <param name="Links">The matched links, in ordinal order.</param>
 /// <param name="LinkedFolders">How many linked folders the glob reached and did not search.</param>
 /// <param name="OverLimit">Whether more files matched than the limit; the search stopped there.</param>
+/// <param name="Unreadable">The folders the glob reached that could not be listed, in ordinal order.</param>
 public sealed record FileGlobMatch(
     IReadOnlyList<string> Files,
     IReadOnlyList<string> Links,
     int LinkedFolders,
-    bool OverLimit);
+    bool OverLimit,
+    IReadOnlyList<string> Unreadable);
 
 /// <summary>
 /// A small glob matcher over the file system. A glob is relative to the repository root, with
@@ -30,7 +32,7 @@ public static class FileGlob
     private static readonly EnumerationOptions Options = new()
     {
         AttributesToSkip = 0,
-        IgnoreInaccessible = true,
+        IgnoreInaccessible = false,
         RecurseSubdirectories = false,
         ReturnSpecialDirectories = false,
     };
@@ -103,7 +105,9 @@ public static class FileGlob
         files.Sort(StringComparer.Ordinal);
         var links = search.Links.ToList();
         links.Sort(StringComparer.Ordinal);
-        return new FileGlobMatch(files, links, search.LinkedFolders.Count, search.OverLimit);
+        var unreadable = search.Unreadable.ToList();
+        unreadable.Sort(StringComparer.Ordinal);
+        return new FileGlobMatch(files, links, search.LinkedFolders.Count, search.OverLimit, unreadable);
     }
 
     /// <summary>Whether a name matches one glob segment, by <c>*</c> and <c>?</c>, ordinally.</summary>
@@ -156,6 +160,8 @@ public static class FileGlob
 
         public HashSet<string> LinkedFolders { get; } = new(StringComparer.Ordinal);
 
+        public HashSet<string> Unreadable { get; } = new(StringComparer.Ordinal);
+
         public bool OverLimit => Files.Count > limit;
 
         public void Walk(DirectoryInfo directory, string prefix, int index)
@@ -180,7 +186,7 @@ public static class FileGlob
                     Walk(directory, prefix, index + 1);
                 }
 
-                foreach (var child in Entries(directory))
+                foreach (var child in Entries(directory, prefix))
                 {
                     if (OverLimit)
                     {
@@ -208,7 +214,7 @@ public static class FileGlob
 
         private void WalkSegment(DirectoryInfo directory, string prefix, string segment, bool last, int next)
         {
-            foreach (var child in Entries(directory))
+            foreach (var child in Entries(directory, prefix))
             {
                 if (OverLimit)
                 {
@@ -243,14 +249,21 @@ public static class FileGlob
             }
         }
 
-        private static List<FileSystemInfo> Entries(DirectoryInfo directory)
+        // The entries of a folder. A folder that cannot be listed is noted, so that a total is
+        // never quietly short; a folder that does not exist simply has none.
+        private List<FileSystemInfo> Entries(DirectoryInfo directory, string prefix)
         {
             try
             {
                 return directory.EnumerateFileSystemInfos("*", Options).ToList();
             }
+            catch (DirectoryNotFoundException)
+            {
+                return [];
+            }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.Security.SecurityException)
             {
+                Unreadable.Add(prefix.Length == 0 ? "." : prefix.TrimEnd('/'));
                 return [];
             }
         }

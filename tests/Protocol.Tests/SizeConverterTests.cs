@@ -23,6 +23,7 @@ public static class SizeConverterTests
         GivesTheSameDataInAnyOrder();
         RejectsAGlobThatMatchesNothing();
         DoesNotFollowLinks();
+        RejectsAFolderItCannotList();
         RejectsMoreFilesThanTheLimit();
         RejectsMoreFilesThanTheBudget();
         Console.WriteLine("PASS size converter");
@@ -189,6 +190,44 @@ public static class SizeConverterTests
         Equal("No file matches 'linked/*.bin'. 1 linked folder was not searched.", SizeConverter.Read(folder.Root, "linked/*.bin", maximumKeys: null).Problems.Single());
         Equal("out/real.bin", Paths(folder, "**/real.bin"));
         Equal("out/real.bin", Paths(folder, "*/*l.bin"));
+    }
+
+    private static void RejectsAFolderItCannotList()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var folder = new Folder();
+        folder.Write("out/a.bin", 1);
+        folder.Write("out/locked/b.bin", 2);
+        var locked = Path.Combine(folder.Root, "out", "locked");
+        File.SetUnixFileMode(locked, UnixFileMode.None);
+        try
+        {
+            // A user who can list the folder anyway, such as root, has nothing to check.
+            var listable = true;
+            try
+            {
+                _ = Directory.GetFileSystemEntries(locked);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                listable = false;
+            }
+
+            if (!listable)
+            {
+                var result = SizeConverter.Read(folder.Root, "out/**/*.bin", maximumKeys: null);
+                Equal(null, result.Data);
+                Equal("The folder 'out/locked' cannot be listed, so the files the glob matches in it are not known.", result.Problems.Single());
+            }
+        }
+        finally
+        {
+            File.SetUnixFileMode(locked, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
     }
 
     private static void RejectsMoreFilesThanTheLimit()

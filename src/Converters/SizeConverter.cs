@@ -55,11 +55,16 @@ public static class SizeConverter
             problems.Add($"'{link}' is a link. Links are not followed, so that no file outside the repository is read; it was not read.");
         }
 
+        foreach (var folder in match.Unreadable)
+        {
+            problems.Add($"The folder '{folder}' cannot be listed, so the files the glob matches in it are not known.");
+        }
+
         if (match.OverLimit)
         {
             problems.Add($"More than {MaximumFiles.ToString(CultureInfo.InvariantCulture)} files match '{glob}', the most one entry can read.");
         }
-        else if (match.Files.Count == 0 && match.Links.Count == 0)
+        else if (match.Files.Count == 0 && match.Links.Count == 0 && match.Unreadable.Count == 0)
         {
             var folders = match.LinkedFolders == 0
                 ? string.Empty

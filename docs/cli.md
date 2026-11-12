@@ -33,8 +33,8 @@ Records one dataset for the job it runs in, by appending one entry to the job's 
 merges the entries of every job.
 
 ```sh
-diffra record --name <dataset> [--value <number> [--unit <unit>] [--key <key>] [--replace]
-  | --from <path-or-glob> | --skipped --reason <text> | --failed --reason <text>]
+diffra record --name <dataset> [--value <number> [--unit <unit>] [--key <key>]
+  | --from <path-or-glob> | --skipped --reason <text> | --failed --reason <text>] [--replace]
   [--project <name>] [--commit <id>] [--job <name>] [--attempt <n>] [--dimension <name>=<value>]... [--root-file <file>]
   [--run-dir <dir>] [--json]
 ```

@@ -6,6 +6,8 @@ using System.Text.RegularExpressions;
 using Diffra.Protocol;
 using Diffra.RootFile;
 
+namespace Diffra.Cli;
+
 /// <summary>
 /// <c>diffra record</c>: appends one entry for one dataset to the job's entries file
 /// (docs/record.md). Anything wrong with what was given is saved as a rejected entry, so the final
@@ -50,7 +52,7 @@ internal static partial class RecordCommand
     public static int Run(string[] args)
     {
         ArgumentNullException.ThrowIfNull(args);
-        if (args.Length == 1 && args[0] is "--help" or "-h")
+        if (args is ["--help" or "-h"])
         {
             Console.WriteLine(Usage);
             return 0;
@@ -173,14 +175,14 @@ internal static partial class RecordCommand
         }
 
         var dataset = First(given, "name");
-        if (dataset is null || dataset.Length == 0 || Length(dataset) > MaximumGiven)
+        if (string.IsNullOrEmpty(dataset) || Length(dataset) > MaximumGiven)
         {
             failure = dataset is null ? "record needs --name, the dataset to record." : $"The dataset name must be 1 to {MaximumGiven} characters.";
             return false;
         }
 
         var project = First(given, "project") ?? Environment("DIFFRA_PROJECT");
-        if (project is null || project.Length == 0 || Length(project) > MaximumGiven)
+        if (string.IsNullOrEmpty(project) || Length(project) > MaximumGiven)
         {
             failure = project is null ? "record needs a project: give --project or set DIFFRA_PROJECT." : $"The project name must be 1 to {MaximumGiven} characters.";
             return false;
@@ -402,7 +404,7 @@ internal static partial class RecordCommand
 
         if (status is EntryStatus.Skipped or EntryStatus.Failed)
         {
-            if (reason is null || reason.Length == 0)
+            if (string.IsNullOrEmpty(reason))
             {
                 problems.Add($"--{RecordEntries.Token(status)} needs --reason <text>.");
             }
@@ -476,7 +478,7 @@ internal static partial class RecordCommand
             }
             else if (dimension.Values is not null && !dimension.Values.Contains(given, StringComparer.Ordinal))
             {
-                problems.Add($"Dimension '{name}' has no value '{given}'; the root file plans for {string.Join(", ", dimension.Values)}.");
+                problems.Add($"Dimension '{dimension.Name}' has no value '{given}'; the root file plans for {string.Join(", ", dimension.Values)}.");
             }
         }
 

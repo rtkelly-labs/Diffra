@@ -303,7 +303,7 @@ public static partial class RootFileLoader
             return null;
         }
 
-        if (node is YamlScalar { IsNull: false } unit && unit.Value.Length > 0 && unit.Value.Trim().Length == unit.Value.Length)
+        if (node is YamlScalar { IsNull: false, Value.Length: > 0 } unit && unit.Value.Trim().Length == unit.Value.Length)
         {
             return unit.Value;
         }
@@ -330,7 +330,7 @@ public static partial class RootFileLoader
 
         foreach (var (converter, glob) in mapping.Entries)
         {
-            if (glob is YamlScalar { IsNull: false } text && text.Value.Length > 0)
+            if (glob is YamlScalar { IsNull: false, Value.Length: > 0 } text)
             {
                 from[converter.Value] = text.Value;
             }

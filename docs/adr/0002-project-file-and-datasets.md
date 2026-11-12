@@ -76,7 +76,9 @@ part of YAML (one document, no anchors, aliases or tags, no duplicate keys). It 
 the file against the schema, so rule bodies are checked only by the schema. Nothing calls the
 loader yet, and `diffra record` does not exist. [Recording a run](../record.md) specifies the
 command and `schemas/record-entry-v1.schema.json` the entries it writes. Both cover a `--value`
-and the dataset's `from` source, with `from` preferred.
+and the dataset's `from` source, with `from` preferred. `src/Protocol/Recording.cs` validates an
+entry against the schema's rules, appends entries to and reads an entries file, and merges the
+entries of every job by the proposed rules; nothing calls it yet.
 
 `schemas/project-v1.schema.json`, `schemas/collection-v1.schema.json` and
 `examples/project-file/` describe the earlier single-project, metric-based design. The root

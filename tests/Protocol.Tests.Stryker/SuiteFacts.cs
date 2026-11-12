@@ -19,6 +19,7 @@ public sealed class SuiteFacts
     [Fact] public void CloudEvents() => CloudEventsTests.RunAll();
     [Fact] public void Graph() => GraphTests.RunAll();
     [Fact] public void RootFile() => RootFileTests.RunAll();
+    [Fact] public void RecordEntry() => RecordEntryTests.RunAll();
     [Fact] public void ExternalCommandAdapter() => ExternalCommandAdapterTests.RunAll();
     [Fact] public void PackageReferences() => PackageReferenceTests.RunAll();
     [Fact] public void BaselineTrust() => BaselineTrustTests.RunAll();

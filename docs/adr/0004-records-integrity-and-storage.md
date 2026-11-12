@@ -59,7 +59,9 @@ domain-separated SHA-256 over canonical JSON, environment included, decimals as 
 `diffra bundle export|import` moves results between machines through a content-addressed store and
 includes a Baseline reference. There is no storage setting in the root file and no storage
 strategy in the CLI. The self-evaluation workflow stores one file per commit on an orphan
-branch.
+branch. `src/Protocol/Recording.cs` merges the jobs' entries files by the proposed rules in
+[Recording a run](../record.md), which this record still lists as not yet decided; no collecting
+job runs it.
 
 `schemas/root-file-v1.schema.json` uses a `diffra.net` identifier. The other schemas and the
 documents that cite them still use the earlier `diffra.dev` identifiers; changing them changes

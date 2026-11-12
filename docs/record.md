@@ -1,7 +1,9 @@
 # Recording a run
 
 This page specifies `diffra record`, the one command each job that produces data runs, and the
-entries file it writes. It is a specification: the command does not exist yet.
+entries file it writes. It is a specification: the command does not exist yet. The protocol
+library's `Recording.cs` validates entries, writes and reads entries files, and merges them by the
+rules below.
 
 ## What is decided
 
@@ -111,7 +113,8 @@ zeros after the decimal point and no negative zero: `12.5`, not `12.50`, `+12.5`
 not `-0`. A source path is relative to the repository root, uses single forward slashes, and has
 no `.` or `..` segment, no leading `/` or `~`, no trailing `/`, no backslash and no control
 characters. The schema's length and count limits are safety limits: an entry that would exceed
-them is rejected, and raw text kept in a rejected entry is cut to the limit, with the cut stated
+them is rejected, as is an entry nested more than 256 deep or holding text that is not valid
+Unicode, and raw text kept in a rejected entry is cut to the limit, with the cut stated
 in `problems`.
 
 ## Merging the jobs' entries (proposed)
@@ -129,8 +132,8 @@ another commit is a finding.
 3. Entries with the same identity and status and an equal canonical `value` or equal `data` are
    identical and are kept once, whether they came from one job or several; the first job in name
    order is kept.
-4. Two different values with the same identity from different jobs are a finding; neither value is
-   chosen. So is a `recorded` entry from one job against a `skipped` or `failed` entry from another,
+4. Two different values with the same identity are a finding; neither value is chosen. Within one
+   job and attempt this arises only from a hand-edited file, since `record` refuses it. So is a `recorded` entry from one job against a `skipped` or `failed` entry from another,
    and a `--value` entry against data read from files for the same dataset and dimensions.
 5. A required dataset with no entry for a dimension value the root file plans for is reported as
    not collected. This is found from the root file, not from the CI host, so a job that died before

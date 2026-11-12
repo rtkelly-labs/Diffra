@@ -399,6 +399,15 @@ internal static class ComparisonTests
             ("0.00000000000000000000000000001", "0"),
             ("79228162514264337593543950335.4", "79228162514264337593543950335"),
             ("-0.00000000000000000000000000004", "0.00000000000000000000000000004"),
+
+            // Rounded at fewer than 28 places, at a tie, and past the digits the parser reads.
+            ("7.9228162514264337593543950336", "7.922816251426433759354395034"),
+            ("9999999999999999999999999999.9", "10000000000000000000000000000"),
+            ("1.00000000000000000000000000005", "1"),
+            ("1.00000000000000000000000000000000000000001", "1"),
+
+            // The parser lets a trailing NUL through, and it is no part of a number.
+            ("5\\u0000", "5"),
         })
         {
             var delta = Compare(Evidence(Payload(before)), Evidence(Payload(after), CandidateEvidenceId));
@@ -427,7 +436,7 @@ internal static class ComparisonTests
 
         using var rounded = JsonDocument.Parse("{\"scope\":\"s\",\"methodology\":\"m\",\"metrics\":" + Payload("0.00000000000000000000000000001") + "}");
         Equal(false, StructuredNumericComparator.TryValidatePayload(rounded.RootElement, out var error));
-        True(error!.Contains("28 significant digits", StringComparison.Ordinal));
+        True(error!.Contains("28 decimal places", StringComparison.Ordinal));
     }
 
     private static void RelativeThresholdsWarnAndFail()

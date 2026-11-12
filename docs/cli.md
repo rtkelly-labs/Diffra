@@ -111,8 +111,9 @@ diffra collect --payload <json-file> --subject-id <id> --commit <full-commit> \
   measurement is addressed by its JSON Pointer path, such as `/complexity` or `/build/warnings`.
 - `value` is a finite decimal. Integers may be JSON numbers; anything with a fractional part must be
   a string such as `"12.5"`, because Diffra's canonical JSON accepts only integer number tokens.
-  A decimal holds 28 significant digits, and 29 for some values. A value with more digits than it
-  holds is rejected, not rounded, so two values that differ are never compared as equal.
+  A value is held to 28 decimal places and about 28 significant digits (29 for some values). A
+  value that needs more is rejected, not rounded, so two values that differ are never compared as
+  equal.
 - `unit` is an optional non-empty string. A measurement whose unit changes between baseline and
   candidate makes the comparison `incompatible`.
 

@@ -308,7 +308,7 @@ public static class StructuredNumericComparator
                 {
                     if (!TryReadNumber(measurementValue, out var number))
                     {
-                        error = $"Measurement at '{childPath}' must have a finite decimal value of no more than 28 significant digits.";
+                        error = $"Measurement at '{childPath}' must have a value written as plain digits that can be held exactly: no more than 28 decimal places and about 28 significant digits.";
                         return false;
                     }
 
@@ -372,8 +372,9 @@ public static class StructuredNumericComparator
 
     // decimal.TryParse rounds a value that has more digits than a decimal holds. Two different
     // values could then round to the same decimal and compare as unchanged, so a value that was
-    // rounded is refused. The text has already parsed, so it is an optional sign, digits and an
-    // optional point; it is held exactly when it is the parsed value in another spelling.
+    // rounded is refused. The text has already parsed, so apart from a trailing NUL, which the
+    // parser lets through, it is an optional sign, digits and an optional point. It is held exactly
+    // when it is the parsed value in another spelling, and a NUL makes it no spelling of any value.
     private static bool IsHeldExactly(string text, decimal number)
     {
         var digits = text.AsSpan().TrimStart("+-");

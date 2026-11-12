@@ -14,9 +14,8 @@ These points are decided in the decision records:
 - Diffra reads each tool's own output. A built-in converter turns a tool's standard output into a
   typed dataset, so the adopter does not reshape output for Diffra
   ([0002](adr/0002-project-file-and-datasets.md) decision 5).
-- All standard dataset types are built before the first adopter installs Diffra: test results,
-  findings, coverage, a generic table, size, CI timing and the job graph, files with their
-  hashes, and flame graphs, with Parquet and OpenMetrics as inputs (0002 decision 5).
+- All standard dataset types are built before the first adopter installs Diffra, including flame
+  graphs and Parquet and OpenMetrics input (0002 decision 5).
 - Converters are tested against the published validator for each format, where one exists, and
   against synthetic values (0002 decision 5).
 - CI timing and the job graph are datasets from the first install. Each run records wait, queue
@@ -41,6 +40,9 @@ These points are decided in the decision records:
 
 These points are also decided, and are not yet written into a decision record:
 
+- The standard dataset types are test results, findings, coverage, a generic table, size, CI
+  timing and the job graph, files with their hashes, and flame graphs, with Parquet and
+  OpenMetrics as inputs.
 - Converters for tool-specific formats are built into Diffra and released with it. They are not
   separately versioned packages. Parquet is the one exception.
 - `diffra/table@1` replaces `diffra/benchmark@1`. Its rows are keyed by case. Its columns are
@@ -50,8 +52,9 @@ These points are also decided, and are not yet written into a decision record:
   from stack to sample count, and compared per stack and per frame.
 - OpenMetrics text is read by a converter in the core.
 - Any CI artifact is in scope, including binary files.
-- Thresholds written in natural units, such as `10 KB` or `2 ms`, are a direction only. They are
-  not built.
+- Judging thresholds in natural units, such as bytes and durations, is a direction only and is not
+  built. The root file schema already accepts thresholds written with a unit, such as `10KiB` or
+  `2ms`, but nothing evaluates them yet.
 
 Everything else on this page is *proposed*.
 
@@ -163,6 +166,8 @@ has. Fields that are noisy from run to run are judged against the history window
 | `total`, `succeeded`, `failed`, `skipped` | — | Counts. |
 | `duration` | — | The sum of every test's duration, in nanoseconds. |
 
+The root file schema has only `results` today; the other fields, and `occurrences` below, are new.
+
 ### Identity
 
 A test is keyed by its fully qualified name: for JUnit, `classname` and `name` joined by `.`, or
@@ -177,7 +182,7 @@ times it ran.
 | Converter | Format | Versions |
 | --- | --- | --- |
 | `junit` | JUnit XML as written by Surefire, pytest, Vitest and most other runners | The common `testsuites`/`testsuite`/`testcase` shape; `time` in seconds |
-| `trx` | Visual Studio test results | The 2010 namespace that `dotnet test` writes |
+| `trx` | Visual Studio test results | The namespace that `dotnet test` writes (the 2010 namespace, to confirm) |
 
 ### Default fields
 
@@ -227,7 +232,7 @@ kept once with `occurrences`.
 
 | Converter | Format | Versions |
 | --- | --- | --- |
-| `sarif` | SARIF, as Ruff, Biome (from 2.4) and CodeQL write it | 2.1.0 |
+| `sarif` | SARIF, as CodeQL, Biome (from 2.4) and Ruff (`--output-format sarif`; the first version is to confirm) write it | 2.1.0 |
 
 ### Default fields
 
@@ -272,7 +277,7 @@ OpenCover are resolved against the repository root.
 | Converter | Format | Versions |
 | --- | --- | --- |
 | `cobertura` | Cobertura XML, as coverlet, coverage.py, Istanbul and Vitest write it | The `coverage-04` document type |
-| `opencover` | OpenCover XML, as coverlet and OpenCover write it | The format OpenCover 4.7 writes |
+| `opencover` | OpenCover XML, as coverlet and OpenCover write it | The format OpenCover's last release writes (to confirm) |
 
 ### Default fields
 
@@ -314,7 +319,7 @@ benchmarks:
   columns:
     meanTime: { better: lower }
     allocatedBytes: { better: lower }
-    medianTime: { type: duration, unit: ns, better: lower }
+    medianTime: { source: Statistics.Median, type: duration, unit: ns, better: lower }
 ```
 
 A column has a `type` (`count`, `integer`, `decimal`, `bytes`, `duration` or `ratio`), a `unit`
@@ -344,13 +349,17 @@ rejected, because the converter cannot tell which value is right.
 | --- | --- | --- | --- | --- |
 | `benchmarkdotnet` | `meanTime` | duration, `ns` | lower | `Statistics.Mean` |
 | | `allocatedBytes` | bytes | lower | `Memory.BytesAllocatedPerOperation` |
-| | `gen0PerKOps`, `gen1PerKOps`, `gen2PerKOps` | decimal | lower | `Memory.Gen0Collections` (and so on) per 1,000 of `Memory.TotalOperations` |
+| | `gen0PerKOps`, `gen1PerKOps`, `gen2PerKOps` | count, `count/1000-ops` | lower | `Memory.Gen0Collections` (and so on) per 1,000 of `Memory.TotalOperations` |
 | `openmetrics` | One per gauge or counter family | decimal, with the family's `UNIT` if it has one | none | The sample's value; a counter's `_total` sample |
 | `parquet` | None | — | — | Columns must be declared |
 
-The BenchmarkDotNet case is the benchmark's `FullName`. An OpenMetrics row is the sample's label
-set, written in label-name order as `name="value"` pairs joined by `,`; an empty label set is the
-case `{}`. Histogram and summary families have no default column; a declared column may name one
+The BenchmarkDotNet field names above are to confirm against the exporter's current output, and
+match the earlier `diffra/benchmark@1` fields and units. The BenchmarkDotNet case is the
+benchmark's `FullName`. One file can hold the same benchmark under several jobs, such as two
+runtimes; whether the job then becomes part of the case or a dimension is open.
+
+An OpenMetrics row is the sample's label set, written in label-name order as `name="value"` pairs
+joined by `,`; an empty label set is the case `{}`. Histogram and summary families have no default column; a declared column may name one
 of their samples, such as `request_seconds_sum`.
 
 ### Comparison
@@ -371,10 +380,10 @@ and 256 MiB after decompression.
 
 BenchmarkDotNet publishes no schema for its JSON; the converter is tested with synthetic files
 covering brief and full exports, parameterised benchmarks, missing memory diagnostics and
-benchmarks that failed. OpenMetrics is tested against the OpenMetrics project's parser test cases,
-which mark each input as valid or invalid, and synthetic files. Parquet is tested against the
-Apache `parquet-testing` data files, and synthetic files covering each column type the converter
-accepts.
+benchmarks that failed. OpenMetrics is tested against the OpenMetrics project's parser test cases
+(how each case states whether its input is valid is to confirm), and synthetic files. Parquet is
+tested against the Apache `parquet-testing` data files, and synthetic files covering each column
+type the converter accepts.
 
 ## Size: `diffra/size@1`
 
@@ -608,6 +617,8 @@ also benchmarked in this repository on real input (see the [plan](../PLAN.md), s
 - Formats for the rollout's tools that have no route here yet: mypy writes JSON and JUnit XML but
   no SARIF, so its findings need a converter for its JSON or another route; Biome writes SARIF only
   from 2.4; and Vitest's benchmark output has no table converter.
+- Whether a BenchmarkDotNet benchmark run under several jobs in one file is told apart by the case
+  or by a dimension.
 - Whether to read the Prometheus text format as well as OpenMetrics, and whether `size` reads the
   members of archives such as packages.
 - Which published JUnit schemas the `junit` converter is tested against, and whether the TRX

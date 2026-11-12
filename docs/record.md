@@ -88,7 +88,7 @@ One line for a person, or one JSON object with `--json` for an agent.
 A rejected entry keeps what was given, by option name, and the problems found. `record` exits
 non-zero only when it cannot save an entry, because the problem would otherwise be lost: 1 when no
 run folder can be found or the entries file cannot be written, and 2 when there is no usable
-dataset name, project, commit or job to write the entry under. A commit that is not a full ID, an attempt that is not a positive whole
+dataset name, project, commit or job to write the entry under, or `--run-dir` is given twice. A commit that is not a full ID, an attempt that is not a positive whole
 number, and a job name with surrounding whitespace or control characters are unusable and exit 2.
 
 ## The entries file (proposed)

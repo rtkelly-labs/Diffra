@@ -324,6 +324,15 @@ public static class AttentionTests
         Equal(false, Enforcement.MergeFailsStep(FailOn.Fail, missing), "fail ignores a dataset not collected");
         Equal(false, Enforcement.MergeFailsStep(FailOn.Never, missing), "never ignores a dataset not collected");
         Equal(false, Enforcement.MergeFailsStep(FailOn.Warn, uncounted), "other merge findings do not count");
+
+        // A required dataset whose collector failed counts as fail.
+        MergeFinding[] broke = [new(MergeFindingKind.CollectionFailed, "a"), new(MergeFindingKind.NotCollected, "b")];
+        Equal("fail", Enforcement.Status(MergeFindingKind.CollectionFailed), "a failed collection counts as fail");
+        Equal(true, Enforcement.MergeFailsStep(FailOn.Fail, broke), "fail trips on a failed collection");
+        Equal(true, Enforcement.MergeFailsStep(FailOn.Warn, broke), "warn trips on a failed collection");
+        Equal(false, Enforcement.MergeFailsStep(FailOn.Never, broke), "never ignores a failed collection");
+        Equal(1, Enforcement.Counted(FailOn.Fail, broke).Count(), "fail counts only the failed collection");
+        Equal(2, Enforcement.Counted(FailOn.Warn, broke).Count(), "warn counts both");
         Equal(false, Enforcement.FailsStep(FailOn.Fail, unmeasured), "fail ignores inconclusive");
         Equal(false, Enforcement.FailsStep(FailOn.Never, warned), "never ignores a warning");
         Throws<ArgumentOutOfRangeException>(() => Enforcement.FailsStep((FailOn)7, failed));

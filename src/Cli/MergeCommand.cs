@@ -130,7 +130,7 @@ internal static class MergeCommand
             Report(commit, output, files, result, problems.Listed, json, failOn, failsStep);
             if (failsStep)
             {
-                var counted = result.Findings.Count(finding => Enforcement.Status(finding.Kind) is not null);
+                var counted = Enforcement.Counted(failOn, result.Findings).Count();
                 Console.Error.WriteLine($"merge fails the step: fail-on is {Enforcement.Token(failOn)} and {Count(counted, "finding counts", "findings count")} towards it.");
                 return 3;
             }
@@ -627,6 +627,7 @@ internal static class MergeCommand
         MergeFindingKind.StatusConflict => "status-conflict",
         MergeFindingKind.ValueAndData => "value-and-data",
         MergeFindingKind.NotCollected => "not-collected",
+        MergeFindingKind.CollectionFailed => "collection-failed",
         MergeFindingKind.Rejected => "rejected",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };

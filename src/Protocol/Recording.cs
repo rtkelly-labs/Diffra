@@ -1025,6 +1025,9 @@ public enum MergeFindingKind
 
     /// <summary>A job gave something for a dataset that could not be recorded.</summary>
     Rejected,
+
+    /// <summary>A required dataset was recorded only as failed for a dimension value the root file plans for.</summary>
+    CollectionFailed,
 }
 
 /// <summary>One problem a merge found.</summary>
@@ -1184,17 +1187,26 @@ public static class EntryMerge
         // Rule 5: a required dataset with no entry for a planned dimension value. An entry that
         // conflicts was still collected; a rejected entry was not. A plan names only the dimensions
         // whose values the root file lists, so an entry matches it when it has those values,
-        // whatever value it has for an observed dimension.
+        // whatever value it has for an observed dimension. A planned value whose entries all say
+        // the collector failed is reported separately, because the collection broke.
         var collected = stated.ToLookup(entry => (entry.Project, entry.Dataset));
         foreach (var plan in expected)
         {
-            if (!collected[(plan.Project, plan.Dataset)].Any(entry => plan.Dimensions.All(
+            var matching = collected[(plan.Project, plan.Dataset)].Where(entry => plan.Dimensions.All(
                     dimension => entry.Dimensions.TryGetValue(dimension.Key, out var value)
-                        && string.Equals(value, dimension.Value, StringComparison.Ordinal))))
+                        && string.Equals(value, dimension.Value, StringComparison.Ordinal)))
+                .ToList();
+            if (matching.Count == 0)
             {
                 findings.Add(new MergeFinding(
                     MergeFindingKind.NotCollected,
                     $"{Describe(plan.Project, plan.Dataset, null, plan.Dimensions)} was not collected."));
+            }
+            else if (matching.TrueForAll(entry => entry.Status == EntryStatus.Failed))
+            {
+                findings.Add(new MergeFinding(
+                    MergeFindingKind.CollectionFailed,
+                    $"{Describe(plan.Project, plan.Dataset, null, plan.Dimensions)} was recorded as failed in {Jobs(matching)}."));
             }
         }
 

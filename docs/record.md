@@ -226,6 +226,7 @@ A finding's `kind` is one of:
 | `status-conflict` | Entries for one dataset and dimensions have different statuses. |
 | `value-and-data` | A dataset was given with `--value` in one job and read from files in another. |
 | `not-collected` | The root file plans for a dataset and dimensions that no job recorded. |
+| `collection-failed` | The root file plans for a required dataset and dimensions that jobs recorded only as `failed`. |
 | `rejected` | A job gave something `record` could not record. The rejected entry is kept in the merged file, and the finding names the job and shows the first three of its problems. |
 
 Failing the step:
@@ -234,7 +235,10 @@ Failing the step:
 `DIFFRA_FAIL_ON` variable, set to `never`, `fail` or `warn` (see
 [decision 0005](adr/0005-surface-do-not-enforce.md)). A required dataset that no job collected,
 including one collected only as rejected entries, is a `not-collected` finding and counts as a
-warning: it fails the step under `warn` and not under `fail`. When the findings fail the step,
+warning: it fails the step under `warn` and not under `fail`. A required dataset whose entries
+for a planned dimension value are all `failed` is a `collection-failed` finding and counts as
+`fail`, because the collector broke: it fails the step under `fail` and `warn`. A `skipped` entry
+was left out on purpose and counts as collected. When the findings fail the step,
 `merge` still writes the merged file and the report, says so on standard error, and exits 3. No
 other finding counts towards `fail-on` yet; see "Not yet decided" below. Any other value of the
 setting is an error, so a misspelling never turns enforcement off.

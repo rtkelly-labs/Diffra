@@ -50,7 +50,7 @@ can be found or the entries file cannot be written.
 
 Merges the entries files of every job for one commit, in the collecting job. It writes the merged
 entries as an entries file and reports conflicts, superseded attempts, datasets the root file
-plans for that were not collected, and lines or files it could not read.
+plans for that were not collected or whose collection failed, and lines or files it could not read.
 
 ```sh
 diffra merge [--commit <id>] [--root-file <file>] [--run-dir <dir>] [--entries <dir>]...
@@ -58,10 +58,10 @@ diffra merge [--commit <id>] [--root-file <file>] [--run-dir <dir>] [--entries <
 ```
 
 What the merge finds fails the command only when the adopter opts in with `--fail-on`, or
-`DIFFRA_FAIL_ON`: under `warn`, a required dataset that was not collected exits 3 after the output
-is written. It exits 1 when it cannot read the entries folders
-or write its output, and 2 when there is no usable commit, root file, run folder, entries folder
-or output path, or an option is wrong. [Recording a run](record.md#the-collecting-step) gives the
+`DIFFRA_FAIL_ON`: a required dataset recorded only as failed exits 3 under `fail` or `warn`, and
+one that was not collected exits 3 under `warn`, after the output is written. It exits 1 when it
+cannot read the entries folders or write its output, and 2 when there is no usable commit, root
+file, run folder, entries folder or output path, or an option is wrong. [Recording a run](record.md#the-collecting-step) gives the
 rules, the limits and the `--json` shape.
 
 ## `collect`

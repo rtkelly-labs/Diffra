@@ -37,6 +37,7 @@ public static class RecordEntryTests
         ReportsEveryStatusAndEveryJob();
         GivesTheSameResultInAnyOrder();
         ReportsWhatWasNotCollected();
+        ReportsRequiredDatasetsWhoseCollectionFailed();
         MatchesAPlanOnTheListedDimensions();
         KeepsRejectedEntriesOutOfConflicts();
         Console.WriteLine("PASS record entries, entries files and the merge");
@@ -488,6 +489,36 @@ public static class RecordEntryTests
         Equal(2, missing.Count);
         Equal("main/coverage was not collected.", missing[0]);
         Equal("main/packageSize (os=windows) was not collected.", missing[1]);
+    }
+
+    // A planned value recorded only as failed is a failed collection, not a missing one; a value
+    // recorded in one job and failed in another is a status conflict, and skipped is collected.
+    private static void ReportsRequiredDatasetsWhoseCollectionFailed()
+    {
+        var linux = new Dictionary<string, string>(StringComparer.Ordinal) { ["os"] = "linux" };
+        var windows = new Dictionary<string, string>(StringComparer.Ordinal) { ["os"] = "windows" };
+        var none = new Dictionary<string, string>(StringComparer.Ordinal);
+        var result = EntryMerge.Merge(
+            Commit,
+            [
+                RecordEntries.Parse(Entry("test-linux", 1, status: "failed", dimension: "linux")),
+                RecordEntries.Parse(Entry("test-windows", 1, value: "1", dimension: "windows")),
+                RecordEntries.Parse(Entry("other-windows", 1, status: "failed", dimension: "windows")),
+                RecordEntries.Parse(Entry("lint", 1, dataset: "warnings", status: "skipped")),
+                RecordEntries.Parse(Entry("cover", 1, dataset: "coverage", status: "failed")),
+            ],
+            [
+                new ExpectedEntry("main", "packageSize", linux),
+                new ExpectedEntry("main", "packageSize", windows),
+                new ExpectedEntry("main", "warnings", none),
+                new ExpectedEntry("main", "coverage", none),
+            ]);
+        var failed = result.Findings.Where(finding => finding.Kind == MergeFindingKind.CollectionFailed).Select(finding => finding.Message).ToList();
+        Equal(2, failed.Count);
+        Equal("main/coverage was recorded as failed in job 'cover'.", failed[0]);
+        Equal("main/packageSize (os=linux) was recorded as failed in job 'test-linux'.", failed[1]);
+        Equal(false, result.Findings.Any(finding => finding.Kind == MergeFindingKind.NotCollected));
+        Equal(true, result.Findings.Any(finding => finding.Kind == MergeFindingKind.StatusConflict));
     }
 
     // A dataset stratified by an observed dimension is planned by its listed dimensions only.

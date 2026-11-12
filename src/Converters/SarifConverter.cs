@@ -346,10 +346,9 @@ public static class SarifConverter
     // asked for, so that each result's lookup does not walk the whole array.
     private sealed class Component(JsonElement element)
     {
-        private RuleDescriptor?[]? rules;
         private Dictionary<string, RuleDescriptor>? byId;
 
-        public RuleDescriptor?[] Rules => rules ??= element.TryGetProperty("rules", out var list) && list.ValueKind == JsonValueKind.Array
+        public RuleDescriptor?[] Rules => field ??= element.TryGetProperty("rules", out var list) && list.ValueKind == JsonValueKind.Array
             ? [.. list.EnumerateArray().Select(item => item.ValueKind == JsonValueKind.Object ? new RuleDescriptor(item) : null)]
             : [];
 
@@ -712,7 +711,7 @@ public static class SarifConverter
                 return null;
             }
 
-            var first = values.EnumerateObject().Select(property => Name(property, field)).Order(StringComparer.Ordinal).FirstOrDefault();
+            var first = values.EnumerateObject().Select(property => PropertyName(property, field)).Order(StringComparer.Ordinal).FirstOrDefault();
             if (first is null)
             {
                 return null;
@@ -729,7 +728,7 @@ public static class SarifConverter
             $"the messages filled from their arguments would hold more than {fill.Limit.ToString("N0", CultureInfo.InvariantCulture)} characters, the most one entry may.";
 
         // A property's name. A name that is not valid UTF-8 cannot be read, and is a problem.
-        private static string Name(JsonProperty property, string field)
+        private static string PropertyName(JsonProperty property, string field)
         {
             try
             {

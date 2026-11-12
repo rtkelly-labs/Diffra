@@ -37,6 +37,7 @@ internal static class ComparisonTests
         DeltaIdDoesNotDependOnTheHostRuntime();
         ComparisonGuardsReturnTheirStatus();
         MalformedMeasurementsAreInconclusive();
+        ValuesADecimalCannotHoldAreNotRounded();
         RelativeThresholdsWarnAndFail();
         ZeroBaselineWithRelativePolicyNeedsReview();
         AssessmentRejectsUnassessableDeltas();
@@ -385,6 +386,48 @@ internal static class ComparisonTests
             Evidence("{\"x\":{\"value\":\"79228162514264337593543950335\"}}", CandidateEvidenceId));
         Equal("inconclusive", overflow.Status);
         True(overflow.Message!.Contains("overflowed", StringComparison.Ordinal));
+    }
+
+    private static void ValuesADecimalCannotHoldAreNotRounded()
+    {
+        static string Payload(string value) => $"{{\"x\":{{\"value\":\"{value}\"}}}}";
+
+        // These pairs differ, but each rounds to one decimal. They were compared as unchanged.
+        foreach (var (before, after) in new[]
+        {
+            ("1.00000000000000000000000000001", "1.00000000000000000000000000002"),
+            ("0.00000000000000000000000000001", "0"),
+            ("79228162514264337593543950335.4", "79228162514264337593543950335"),
+            ("-0.00000000000000000000000000004", "0.00000000000000000000000000004"),
+        })
+        {
+            var delta = Compare(Evidence(Payload(before)), Evidence(Payload(after), CandidateEvidenceId));
+            Equal("inconclusive", delta.Status);
+            True(delta.Message!.Contains("'/x'", StringComparison.Ordinal));
+            Equal("inconclusive", Compare(Evidence(Payload(after)), Evidence(Payload(before), CandidateEvidenceId)).Status);
+        }
+
+        // Every digit a decimal holds is still compared: 29 digits, 28 places, and any spelling.
+        var smallest = Compare(
+            Evidence(Payload("7.9228162514264337593543950334")),
+            Evidence(Payload("7.9228162514264337593543950335"), CandidateEvidenceId));
+        Equal("0.0000000000000000000000000001", smallest.Changes.Single().Value.Absolute);
+        foreach (var (before, after) in new[]
+        {
+            ("+01.50", "1.5"),
+            ("-0.0", "0"),
+            (".5", "0.50000000000000000000000000000000"),
+            ("5.", "005"),
+            ("79228162514264337593543950335.0", "79228162514264337593543950335"),
+            ("0.0000000000000000000000000001", "0.00000000000000000000000000010"),
+        })
+        {
+            Equal("unchanged", Compare(Evidence(Payload(before)), Evidence(Payload(after), CandidateEvidenceId)).Status);
+        }
+
+        using var rounded = JsonDocument.Parse("{\"scope\":\"s\",\"methodology\":\"m\",\"metrics\":" + Payload("0.00000000000000000000000000001") + "}");
+        Equal(false, StructuredNumericComparator.TryValidatePayload(rounded.RootElement, out var error));
+        True(error!.Contains("28 significant digits", StringComparison.Ordinal));
     }
 
     private static void RelativeThresholdsWarnAndFail()

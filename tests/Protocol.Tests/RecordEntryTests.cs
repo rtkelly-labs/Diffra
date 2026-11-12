@@ -125,6 +125,24 @@ public static class RecordEntryTests
         var fraction = Entry("pack", 1, value: "1").Replace("\"attempt\":1", "\"attempt\":1.5", StringComparison.Ordinal);
         Equal(1, RecordEntries.Validate(fraction).Count);
 
+        // A whole number is one however it is spelt, and a number that only rounds to one is not.
+        foreach (var (token, expected) in new[] { ("1e0", 1), ("10e-1", 1), ("0.2E+1", 2), ("2147483647.0", int.MaxValue), ("1000000000000000000000000000000000000000e-39", 1), ("1e00000000000000000000000", 1) })
+        {
+            var spelt = Entry("pack", 1, value: "1").Replace("\"attempt\":1", $"\"attempt\":{token}", StringComparison.Ordinal);
+            Equal(0, RecordEntries.Validate(spelt).Count);
+            Equal(expected, RecordEntries.Parse(spelt).Attempt);
+        }
+
+        foreach (var token in new[]
+        {
+            "1.0000000000000000000000000000000001", "0.9999999999999999999999999999999999", "2147483647.0000000000000000000000000000001",
+            "2147483646.99999999999999999999999999999", "0", "-0", "-1", "0.0", "1e10", "1e400", "1e-400", "1e99999999999999999999",
+        })
+        {
+            var rounded = Entry("pack", 1, value: "1").Replace("\"attempt\":1", $"\"attempt\":{token}", StringComparison.Ordinal);
+            Equal(1, RecordEntries.Validate(rounded).Count);
+        }
+
         var deep = string.Concat(Enumerable.Repeat("[", 200)) + string.Concat(Enumerable.Repeat("]", 200));
         Equal(0, RecordEntries.Validate(DataEntry("test", deep)).Count);
         var tooDeep = string.Concat(Enumerable.Repeat("[", 300)) + string.Concat(Enumerable.Repeat("]", 300));

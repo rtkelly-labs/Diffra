@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -188,7 +189,7 @@ public static partial class RecordEntries
             root.GetProperty("dataset").GetString()!,
             root.GetProperty("commit").GetString()!,
             job.GetProperty("name").GetString()!,
-            (int)job.GetProperty("attempt").GetDecimal(),
+            TryReadAttempt(job.GetProperty("attempt"), out var attempt) ? attempt : 0,
             dimensions,
             root.TryGetProperty("key", out var key) ? key.GetString() : null,
             ParseStatus(root.GetProperty("status").GetString()!),
@@ -496,14 +497,47 @@ public static partial class RecordEntries
         {
             problems.Add("'job.attempt' is required.");
         }
-        else if (attempt.ValueKind != JsonValueKind.Number
-            || !attempt.TryGetDecimal(out var number)
-            || number < 1
-            || number > int.MaxValue
-            || number != decimal.Truncate(number))
+        else if (!TryReadAttempt(attempt, out _))
         {
             problems.Add("'job.attempt' must be a whole number from 1 to 2147483647.");
         }
+    }
+
+    /// <summary>
+    /// The attempt a number stands for: a whole number from 1 to 2147483647, however it is spelt
+    /// (<c>1</c>, <c>1.0</c> and <c>10e-1</c> are the same attempt). It is read from the digits as
+    /// written, because a decimal would round <c>1.0000000000000000000000000000000001</c> to 1 and
+    /// accept a number the schema refuses.
+    /// </summary>
+    private static bool TryReadAttempt(JsonElement element, out int attempt)
+    {
+        attempt = 0;
+        if (element.ValueKind != JsonValueKind.Number)
+        {
+            return false;
+        }
+
+        // A JSON number with a minus sign is zero or below, and never an attempt.
+        var match = UnsignedNumberPattern().Match(element.GetRawText());
+        if (!match.Success)
+        {
+            return false;
+        }
+
+        var fraction = match.Groups["fraction"].Value;
+        var digits = (match.Groups["whole"].Value + fraction).TrimStart('0');
+        var significant = digits.TrimEnd('0');
+        var exponent = match.Groups["exponent"].Success
+            ? BigInteger.Parse(match.Groups["exponent"].Value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture)
+            : BigInteger.Zero;
+
+        // The value is the significant digits followed by this many zeros; fewer than none means
+        // digits after the decimal point.
+        var zeros = exponent - fraction.Length + (digits.Length - significant.Length);
+        return significant.Length > 0
+            && zeros >= 0
+            && significant.Length + zeros <= 10
+            && int.TryParse(significant + new string('0', (int)zeros), NumberStyles.None, CultureInfo.InvariantCulture, out attempt);
     }
 
     private static void CheckDimensions(JsonElement dimensions, bool rejected, List<string> problems)
@@ -777,6 +811,9 @@ public static partial class RecordEntries
 
     [GeneratedRegex(@"^[a-z][A-Za-z0-9]*\z", RegexOptions.CultureInvariant)]
     private static partial Regex NamePattern();
+
+    [GeneratedRegex(@"^(?<whole>[0-9]+)(?:\.(?<fraction>[0-9]+))?(?:[eE](?<exponent>[+-]?[0-9]+))?\z", RegexOptions.CultureInvariant)]
+    private static partial Regex UnsignedNumberPattern();
 
     [GeneratedRegex(@"^([0-9a-f]{40}|[0-9a-f]{64})\z", RegexOptions.CultureInvariant)]
     private static partial Regex CommitPattern();

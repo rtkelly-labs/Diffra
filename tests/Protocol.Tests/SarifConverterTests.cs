@@ -30,6 +30,9 @@ public static class SarifConverterTests
         RejectsMalformedInput();
         RejectsUndecodablePropertyNames();
         RejectsMessagesFilledPastTheLimit();
+        RejectsWhatItCannotTellApart();
+        RejectsExternalizedResults();
+        ListsTheFirstProblemsOfAFile();
         RejectsNestingPastTheLimit();
         RejectsFilesPastTheByteLimits();
         RejectsMoreFindingsThanTheBudget();
@@ -167,7 +170,7 @@ public static class SarifConverterTests
             Result("R", "warning", "f.cs", 10, "Method has 12 parameters"),
             Result("R", "warning", "f.cs", 40, "Method has 13 parameters")));
         Equal($"Tool/R/f.cs/{Digest("Method has  parameters")}", Keys(moved));
-        Equal(Hex(Encoding.UTF8.GetBytes("Method has  parameters")), Digest("Method has 12 parameters"));
+        Equal(Hex("Method has  parameters"u8.ToArray()), Digest("Method has 12 parameters"));
 
         using var folder = new Folder();
         folder.Write("bad.sarif", Log(Run("Tool", """{"ruleId":"R","message":{"text":"m"},"fingerprints":{"a":1}}""")));
@@ -254,6 +257,10 @@ public static class SarifConverterTests
             ("""{"uri":"z.py","uriBaseId":"ELSEWHERE"}""", $"<outside>/{Short("file:///elsewhere/z.py")}/z.py"),
             ("""{"uri":"https://example.com/"}""", $"<outside>/{Short("https://example.com/")}"),
 
+            // A file name is decoded once, so an escaped '%' stays a '%'.
+            ("""{"uri":"../a%252Fb.cs"}""", $"<outside>/{Short("../a%252Fb.cs")}/a%2Fb.cs"),
+            ("""{"uri":"https://example.com/x%2520y.py"}""", $"<outside>/{Short("https://example.com/x%2520y.py")}/x%20y.py"),
+
             // A cycle of bases ends after ten of them.
             ("""{"uri":"x.py","uriBaseId":"A"}""", "b/a/b/a/b/a/b/a/b/a/x.py"),
         };
@@ -302,6 +309,13 @@ public static class SarifConverterTests
         Equal("'m.sarif' run 0 result 1: the result's message has no text, and no message string of its rule that its id names.", result.Problems.Single());
         folder.Write("m.sarif", Log(RunWithRules("T", rules, [given])));
         Equal("'x' is unused in f; {literal} {5}", Findings(SarifConverter.Read(folder.Root, "m.sarif", maximumKeys: null, maximumTextLength: null).Data!).Single().GetProperty("message").GetString());
+
+        // Text with arguments is filled the same way; text without them is kept as written.
+        folder.Write("m.sarif", Log(Run("T",
+            """{"ruleId":"R","message":{"text":"Unused {0} {{x}}","arguments":["alpha"]},"fingerprints":{"f":"1"}}""",
+            """{"ruleId":"R","message":{"text":"Kept {0} {{x}}"},"fingerprints":{"f":"2"}}""")));
+        Equal("Kept {0} {{x}},Unused alpha {x}", string.Join(",", Findings(SarifConverter.Read(folder.Root, "m.sarif", maximumKeys: null, maximumTextLength: null).Data!)
+            .Select(finding => finding.GetProperty("message").GetString()).Order(StringComparer.Ordinal)));
     }
 
     // Control characters in a message become spaces, and a message over maxTextLength is cut. The
@@ -414,6 +428,45 @@ public static class SarifConverterTests
         folder.Write("m.sarif", Log(RunWithRules("T", rules, [Filled("one"), Filled("two")])));
         var together = SarifConverter.Read(folder.Root, "m.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, fillLimit: 7_999_999);
         Equal("'m.sarif' run 0 result 1: the messages filled from their arguments would hold more than 7,999,999 characters, the most one entry may.", together.Problems.Single());
+    }
+
+    // Two findings whose parts join to the same key, or two tool and rule pairs that join to the
+    // same byRule key, reject the entry rather than be merged.
+    private static void RejectsWhatItCannotTellApart()
+    {
+        using var folder = new Folder();
+        folder.Write("a.sarif", Log(Run("a/b", Result("c", "error", "x.py", 1, "m")), Run("a", Result("b/c", "error", "y.py", 1, "m"))));
+        Equal("Two different tool and rule pairs have the byRule key 'a/b/c': the tool and rule joined by '/' do not tell them apart.",
+            SarifConverter.Read(folder.Root, "a.sarif", maximumKeys: null, maximumTextLength: null).Problems.Single());
+
+        folder.Write("a.sarif", Log(Run("T",
+            """{"ruleId":"R","message":{"text":"m"},"fingerprints":{"f":"x/y"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"p"}}}]}""",
+            """{"ruleId":"R","message":{"text":"m"},"fingerprints":{"f":"y"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"p/x"}}}]}""")));
+        Equal("Two different findings have the key 'T/R/p/x/y': the tool, rule, path and fingerprint joined by '/' do not tell them apart.",
+            SarifConverter.Read(folder.Root, "a.sarif", maximumKeys: null, maximumTextLength: null).Problems.Single());
+    }
+
+    // Results kept in external property files are not read, so a run that has them rejects the
+    // entry rather than record too few findings. An empty list of them is no reference.
+    private static void RejectsExternalizedResults()
+    {
+        using var folder = new Folder();
+        folder.Write("e.sarif", Log("""{"tool":{"driver":{"name":"T"}},"externalPropertyFileReferences":{"results":[{"location":{"uri":"r.sarif-external-properties"}}]}}"""));
+        Equal("'e.sarif' run 0: the run keeps results in external property files, which are not read.",
+            SarifConverter.Read(folder.Root, "e.sarif", maximumKeys: null, maximumTextLength: null).Problems.Single());
+        folder.Write("e.sarif", Log("""{"tool":{"driver":{"name":"T"}},"externalPropertyFileReferences":{"results":[]},"results":[]}"""));
+        Equal(0, SarifConverter.Read(folder.Root, "e.sarif", maximumKeys: null, maximumTextLength: null).Problems.Count);
+    }
+
+    // A file's first ten problems are listed and the rest counted.
+    private static void ListsTheFirstProblemsOfAFile()
+    {
+        using var folder = new Folder();
+        folder.Write("bad.sarif", Log(Run("T", [.. Enumerable.Repeat("{}", 25)])));
+        var problems = SarifConverter.Read(folder.Root, "bad.sarif", maximumKeys: null, maximumTextLength: null).Problems;
+        Equal(11, problems.Count);
+        Equal("'bad.sarif' run 0 result 9: the result names no rule: it has no ruleId, rule.id or rule descriptor with an id.", problems[9]);
+        Equal("'bad.sarif' has 15 more problems that are not listed.", problems[10]);
     }
 
     private static void RejectsNestingPastTheLimit()

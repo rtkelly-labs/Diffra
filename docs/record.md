@@ -100,14 +100,16 @@ The `sarif` converter reads SARIF 2.1.0 logs, as CodeQL and Ruff write them:
 - A log must be an object whose `version` is `2.1.0` and whose `runs` is an array. Any other
   version, or none, rejects the entry and names the version read. `runs: null`, which SARIF uses
   when the tool could not run, rejects the entry too. Each run needs `tool.driver.name`, the
-  tool's name.
+  tool's name. A run that keeps results in external property files
+  (`externalPropertyFileReferences.results`) rejects the entry, since they are not read.
 - Each result needs a rule: its `ruleId`, else `rule.id`, else the id of the rule descriptor that
   `rule.index` or `ruleIndex` names in the driver, or in the extension `rule.toolComponent.index`
   names. A result with no rule rejects the entry.
 - The level is the result's `level` when given. Otherwise, when `kind` is absent or `fail`, it is
   the rule's `defaultConfiguration.level`, or `warning`; any other `kind` gives `none`.
 - The message is `message.text`, or else the rule's `messageStrings` entry its `message.id` names,
-  with `{0}`, `{1}` and so on filled from `message.arguments`. The messages filled this way hold
+  with `{0}`, `{1}` and so on filled from `message.arguments`; `message.text` with no `arguments`
+  is kept as written. The messages filled this way hold
   at most 64 Mi characters together in one entry, a safety limit; filling past it rejects the
   entry. Control characters become spaces, and a message longer than the root file's
   `maxTextLength` is cut and ends with `…`.
@@ -126,8 +128,8 @@ The `sarif` converter reads SARIF 2.1.0 logs, as CodeQL and Ruff write them:
 - A finding is keyed `<tool>/<rule>/<path>/<fingerprint>`, with the fingerprint chosen as
   [Dataset types](datasets.md#identity-1) says. Findings with the same key are kept once: the
   most severe level, then the lowest line, then the ordinally first message, with `occurrences`
-  written when there was more than one. Two findings whose parts differ but join to the same key
-  reject the entry.
+  written when there was more than one. Two findings whose parts differ but join to the same key,
+  or two tool and rule pairs that join to the same `byRule` key, reject the entry.
 - `total` and each `byRule` count include every result, whatever its `kind` or level.
 - More findings by key than the root file's `maxKeys` budget reject the entry, as for size.
 - `suppressions` and `baselineState` are not read, and the root file's `fields` selection is not

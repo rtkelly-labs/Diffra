@@ -20,8 +20,8 @@ public static class SarifConverter
     /// <summary>The dataset type it reads.</summary>
     public const string DatasetType = "diffra/findings@1";
 
-    /// <summary>The one SARIF version it reads.</summary>
-    public const string Version = "2.1.0";
+    // The one SARIF version it reads.
+    private const string Version = "2.1.0";
 
     /// <summary>The most bytes one file may hold: 64 MiB.</summary>
     public const long MaximumFileBytes = 64L * 1024 * 1024;
@@ -29,11 +29,11 @@ public static class SarifConverter
     /// <summary>The most bytes the files of one entry may hold together: 256 MiB.</summary>
     public const long MaximumEntryBytes = 256L * 1024 * 1024;
 
-    /// <summary>How deep a SARIF file may nest.</summary>
-    public const int MaximumDepth = 256;
+    // How deep a SARIF file may nest.
+    private const int MaximumDepth = 256;
 
-    /// <summary>The path of a result that has no location.</summary>
-    public const string NoPath = "<none>";
+    // The path of a result that has no location.
+    private const string NoPath = "<none>";
 
     /// <summary>
     /// The most characters the messages filled from their arguments may hold together in one
@@ -116,15 +116,9 @@ public static class SarifConverter
             }
 
             sources.Add(new ConverterSource(path, Name, Convert.ToHexStringLower(SHA256.HashData(bytes))));
-            var fileProblems = new List<string>();
+            var fileProblems = new FileProblems();
             new LogReader(path, root, maximumTextLength, findings, fill, fileProblems).ReadFile(bytes);
-            if (fileProblems.Count > MaximumProblemsPerFile)
-            {
-                var more = fileProblems.Count - MaximumProblemsPerFile;
-                fileProblems = [.. fileProblems.Take(MaximumProblemsPerFile), $"'{path}' has {more.ToString(CultureInfo.InvariantCulture)} more problems that are not listed."];
-            }
-
-            problems.AddRange(fileProblems);
+            fileProblems.CopyTo(problems, path);
         }
 
         if (problems.Count == 0)
@@ -187,8 +181,9 @@ public static class SarifConverter
     private sealed class Findings
     {
         private readonly SortedDictionary<string, (Finding Kept, int Occurrences)> results = new(StringComparer.Ordinal);
-        private readonly SortedDictionary<string, int> byRule = new(StringComparer.Ordinal);
-        private readonly List<string> collisions = [];
+        private readonly SortedDictionary<string, (string Tool, string Rule, int Count)> byRule = new(StringComparer.Ordinal);
+        private readonly SortedSet<string> collisions = new(StringComparer.Ordinal);
+        private readonly SortedSet<string> ruleCollisions = new(StringComparer.Ordinal);
         private int total;
 
         public int Keys => results.Count;
@@ -197,7 +192,20 @@ public static class SarifConverter
         {
             total++;
             var rule = $"{finding.Tool}/{finding.Rule}";
-            byRule[rule] = byRule.GetValueOrDefault(rule) + 1;
+            if (byRule.TryGetValue(rule, out var counted))
+            {
+                if (counted.Tool != finding.Tool || counted.Rule != finding.Rule)
+                {
+                    ruleCollisions.Add(rule);
+                }
+
+                byRule[rule] = counted with { Count = counted.Count + 1 };
+            }
+            else
+            {
+                byRule[rule] = (finding.Tool, finding.Rule, 1);
+            }
+
             if (!results.TryGetValue(finding.Key, out var held))
             {
                 results[finding.Key] = (finding, 1);
@@ -213,11 +221,17 @@ public static class SarifConverter
             results[finding.Key] = (kept, held.Occurrences + 1);
         }
 
-        // Two different findings whose parts join to the same key, which could only be told apart
-        // by a key the spec does not define, reject the entry rather than be merged.
+        // Two different findings whose parts join to the same key, or two tool and rule pairs
+        // that join to the same byRule key, could only be told apart by a key the spec does not
+        // define, so they reject the entry rather than be merged.
         public void Check(List<string> problems)
         {
-            foreach (var key in collisions.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).Take(MaximumProblemsPerFile))
+            foreach (var key in ruleCollisions.Take(MaximumProblemsPerFile))
+            {
+                problems.Add($"Two different tool and rule pairs have the byRule key '{key}': the tool and rule joined by '/' do not tell them apart.");
+            }
+
+            foreach (var key in collisions.Take(MaximumProblemsPerFile))
             {
                 problems.Add($"Two different findings have the key '{key}': the tool, rule, path and fingerprint joined by '/' do not tell them apart.");
             }
@@ -234,7 +248,7 @@ public static class SarifConverter
             {
                 writer.WriteStartObject();
                 writer.WriteStartObject("byRule");
-                foreach (var (rule, count) in byRule)
+                foreach (var (rule, (_, _, count)) in byRule)
                 {
                     writer.WriteStartObject(rule);
                     writer.WriteString("value", count.ToString(CultureInfo.InvariantCulture));
@@ -279,6 +293,35 @@ public static class SarifConverter
 
     // A SARIF value that cannot be read as the converter needs it; the message is the problem.
     private sealed class SarifException(string message) : Exception(message);
+
+    // One file's problems: the first few are kept as they are found and the rest only counted, so
+    // that a file of many bad results cannot hold a problem for each in memory.
+    private sealed class FileProblems
+    {
+        private readonly List<string> kept = [];
+        private int omitted;
+
+        public void Add(string problem)
+        {
+            if (kept.Count < MaximumProblemsPerFile)
+            {
+                kept.Add(problem);
+            }
+            else
+            {
+                omitted++;
+            }
+        }
+
+        public void CopyTo(List<string> problems, string path)
+        {
+            problems.AddRange(kept);
+            if (omitted > 0)
+            {
+                problems.Add($"'{path}' has {omitted.ToString(CultureInfo.InvariantCulture)} more problems that are not listed.");
+            }
+        }
+    }
 
     // The characters one entry's filled messages may still hold.
     private sealed class FillBudget(long limit)
@@ -361,7 +404,7 @@ public static class SarifConverter
     }
 
     // Reads one SARIF file into the findings, adding a problem for anything it cannot read.
-    private sealed class LogReader(string file, string root, int? maximumTextLength, Findings findings, FillBudget fill, List<string> problems)
+    private sealed class LogReader(string file, string root, int? maximumTextLength, Findings findings, FillBudget fill, FileProblems problems)
     {
         public void ReadFile(byte[] bytes)
         {
@@ -470,6 +513,15 @@ public static class SarifConverter
             if (!IsKeyText(name))
             {
                 problems.Add($"'{file}' {where}: the tool name must be valid Unicode with no control characters.");
+                return;
+            }
+
+            // Results kept in external property files are not read, since no URI is followed; a
+            // run that has them would otherwise record too few findings.
+            if (Object(run, "externalPropertyFileReferences") is { } external && external.TryGetProperty("results", out var referenced)
+                && referenced.ValueKind != JsonValueKind.Null && (referenced.ValueKind != JsonValueKind.Array || referenced.GetArrayLength() > 0))
+            {
+                problems.Add($"'{file}' {where}: the run keeps results in external property files, which are not read.");
                 return;
             }
 
@@ -586,19 +638,21 @@ public static class SarifConverter
         private string Message(JsonElement result, RuleDescriptor? descriptor)
         {
             var message = Object(result, "message") ?? throw new SarifException("the result has no message.");
+            List<string>? arguments = message.TryGetProperty("arguments", out var given) && given.ValueKind == JsonValueKind.Array
+                ? [.. given.EnumerateArray().Select(argument => argument.ValueKind == JsonValueKind.String ? Text(argument) : argument.GetRawText())]
+                : null;
+
+            // Text with no arguments is kept as written, so that braces in it stay as they are.
             if (OptionalString(message, "text") is { } text)
             {
-                return text;
+                return arguments is null ? text : Format(text, arguments);
             }
 
             if (OptionalString(message, "id") is { } id
                 && descriptor is { } rule
                 && rule.MessageString(id) is { } format)
             {
-                var arguments = message.TryGetProperty("arguments", out var given) && given.ValueKind == JsonValueKind.Array
-                    ? given.EnumerateArray().Select(argument => argument.ValueKind == JsonValueKind.String ? Text(argument) : argument.GetRawText()).ToList()
-                    : [];
-                return Format(format, arguments);
+                return Format(format, arguments ?? []);
             }
 
             throw new SarifException("the result's message has no text, and no message string of its rule that its id names.");
@@ -793,7 +847,7 @@ public static class SarifConverter
 
     private static long? Integer(JsonElement parent, string name) =>
         parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number
-            && value.TryGetInt64(out var number) && number >= 0 && number <= int.MaxValue
+            && value.TryGetInt64(out var number) && number is >= 0 and <= int.MaxValue
             ? number
             : null;
 

@@ -14,8 +14,8 @@ namespace Diffra.Converters;
 /// </summary>
 internal static partial class SarifPath
 {
-    /// <summary>The first segment of a path outside the repository.</summary>
-    public const string Outside = "<outside>";
+    // The first segment of a path outside the repository.
+    private const string Outside = "<outside>";
 
     // How many uriBaseId links are followed, so that a cycle ends.
     private const int MaximumBases = 10;
@@ -59,7 +59,7 @@ internal static partial class SarifPath
         {
             if (!path.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
             {
-                return OutsideKey(written, Segments(path).LastOrDefault());
+                return OutsideKey(written, LastDecoded(path));
             }
 
             path = path[5..];
@@ -69,7 +69,7 @@ internal static partial class SarifPath
                 var authority = end < 0 ? path[2..] : path[2..end];
                 if (authority.Length > 0 && !authority.Equals("localhost", StringComparison.OrdinalIgnoreCase))
                 {
-                    return OutsideKey(written, Segments(path).LastOrDefault());
+                    return OutsideKey(written, LastDecoded(path));
                 }
 
                 path = end < 0 ? "/" : path[end..];
@@ -151,11 +151,10 @@ internal static partial class SarifPath
     }
 
     // <outside>/<the first 12 hexadecimal characters of the SHA-256 of the URI with its bases
-    // applied, query and fragment included>/<file name>.
-    private static string OutsideKey(string written, string? name)
+    // applied, query and fragment included>/<file name>. The file name is already decoded.
+    private static string OutsideKey(string written, string? file)
     {
         var digest = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(SourceFiles.Display(written))))[..12];
-        var file = name is null ? null : Decode([name]).Single();
         if (string.IsNullOrEmpty(file) || file is "." or "..")
         {
             return $"{Outside}/{digest}";
@@ -167,6 +166,9 @@ internal static partial class SarifPath
     }
 
     private static List<string> Segments(string path) => [.. path.Split('/')];
+
+    // The last segment of a path, percent-decoded.
+    private static string LastDecoded(string path) => Decode([path[(path.LastIndexOf('/') + 1)..]])[0];
 
     // Percent-decodes each segment. A segment that decodes to a '/' or '\' would change the path's
     // folders, so it is refused.

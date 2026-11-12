@@ -57,6 +57,9 @@ emitter's error never reached the pull request.
 - Whether each supported tool version also needs one real output file as a test fixture
   (proposed).
 - The name of the collecting workflow, given that `collect` is already a CLI operation.
+- What visual comparison covers, and whether a dataset given only with `--value` declares a type
+  or shape in the root file. [Dataset types and converters](../datasets.md#not-yet-decided) lists
+  the other open points about types and converters.
 
 ## Current code
 
@@ -65,8 +68,11 @@ record: settings, datasets with named rule sets, `required: false`, and projects
 dataset to a rule set, or to `null` to record it without rules. The file's name in a repository
 is not decided. The standard dataset types are those of the earlier project file
 (`diffra/benchmark@1`, `diffra/size@1` and others); there is no table type with declared columns
-(decision 11), and CI timing and the job graph (decision 6) have no type yet. The Baseline
-reference and bundle manifest schemas still allow a `previous-release` role (decision 13).
+(decision 11), and CI timing and the job graph (decision 6) have no type yet.
+[Dataset types and converters](../datasets.md) proposes the shape, identity, converters,
+comparison and tests of every standard type, including `diffra/table@1` in place of
+`diffra/benchmark@1`; none of it is built. The Baseline reference and bundle manifest schemas
+still allow a `previous-release` role (decision 13).
 
 `src/RootFile/` loads the root file. It checks what the schema cannot: that each dataset a
 project selects is declared, that each rule set a project applies is defined on that dataset,

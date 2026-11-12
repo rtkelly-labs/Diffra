@@ -23,8 +23,9 @@ emitter's error never reached the pull request.
 4. **Optional is a property of the dataset** (`required: false`), not of one part of it.
 5. **Diffra reads each tool's own output.** A built-in converter turns a tool's standard output
    into a typed dataset, so the adopter does not reshape output for Diffra. All standard dataset
-   types are built before the first adopter installs Diffra, including flame graphs and Parquet
-   and OpenMetrics input. Converters are tested against published validators for each format and
+   types are built before the first adopter installs Diffra: test results, findings, coverage, a
+   generic table, size, CI timing and the job graph, files with their hashes, and flame graphs,
+   with Parquet and OpenMetrics as inputs. Converters are tested against published validators for each format and
    against synthetic values.
 6. **CI timing and the CI job graph are datasets from the first install.** Each run records wait
    time, queue time and execution time per job and for the longest path through the job graph.
@@ -44,13 +45,23 @@ emitter's error never reached the pull request.
     projects. A strategy is a swappable backend and never changes a result.
 11. **Tables declare their columns.** A table dataset declares each column's type, unit and
     better direction, and a converter supplies defaults for the formats it reads. Size data stays
-    a separate dataset type.
+    a separate dataset type. `diffra/table@1` replaces `diffra/benchmark@1`: its rows are keyed
+    by case, and BenchmarkDotNet's JSON is the first format with default columns.
 12. **An absent optional dataset is quiet.** When an optional dataset has no record in the whole
     history window, the full report says so in one line and the comment says nothing. A dataset
     collected only occasionally is compared with its most recent record on the target branch, and
     the output names that commit and how far back it is.
 13. **There is no comparison with the previous release for now.** A pull request is compared with
     the commit it branched from and with recent history only.
+14. **Flame graphs are collapsed stacks.** `diffra/flamegraph@1` reads collapsed (folded) stacks
+    as text, stores them as a keyed table from stack to sample count, and is compared per stack
+    and per frame.
+
+## Direction
+
+- Thresholds judged in natural units, such as bytes and durations, are a direction only and are
+  not built. The root file schema already accepts thresholds written with a unit, such as
+  `10KiB` or `2ms`, but nothing judges them in those units yet.
 
 ## Not yet decided
 
@@ -69,8 +80,7 @@ dataset to a rule set, or to `null` to record it without rules. The file's name 
 is not decided. The standard dataset types are those of the earlier project file
 (`diffra/benchmark@1`, `diffra/size@1` and others); there is no table type with declared columns
 (decision 11), and CI timing and the job graph (decision 6) have no type yet.
-[Dataset types and converters](../datasets.md) specifies the standard types, with
-`diffra/table@1` in place of `diffra/benchmark@1`, and proposes each one's shape, identity,
+[Dataset types and converters](../datasets.md) proposes each standard type's shape, identity,
 converters, comparison and tests; none of it is built. The Baseline reference and bundle
 manifest schemas still allow a `previous-release` role (decision 13).
 

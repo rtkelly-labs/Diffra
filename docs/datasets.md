@@ -14,8 +14,9 @@ These points are decided in the decision records:
 - Diffra reads each tool's own output. A built-in converter turns a tool's standard output into a
   typed dataset, so the adopter does not reshape output for Diffra
   ([0002](adr/0002-project-file-and-datasets.md) decision 5).
-- All standard dataset types are built before the first adopter installs Diffra, including flame
-  graphs and Parquet and OpenMetrics input (0002 decision 5).
+- All standard dataset types are built before the first adopter installs Diffra: test results,
+  findings, coverage, a generic table, size, CI timing and the job graph, files with their
+  hashes, and flame graphs, with Parquet and OpenMetrics as inputs (0002 decision 5).
 - Converters are tested against the published validator for each format, where one exists, and
   against synthetic values (0002 decision 5).
 - CI timing and the job graph are datasets from the first install. Each run records wait, queue
@@ -26,35 +27,27 @@ These points are decided in the decision records:
   rejected input is saved so it can be reported. Size limits are budgets: totals and the largest
   entries are kept and the truncation is stated in one line (0002 decision 7).
 - A table dataset declares each column's type, unit and better direction, and a converter
-  supplies defaults for the formats it reads. Size data stays a separate dataset type (0002
-  decision 11).
-- Binary files are stored once per hash, with an index from hash to the run and artifact that
-  hold them. A record refers to a file by hash, size and media type
-  ([0004](adr/0004-records-integrity-and-storage.md) decision 5).
+  supplies defaults for the formats it reads. `diffra/table@1` replaces `diffra/benchmark@1`; its
+  rows are keyed by case, and BenchmarkDotNet's JSON is the first format with default columns.
+  Size data stays a separate dataset type (0002 decision 11).
+- `diffra/flamegraph@1` reads collapsed (folded) stacks as text. It is stored as a keyed table
+  from stack to sample count, and compared per stack and per frame (0002 decision 14).
+- Judging thresholds in natural units, such as bytes and durations, is a direction only and is not
+  built. The root file schema already accepts thresholds written with a unit, such as `10KiB` or
+  `2ms`, but nothing judges them in those units yet (0002, "Direction").
+- Any artifact a CI job produces is in scope, including binary files
+  ([0001](adr/0001-mission-and-scope.md) decision 4). Binary files are stored once per hash, with
+  an index from hash to the run and artifact that hold them. A record refers to a file by hash,
+  size and media type ([0004](adr/0004-records-integrity-and-storage.md) decision 5).
 - A dataset names its converter in the root file. Diffra never picks a converter from a file
   extension or from the shape of the content
   ([0009](adr/0009-dependencies-and-extensions.md) decision 4).
-- Parquet is read by a separate converter package built from this repository on Parquet.Net,
-  which stays out of the core (0009 decision 7). Optional converters are separate .NET programs
-  outside the native CI build ([0007](adr/0007-packaging-providers-and-the-action.md) decision 5).
-
-These points are also decided, and are not yet written into a decision record:
-
-- The standard dataset types are test results, findings, coverage, a generic table, size, CI
-  timing and the job graph, files with their hashes, and flame graphs, with Parquet and
-  OpenMetrics as inputs.
-- Converters for tool-specific formats are built into Diffra and released with it. They are not
-  separately versioned packages. Parquet is the one exception.
-- `diffra/table@1` replaces `diffra/benchmark@1`. Its rows are keyed by case. Its columns are
-  declared in the root file, each with a type, a unit and a better direction. Each converter
-  supplies default columns for the format it reads, and BenchmarkDotNet's JSON is the first.
-- `diffra/flamegraph@1` reads collapsed (folded) stacks as text. It is stored as a keyed table
-  from stack to sample count, and compared per stack and per frame.
-- OpenMetrics text is read by a converter in the core.
-- Any CI artifact is in scope, including binary files.
-- Judging thresholds in natural units, such as bytes and durations, is a direction only and is not
-  built. The root file schema already accepts thresholds written with a unit, such as `10KiB` or
-  `2ms`, but nothing evaluates them yet.
+- Converters for tool formats are built into Diffra and released with it, not as separately
+  versioned packages, and OpenMetrics text is read in the core (0009 decision 8). Parquet is the
+  one exception: it is read by a separate converter package built from this repository on
+  Parquet.Net, which stays out of the core (0009 decision 7). Optional converters are separate
+  .NET programs outside the native CI build
+  ([0007](adr/0007-packaging-providers-and-the-action.md) decision 5).
 
 Everything else on this page is *proposed*.
 
@@ -85,24 +78,28 @@ object holding `value`.
 
 - A field that is not keyed holds `{ "value": ... }` directly, such as `"total": { "value": "4" }`.
 - Numbers are canonical decimal strings, as in
-  [Recording a run](record.md#the-entries-file-proposed). Bytes are in `B` and counts have no
-  unit. Durations are in nanoseconds unless a table column declares another unit. A value is
-  written in the unit its field or column declares, so no `unit` is written beside it.
+  [Recording a run](record.md#the-entries-file-proposed). Bytes, durations and ratios take no
+  declared unit, as in the root file schema: bytes are in `B`, durations in nanoseconds, and
+  ratios are plain numbers. A count, integer or decimal is in the unit its field or column
+  declares. Either way no `unit` is written beside a value.
 - Converters do arithmetic in decimals, never in binary floating point, so a value converts the
   same way on every platform. A source number that cannot be held exactly, such as a float with
   more significant digits than the declared column allows, is rounded half to even to 9 decimal
   places, and the rounding is the converter's, not the platform's.
 - Keys and text are valid Unicode with no control characters. A path in `data` follows the rules
   for a source path in an entry: relative to the repository root, forward slashes, no `.` or `..`
-  segment. A path a tool wrote as absolute is made relative by removing the repository root; a
-  path outside the repository is kept under the key `<outside>/<file name>`, and the entry notes it.
+  segment. A path a tool wrote as absolute is made relative by removing the repository root. A
+  path outside the repository is kept under the key `<outside>/<digest>/<file name>`, where the
+  digest is the first 12 hexadecimal characters of the SHA-256 of the full path as written, so two
+  outside files with the same name do not collide.
 
 ### Converter names and versions
 
 A converter name is the key under `from` in the root file, as today: `from: { junit: "..." }`.
 Each entry's `sources` already records the path, converter and SHA-256 digest of every file read.
-It is proposed that each source also records the format version the converter detected, such as
-`2.1.0` for SARIF, which is a change to the entry schema. A converter that meets a format version
+It is proposed that each source also records the format version the converter detected, in a new
+field `formatVersion` beside `format`, such as `2.1.0` for SARIF; that is a change to the entry
+schema. A converter that meets a format version
 it does not support rejects the entry and says which versions it reads.
 
 ### Determinism
@@ -117,9 +114,14 @@ Every file a converter reads is untrusted, even when it came from the adopter's 
 
 - A file is read only when it lies inside the repository, with links not followed out of it. A
   file over 64 MiB, or files that together pass 256 MiB in one entry, are not read and the entry
-  is rejected. The 1,000-source cap in the entry schema applies.
-- XML is read with DTD processing prohibited, no external entities and no resolver, nesting at
-  most 256 deep, and no more than 10 million characters in one attribute or text node.
+  is rejected. The `files` converter for `diffra/size@1` reads only each file's length, so these
+  byte limits do not apply to it.
+- A glob that matches more than the entry schema's 1,000 sources is a budget, not a safety limit:
+  the first 1,000 in ordinal path order are read and the truncation is stated.
+- XML is read without processing a document type. A `DOCTYPE` declaration, such as the one
+  Istanbul and Vitest write in Cobertura files, is ignored (in .NET, `DtdProcessing.Ignore`): it
+  is never loaded or expanded, there are no external entities and no resolver. Nesting is at most
+  256 deep, and one attribute or text node holds at most 10 million characters.
 - JSON is read with a nesting limit of 256 and no comments or trailing commas, unless the format's
   own tools write them.
 - Text formats limit one line to 1 MiB.
@@ -135,8 +137,9 @@ and the numbers above are proposals.
 The root file's `limits` settings are budgets: `maxKeys` caps the number of keys in one keyed
 field, and `maxTextLength` caps one text value such as a failure message. When a field has more
 keys than the budget, the converter keeps the totals exact, keeps the keys that matter most for
-that type (named below), and records one line in `data` under `truncated`, saying how many keys
-were dropped from which field. Text over `maxTextLength` is cut and ends with `…`.
+that type (named below), and states how many keys were dropped from which field. The statement
+goes in the entry beside `data`, in a new field `truncated`, so it cannot clash with a field or
+column name. Text over `maxTextLength` is cut and ends with `…`.
 
 ### Datasets split across jobs
 
@@ -152,7 +155,9 @@ type below; it changes the merge rules and is listed under "Not yet decided".
 
 Items are matched by key between a pull request's record and the record at its comparison point.
 A key present on one side only is added or removed, and the `keys` rules (`added`, `removed`)
-judge it. A matched key is compared field by field with the rule types the root file already
+judge it. When either side's field was truncated, a key missing from it may have been dropped
+rather than removed, so a key absent from a truncated side is not reported as added or removed.
+A matched key is compared field by field with the rule types the root file already
 has. Fields that are noisy from run to run are judged against the history window
 ([0003](adr/0003-comparison-history-and-noise.md)).
 
@@ -163,8 +168,8 @@ has. Fields that are noisy from run to run are judged against the history window
 | Field | Key | Value |
 | --- | --- | --- |
 | `results` | Test | One of `{ "tag": "success", "duration" }`, `{ "tag": "error", "duration", "kind", "message" }` or `{ "tag": "skipped", "reason" }`. `duration` is in nanoseconds. `kind` is `assertion`, `exception` or `timeout`. |
-| `total`, `succeeded`, `failed`, `skipped` | — | Counts. |
-| `duration` | — | The sum of every test's duration, in nanoseconds. |
+| `total`, `succeeded`, `failed`, `skipped` | | Counts. |
+| `duration` | | The sum of every test's duration, in nanoseconds. |
 
 The root file schema has only `results` today; the other fields, and `occurrences` below, are new.
 
@@ -175,7 +180,12 @@ the enclosing `testsuite` name and `name` when there is no `classname`; for TRX,
 `className` and the result's `testName`, which carries the arguments of a data-driven test. A key
 that occurs more than once in one entry, as when a tool re-runs a flaky test, is kept once with
 the worst outcome (`error`, then `success`, then `skipped`) and gains `occurrences`, the number of
-times it ran.
+times it ran. A flaky test that failed and then passed is therefore stored as `error`; whether it
+should be is an open question.
+
+TRX's `testName` usually already starts with the class name. The key is `testName` alone when it
+starts with `className` followed by `.`, and `className.testName` otherwise (to confirm against
+current `dotnet test` output).
 
 ### Converters
 
@@ -186,8 +196,11 @@ times it ran.
 
 ### Default fields
 
-All of the fields above. `kind` comes from the failure element: `failure` is `assertion`, `error`
-is `exception`, and a TRX outcome of `Timeout` is `timeout`.
+All of the fields above. In JUnit, `kind` comes from the failure element: `failure` is
+`assertion` and `error` is `exception`. In TRX, an outcome of `Failed` or `Error` is `error` with
+the kind `exception` (TRX does not tell an assertion apart), `Timeout` is `error` with the kind
+`timeout`, `Passed` is `success`, and `NotExecuted`, `Inconclusive` and the other outcomes are
+`skipped`, with the outcome as the reason.
 
 ### Comparison
 
@@ -204,7 +217,8 @@ history window, since it is noisy. Added and removed tests are judged by the `ke
 
 There is no single published JUnit schema; the converter is tested against the JUnit XML schemas
 that test-reporting tools publish (which ones is to confirm) and against synthetic files covering
-every outcome, nested suites, missing `classname`, repeated keys and malformed input. TRX is
+every outcome, nested suites, missing `classname`, repeated keys, a `time` written with a
+thousands separator (such as `1,234.5`, which some runners write) and malformed input. TRX is
 tested against its published schema, `vstst.xsd`, if its licence allows the tests to use it (to
 confirm), and synthetic files.
 
@@ -216,17 +230,19 @@ confirm), and synthetic files.
 | --- | --- | --- |
 | `results` | Finding | `{ "tool", "rule", "level", "path", "line", "message" }`. `level` is `error`, `warning`, `note` or `none`; `line` is the start line, or absent. |
 | `byRule` | Tool and rule, as `<tool>/<rule>` | Count of findings. |
-| `total` | — | Count of findings. |
+| `total` | | Count of findings. |
 
 `results` is a new field; the root file schema has only `total` and `byRule` today.
 
 ### Identity
 
 A finding is keyed by tool, rule, path and a fingerprint, so that a finding moved by an edit
-above it stays the same finding. The fingerprint is the first of: a SARIF `fingerprints` value, a
-`partialFingerprints` value, or a SHA-256 of the message text with digits removed. The line is
-data, not identity. Findings that share a key, such as the same message twice in one file, are
-kept once with `occurrences`.
+above it stays the same finding. SARIF's `fingerprints` and `partialFingerprints` are objects of
+named values; the fingerprint is the value of the ordinally first name in `fingerprints`, or if
+there is none, in `partialFingerprints`, or else a SHA-256 of the message text with digits
+removed. The line is data, not identity. A result with no location has the path `<none>`.
+Findings that share a key, such as the same message twice in one file, are kept once with
+`occurrences`.
 
 ### Converters
 
@@ -236,8 +252,10 @@ kept once with `occurrences`.
 
 ### Default fields
 
-All of the fields above. The tool is the run's `tool.driver.name`; the level is the result's
-`level`, or the rule's default, or `warning`, as SARIF specifies.
+All of the fields above. The tool is the run's `tool.driver.name`. The level is the result's
+`level` when given. Otherwise, as SARIF specifies, the rule's default level or `warning` applies
+only when the result's `kind` is absent or `fail`; a result of any other `kind` (such as `pass`
+or `informational`) has the level `none`.
 
 ### Comparison
 
@@ -260,9 +278,9 @@ missing rule metadata, relative and absolute URIs with `uriBaseId`, and malforme
 
 | Field | Key | Value |
 | --- | --- | --- |
-| `coveredLines`, `totalLines` | — | Counts. |
-| `coveredBranches`, `totalBranches` | — | Counts; absent when the format has no branch data. |
-| `lineRate`, `branchRate` | — | Ratios from 0 to 1, rounded half to even to 6 decimal places. |
+| `coveredLines`, `totalLines` | | Counts. |
+| `coveredBranches`, `totalBranches` | | Counts; absent when the format has no branch data. |
+| `lineRate`, `branchRate` | | Ratios from 0 to 1, rounded half to even to 6 decimal places. |
 | `fileLineRate`, `fileBranchRate` | Path | Ratios, as above. |
 
 `coveredBranches` and `totalBranches` are new fields.
@@ -283,7 +301,11 @@ OpenCover are resolved against the repository root.
 
 All of the fields above. When an entry reads several files, as when each test project writes its
 own report, lines are combined line by line before counting: a line is covered when any file
-covers it, so a line counted in two reports is counted once.
+covers it, so a line counted in two reports is counted once. Branches cannot be combined that
+way, because the formats give a line's branch coverage as counts or a percentage, not as which
+branches ran. For a line in several reports, the branch counts are taken from the report that
+covers the most branches on it, so the combined branch figures are a lower bound, and the entry
+says so.
 
 ### Comparison
 
@@ -300,7 +322,8 @@ totals stay exact.
 Cobertura is tested against its published document type, `coverage-04.dtd`, by a test that loads
 the DTD from the test's own files, never from the network. OpenCover has no published schema
 that is known; it is tested with synthetic files. Both cover empty reports, files outside the
-repository and reports that overlap.
+repository and reports that overlap, and the Cobertura tests include a file with a `DOCTYPE`
+declaration naming an external DTD, which must be read without loading it.
 
 ## Tables: `diffra/table@1`
 
@@ -319,21 +342,24 @@ benchmarks:
   columns:
     meanTime: { better: lower }
     allocatedBytes: { better: lower }
-    medianTime: { source: Statistics.Median, type: duration, unit: ns, better: lower }
+    medianTime: { source: Statistics.Median, type: duration, better: lower }
 ```
 
 A column has a `type` (`count`, `integer`, `decimal`, `bytes`, `duration` or `ratio`), a `unit`
-where the type takes one, and `better`: `lower`, `higher` or `none`. `none` means a change is
+where the type takes one (`count`, `integer` and `decimal` do; `bytes`, `duration` and `ratio`
+do not), and `better`: `lower`, `higher` or `none`. `none` means a change is
 shown without being called better or worse. When `columns` is left out, the converter's default
 columns apply. When it is given, it selects columns: a default column listed by name keeps its
 default type and unit, and may set `better`. Any other column also names its `source`, the field,
-metric or column it is read from, and must give `type` and `unit`.
+metric or column it is read from, and must give `type`, and `unit` where the type takes one.
 
 ### Identity
 
 Rows are keyed by case: a benchmark's full name with its parameters, an OpenMetrics label set, or
 the value of the key column a Parquet dataset declares. A case that occurs twice in one entry is
-rejected, because the converter cannot tell which value is right.
+rejected, because the converter cannot tell which value is right. Until the question below about
+BenchmarkDotNet jobs is settled, this rejects a BenchmarkDotNet file that runs one benchmark under
+several jobs.
 
 ### Converters
 
@@ -349,18 +375,27 @@ rejected, because the converter cannot tell which value is right.
 | --- | --- | --- | --- | --- |
 | `benchmarkdotnet` | `meanTime` | duration, `ns` | lower | `Statistics.Mean` |
 | | `allocatedBytes` | bytes | lower | `Memory.BytesAllocatedPerOperation` |
-| | `gen0PerKOps`, `gen1PerKOps`, `gen2PerKOps` | count, `count/1000-ops` | lower | `Memory.Gen0Collections` (and so on) per 1,000 of `Memory.TotalOperations` |
+| | `gen0PerKOps`, `gen1PerKOps`, `gen2PerKOps` | decimal, `count/1000-ops` | lower | `Memory.Gen0Collections` (and so on) per 1,000 of `Memory.TotalOperations` |
 | `openmetrics` | One per gauge or counter family | decimal, with the family's `UNIT` if it has one | none | The sample's value; a counter's `_total` sample |
-| `parquet` | None | — | — | Columns must be declared |
+| `parquet` | None | | | Columns must be declared |
 
 The BenchmarkDotNet field names above are to confirm against the exporter's current output, and
 match the earlier `diffra/benchmark@1` fields and units. The BenchmarkDotNet case is the
 benchmark's `FullName`. One file can hold the same benchmark under several jobs, such as two
-runtimes; whether the job then becomes part of the case or a dimension is open.
+runtimes; whether the job then becomes part of the case or a dimension is open (see "Not yet
+decided").
 
 An OpenMetrics row is the sample's label set, written in label-name order as `name="value"` pairs
 joined by `,`; an empty label set is the case `{}`. Histogram and summary families have no default
 column; a declared column may name one of their samples, such as `request_seconds_sum`.
+
+Other OpenMetrics content is treated as follows (proposed):
+
+- A sample whose value is `NaN`, `+Inf` or `-Inf` has no decimal form. Its cell is left out and
+  the entry states how many were skipped.
+- `info` and `stateset` families have no default column; their samples can be declared as
+  columns. `gaugehistogram` is treated like a histogram, and `unknown` like a gauge.
+- `_created` samples, timestamps and exemplars are ignored.
 
 ### Comparison
 
@@ -391,7 +426,7 @@ type the converter accepts.
 
 | Field | Key | Value |
 | --- | --- | --- |
-| `total` | — | Bytes. |
+| `total` | | Bytes. |
 | `files` | Path | Bytes. |
 
 ### Identity
@@ -402,7 +437,7 @@ Files are keyed by repository-relative path.
 
 | Converter | Format | Versions |
 | --- | --- | --- |
-| `files` | Any files a glob matches; their length on disk | — |
+| `files` | Any files a glob matches; their length on disk | |
 
 ### Default fields
 
@@ -430,13 +465,13 @@ graph.
 
 | Field | Key | Value |
 | --- | --- | --- |
-| `jobs` | Job | `{ "queue", "execution", "conclusion", "needs" }`. Durations in nanoseconds; `conclusion` is `success`, `failure`, `cancelled`, `skipped` or `running`; `needs` lists the keys of the jobs it waits for. |
-| `wait` | — | Duration from the run's creation to the last job finishing. |
-| `queue` | — | The sum of every job's queue time. |
-| `pathExecution` | — | Execution time along the longest path through the graph. |
-| `path` | — | The keys of the jobs on that path, in order. |
-| `attempt`, `earlierAttempts` | — | The attempt measured and how many attempts came before it. |
-| `complete` | — | Whether every job had finished when it was read. |
+| `jobs` | Job | `{ "queue", "execution", "status", "conclusion", "needs" }`. Durations in nanoseconds. `status` is `queued`, `running` or `completed`. `conclusion`, for a completed job, is `success`, `failure`, `cancelled`, `skipped`, `timed_out`, `neutral` or `action_required`. `needs` lists the keys of the jobs it waits for. |
+| `wait` | | Duration from the run's creation to the last job finishing. |
+| `queue` | | The sum of every job's queue time. |
+| `pathExecution` | | Execution time along the longest path through the graph. |
+| `path` | | The keys of the jobs on that path, in order. |
+| `attempt`, `earlierAttempts` | | The attempt measured and how many attempts came before it. |
+| `complete` | | Whether every job had finished when it was read. |
 
 ### Identity
 
@@ -459,6 +494,11 @@ jobs API and the workflow file, as `scripts/CiTiming.cs` does today.
 
 All of the fields above. Execution counts the time at least one leg of a job was running, so a
 matrix counts once on the path.
+
+Decision 6 asks for wait, queue and execution time per job and for the longest path. This shape
+records queue and execution per job, wait for the whole run, and only execution for the path; a
+job has no wait of its own beyond its queue time, and the path's queue time is not summed. Whether
+that meets the decision is an open question.
 
 ### Comparison
 
@@ -503,7 +543,7 @@ hands over a CI artifact.
 
 | Converter | Format | Versions |
 | --- | --- | --- |
-| `files` | Any files a glob matches | — |
+| `files` | Any files a glob matches | |
 
 The media type comes from a fixed table of file extensions in the converter, with
 `application/octet-stream` for anything else. The media type is shown in reports; it never picks
@@ -538,7 +578,7 @@ empty files and globs that match nothing.
 | Field | Key | Value |
 | --- | --- | --- |
 | `stacks` | Stack | Sample count. |
-| `total` | — | Sample count over every stack. |
+| `total` | | Sample count over every stack. |
 
 Per-frame figures are derived when comparing, not stored.
 
@@ -551,7 +591,7 @@ including annotations such as `_[k]`. The same stack on two lines is summed.
 
 | Converter | Format | Versions |
 | --- | --- | --- |
-| `collapsed` | Collapsed stacks: one stack per line, frames separated by `;`, then a space and a count | — |
+| `collapsed` | Collapsed stacks: one stack per line, frames separated by `;`, then a space and a count | |
 
 Profilers that write this format, directly or through the FlameGraph collapse scripts, include
 `perf`, py-spy and async-profiler. The count is the last space-separated token, so a frame may
@@ -597,7 +637,8 @@ empty frames, repeated stacks, counts that are not whole numbers (rejected), and
 | `collapsed` | `diffra/flamegraph@1` | Collapsed stacks | Core |
 
 Proposed beyond the decisions: the type names `diffra/ci-timing@1` and `diffra/files@1`, the
-converter names `ci-run` and `collapsed`, and Parquet filling `diffra/table@1`. Each converter is
+converter names `openmetrics`, `parquet`, `ci-run` and `collapsed`, none of which the root file
+schema's `from` names list yet, and Parquet filling `diffra/table@1`. Each converter is
 also benchmarked in this repository on real input (see the [plan](../PLAN.md), step 6).
 
 ## Not yet decided
@@ -617,10 +658,16 @@ also benchmarked in this repository on real input (see the [plan](../PLAN.md), s
 - Formats for the rollout's tools that have no route here yet: mypy writes JSON and JUnit XML but
   no SARIF, so its findings need a converter for its JSON or another route; Biome writes SARIF only
   from 2.4; and Vitest's benchmark output has no table converter.
-- Whether a BenchmarkDotNet benchmark run under several jobs in one file is told apart by the case
-  or by a dimension.
 - Whether to read the Prometheus text format as well as OpenMetrics, and whether `size` reads the
   members of archives such as packages.
 - Which published JUnit schemas the `junit` converter is tested against, and whether the TRX
   schema may be used in tests.
 - Whether the format version each source was read as is added to the entry schema.
+- Whether a duration column in a table may declare a unit, such as `ms`, rather than always
+  holding nanoseconds; the root file schema gives `duration` no unit today.
+- Whether the CI timing shape meets decision 6's "per job and for the longest path": it records
+  no wait per job, and only execution time along the path.
+- Whether a flaky test that failed and then passed within one entry is stored as `error`, as
+  proposed, or as `success` with its failures noted.
+- How a BenchmarkDotNet file that runs one benchmark under several jobs is recorded; until it is
+  settled, the duplicate-case rule rejects it.

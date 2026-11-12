@@ -315,6 +315,15 @@ public static class AttentionTests
         Equal(false, Enforcement.FailsStep(FailOn.Warn, unjudged), "a change no rule judged never fails the step");
         Equal(false, Enforcement.FailsStep(FailOn.Fail, unjudged), "fail ignores a change no rule judged");
         Equal(false, Enforcement.FailsStep(FailOn.Warn, []), "no findings never fail the step");
+
+        // Merge findings: a required dataset not collected counts as warn; nothing else counts yet.
+        MergeFinding[] missing = [new(MergeFindingKind.NotCollected, "a"), new(MergeFindingKind.Conflict, "b")];
+        MergeFinding[] uncounted = [new(MergeFindingKind.Conflict, "a"), new(MergeFindingKind.Rejected, "b"), new(MergeFindingKind.StatusConflict, "c"), new(MergeFindingKind.ValueAndData, "d"), new(MergeFindingKind.OtherCommit, "e")];
+        Equal("warn", Enforcement.Status(MergeFindingKind.NotCollected), "not collected counts as warn");
+        Equal(true, Enforcement.MergeFailsStep(FailOn.Warn, missing), "warn trips on a dataset not collected");
+        Equal(false, Enforcement.MergeFailsStep(FailOn.Fail, missing), "fail ignores a dataset not collected");
+        Equal(false, Enforcement.MergeFailsStep(FailOn.Never, missing), "never ignores a dataset not collected");
+        Equal(false, Enforcement.MergeFailsStep(FailOn.Warn, uncounted), "other merge findings do not count");
         Equal(false, Enforcement.FailsStep(FailOn.Fail, unmeasured), "fail ignores inconclusive");
         Equal(false, Enforcement.FailsStep(FailOn.Never, warned), "never ignores a warning");
         Throws<ArgumentOutOfRangeException>(() => Enforcement.FailsStep((FailOn)7, failed));

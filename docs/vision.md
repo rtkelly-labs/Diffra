@@ -87,8 +87,8 @@ numeric payload. `collect` creates Evidence, `diff` records a Delta against a su
 or Markdown, and as the one-screen comment and agent formats headed by an attention level.
 Nothing posts the comment yet. `bundle` moves evidence through a content-addressed store, and
 `present` builds and serves a review bundle. The root file has a schema and a loader that checks
-its cross-references, which `diffra record` uses; the `fail-on` decision is library code with no
-step to read it; and `diffra record` records a number given with `--value`, or a skipped or failed dataset,
+its cross-references, which `diffra record` uses; `diffra merge` reads the `fail-on`
+setting and fails the step on a required dataset not collected when it is `warn`; and `diffra record` records a number given with `--value`, or a skipped or failed dataset,
 checked against the root file, and `diffra merge` merges the entries files of every job,
 reporting every disagreement in values or statuses, naming each job involved, and listing the
 planned datasets no job collected. Nothing yet carries the jobs' files to a collecting job or

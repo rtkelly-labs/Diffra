@@ -24,16 +24,18 @@ is an agent asked to make CI pass, and branch protection already decides what bl
 4. **Untrusted runs still get output.** Runs with a read-only token, such as pull requests from
    forks or dependency bots, write the result to the run's summary page. A separate posting
    workflow is optional and not part of the standard install.
-5. **Approval and promotion are not part of the open tool.** A person or an agent decides whether
+5. **A required dataset that was not collected counts as a warning.** That includes one collected
+   only as rejected entries. It fails the step under `fail-on: warn` and not under `fail-on: fail`.
+6. **Approval and promotion are not part of the open tool.** A person or an agent decides whether
    to proceed with the findings.
-6. **Restricting who may edit the project file is the repository's business** (code owners,
+7. **Restricting who may edit the project file is the repository's business** (code owners,
    branch protection), not Diffra's.
 
 ## Not yet decided
 
-- Whether a required dataset that was not collected, a rejected entry, a first run with no history
-  and a comparison that cannot be attributed count towards `fail-on`. Until this is ruled, they
-  fail the step only through the finding status they are reported with. Today a comparison with
+- Whether a first run with no history, a comparison that cannot be attributed, and the merge's
+  other findings (conflicts and rejected entries for optional datasets) count towards `fail-on`.
+  Until this is ruled, they fail the step only through the finding status they are reported with. Today a comparison with
   no usable reference is reported as `inconclusive`, so `fail-on: warn` fails the step on it and
   `fail-on: fail` does not.
 - Whether a change to the scripts that collect the data is also surfaced, and how it is detected.
@@ -43,6 +45,6 @@ is an agent asked to make CI pass, and branch protection already decides what bl
 
 `eval` exits 3 for `fail`, `needs-review` or `inconclusive`, and the self-evaluation job fails the
 build on those. `Enforcement` in the protocol library reads `fail-on` and decides whether findings
-fail the step. Nothing calls it yet; it takes effect when the final step that collects the records
-exists. The Baseline reference carries `trusted`, `candidate` and `untrusted` statuses
+fail the step. `diffra merge` calls it with `--fail-on` or `DIFFRA_FAIL_ON` and exits 3 when its
+findings fail the step; nothing else calls it yet. The Baseline reference carries `trusted`, `candidate` and `untrusted` statuses
 and an `approved-main` role, and `Promotion` implements two-run promotion as library code.

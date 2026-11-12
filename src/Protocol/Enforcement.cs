@@ -73,12 +73,32 @@ public static class Enforcement
     public static bool FailsStep(FailOn setting, IEnumerable<RankedFinding> findings)
     {
         ArgumentNullException.ThrowIfNull(findings);
-        return setting switch
-        {
-            FailOn.Never => false,
-            FailOn.Fail => findings.Any(f => f.Status == "fail"),
-            FailOn.Warn => findings.Any(f => f.Status is "fail" or "warn" or "needs-review" or "inconclusive"),
-            _ => throw new ArgumentOutOfRangeException(nameof(setting), setting, "Unknown fail-on value."),
-        };
+        return findings.Any(finding => Trips(setting, finding.Status));
     }
+
+    /// <summary>
+    /// The status a merge finding counts with under <c>fail-on</c>, or null when it does not count.
+    /// A required dataset that was not collected, including one collected only as rejected
+    /// entries, counts as <c>warn</c>. Other merge findings do not count yet.
+    /// </summary>
+    public static string? Status(MergeFindingKind kind) => kind switch
+    {
+        MergeFindingKind.NotCollected => "warn",
+        _ => null,
+    };
+
+    /// <summary>Whether the merge findings fail the step under the setting.</summary>
+    public static bool MergeFailsStep(FailOn setting, IEnumerable<MergeFinding> findings)
+    {
+        ArgumentNullException.ThrowIfNull(findings);
+        return findings.Any(finding => Status(finding.Kind) is { } status && Trips(setting, status));
+    }
+
+    private static bool Trips(FailOn setting, string status) => setting switch
+    {
+        FailOn.Never => false,
+        FailOn.Fail => status == "fail",
+        FailOn.Warn => status is "fail" or "warn" or "needs-review" or "inconclusive",
+        _ => throw new ArgumentOutOfRangeException(nameof(setting), setting, "Unknown fail-on value."),
+    };
 }

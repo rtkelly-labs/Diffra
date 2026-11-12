@@ -1012,8 +1012,8 @@ public static class EntryMerge
                 blocked.Add(group.Key);
             }
 
-            var values = group.Where(entry => entry.Status == EntryStatus.Recorded && entry.Value is not null).ToList();
-            var files = group.Where(entry => entry.Status == EntryStatus.Recorded && entry.Data is not null).ToList();
+            var values = group.Where(entry => entry is { Status: EntryStatus.Recorded, Value: not null }).ToList();
+            var files = group.Where(entry => entry is { Status: EntryStatus.Recorded, Data: not null }).ToList();
             if (values.Count > 0 && files.Count > 0)
             {
                 findings.Add(new MergeFinding(
@@ -1035,8 +1035,8 @@ public static class EntryMerge
             var found = false;
             foreach (var form in new[]
             {
-                list.FindAll(entry => entry.Status == EntryStatus.Recorded && entry.Value is not null),
-                list.FindAll(entry => entry.Status == EntryStatus.Recorded && entry.Data is not null),
+                list.FindAll(entry => entry is { Status: EntryStatus.Recorded, Value: not null }),
+                list.FindAll(entry => entry is { Status: EntryStatus.Recorded, Data: not null }),
             })
             {
                 var distinct = new List<RecordEntry>();

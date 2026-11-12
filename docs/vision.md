@@ -86,7 +86,7 @@ Nothing posts the comment yet. `bundle` moves evidence through a content-address
 `present` builds and serves a review bundle. The root file has a schema and a loader that checks
 its cross-references, which no command uses yet; the `fail-on` decision is library code with no
 step to read it; and `diffra record` is specified, with library code that validates its entries, writes and
-reads entries files and merges them, but no command or collecting job yet. No converter for a tool's own
+reads entries files and merges them, reporting every disagreement in values or statuses and naming each job involved, but no command or collecting job yet. No converter for a tool's own
 format exists yet. The names Evidence, Delta and Assessment come from the earlier design; the
 glossary gives the words that replace them. The [sample
 workflow](../examples/sample-project/workflow/) contains inputs and checked-in outputs, the

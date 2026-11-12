@@ -114,10 +114,12 @@ Every file a converter reads is untrusted, even when it came from the adopter's 
 
 - A file is read only when it lies inside the repository, with links not followed out of it. A
   file over 64 MiB, or files that together pass 256 MiB in one entry, are not read and the entry
-  is rejected. The `files` converter for `diffra/size@1` reads only each file's length, so these
-  byte limits do not apply to it.
-- A glob that matches more than the entry schema's 1,000 sources is a budget, not a safety limit:
-  the first 1,000 in ordinal path order are read and the truncation is stated.
+  is rejected. The `files` converter for `diffra/size@1` does not parse what it reads: it streams
+  each file once to take its length and the SHA-256 digest its source needs, so these byte limits
+  do not apply to it.
+- A glob that matches more than the entry schema's 1,000 sources rejects the entry, as
+  [Recording a run](record.md#the-command-proposed) says. This is a safety limit, not a budget,
+  so a size dataset covers at most 1,000 files.
 - XML is read without processing a document type. A `DOCTYPE` declaration, such as the one
   Istanbul and Vitest write in Cobertura files, is ignored (in .NET, `DtdProcessing.Ignore`): it
   is never loaded or expanded, there are no external entities and no resolver. Nesting is at most
@@ -167,7 +169,7 @@ has. Fields that are noisy from run to run are judged against the history window
 
 | Field | Key | Value |
 | --- | --- | --- |
-| `results` | Test | One of `{ "tag": "success", "duration" }`, `{ "tag": "error", "duration", "kind", "message" }` or `{ "tag": "skipped", "reason" }`. `duration` is in nanoseconds. `kind` is `assertion`, `exception` or `timeout`. |
+| `results` | Test | One of `{ "tag": "success", "duration" }`, `{ "tag": "error", "duration", "kind", "message" }` or `{ "tag": "skipped", "reason" }`. `duration` is in nanoseconds. `kind` is `assertion`, `exception` or `timeout`; `kind` and its values are new to the schema. |
 | `total`, `succeeded`, `failed`, `skipped` | | Counts. |
 | `duration` | | The sum of every test's duration, in nanoseconds. |
 
@@ -199,8 +201,8 @@ current `dotnet test` output).
 All of the fields above. In JUnit, `kind` comes from the failure element: `failure` is
 `assertion` and `error` is `exception`. In TRX, an outcome of `Failed` or `Error` is `error` with
 the kind `exception` (TRX does not tell an assertion apart), `Timeout` is `error` with the kind
-`timeout`, `Passed` is `success`, and `NotExecuted`, `Inconclusive` and the other outcomes are
-`skipped`, with the outcome as the reason.
+`timeout`, `Aborted` is `error` with the kind `exception`, `Passed` is `success`, and
+`NotExecuted`, `Inconclusive` and the other outcomes are `skipped`, with the outcome as the reason.
 
 ### Comparison
 
@@ -248,7 +250,7 @@ Findings that share a key, such as the same message twice in one file, are kept 
 
 | Converter | Format | Versions |
 | --- | --- | --- |
-| `sarif` | SARIF, as CodeQL, Biome (from 2.4) and Ruff (`--output-format sarif`; the first version is to confirm) write it | 2.1.0 |
+| `sarif` | SARIF, as CodeQL, Biome (from 2.4, to confirm) and Ruff (`--output-format sarif`; the first version is to confirm) write it | 2.1.0 |
 
 ### Default fields
 
@@ -301,11 +303,12 @@ OpenCover are resolved against the repository root.
 
 All of the fields above. When an entry reads several files, as when each test project writes its
 own report, lines are combined line by line before counting: a line is covered when any file
-covers it, so a line counted in two reports is counted once. Branches cannot be combined that
-way, because the formats give a line's branch coverage as counts or a percentage, not as which
-branches ran. For a line in several reports, the branch counts are taken from the report that
-covers the most branches on it, so the combined branch figures are a lower bound, and the entry
-says so.
+covers it, so a line counted in two reports is counted once. OpenCover gives each branch point
+its own visit count, so its branches are combined the same way: a branch is covered when any file
+covers it. Cobertura gives a line's branch coverage only as counts or a percentage
+(`condition-coverage`), not as which branches ran, so its branches cannot be combined exactly. For
+a line in several Cobertura reports, the branch counts are taken from the report that covers the
+most branches on it, so the combined branch figures are a lower bound, and the entry says so.
 
 ### Comparison
 
@@ -373,7 +376,7 @@ several jobs.
 
 | Converter | Column | Type and unit | Better | Read from |
 | --- | --- | --- | --- | --- |
-| `benchmarkdotnet` | `meanTime` | duration, `ns` | lower | `Statistics.Mean` |
+| `benchmarkdotnet` | `meanTime` | duration | lower | `Statistics.Mean` |
 | | `allocatedBytes` | bytes | lower | `Memory.BytesAllocatedPerOperation` |
 | | `gen0PerKOps`, `gen1PerKOps`, `gen2PerKOps` | decimal, `count/1000-ops` | lower | `Memory.Gen0Collections` (and so on) per 1,000 of `Memory.TotalOperations` |
 | `openmetrics` | One per gauge or counter family | decimal, with the family's `UNIT` if it has one | none | The sample's value; a counter's `_total` sample |
@@ -386,7 +389,12 @@ runtimes; whether the job then becomes part of the case or a dimension is open (
 decided").
 
 An OpenMetrics row is the sample's label set, written in label-name order as `name="value"` pairs
-joined by `,`; an empty label set is the case `{}`. Histogram and summary families have no default
+joined by `,`; an empty label set is the case `{}`. Each value is written with OpenMetrics' own
+escapes (`\\`, `\"` and `\n`) inside its double quotes, so a `,` or `"` in a value cannot be
+mistaken for a separator. A default column's name is the family name in lower camel case, with
+each underscore removed and the letter after it capitalised (`http_requests` becomes
+`httpRequests`), to fit the root file's column name pattern; two families that give the same name
+reject the entry (proposed). Histogram and summary families have no default
 column; a declared column may name one of their samples, such as `request_seconds_sum`.
 
 Other OpenMetrics content is treated as follows (proposed):
@@ -492,8 +500,10 @@ jobs API and the workflow file, as `scripts/CiTiming.cs` does today.
 
 ### Default fields
 
-All of the fields above. Execution counts the time at least one leg of a job was running, so a
-matrix counts once on the path.
+All of the fields above. `jobs` has one key per matrix leg, since each leg is shown as its own
+job. Dependencies in the run file name workflow job ids, and every leg of a matrix shares its
+job's id; on the longest path, a matrix job's execution is the time at least one of its legs was
+running, so a matrix counts once on the path.
 
 Decision 6 asks for wait, queue and execution time per job and for the longest path. This shape
 records queue and execution per job, wait for the whole run, and only execution for the path; a
@@ -612,8 +622,8 @@ only is added or removed.
 ### Limits and budgets
 
 At most 512 frames in a stack. `maxKeys` caps `stacks`; the stacks with the most samples are
-kept, and the rest are summed into one stack keyed `[truncated]`, so `total` and every kept share
-stay exact.
+kept, the rest are left out of `stacks`, and `truncated` states how many stacks and samples were
+dropped. `total` still counts every sample, so every kept share stays exact.
 
 ### Tests
 
@@ -657,12 +667,13 @@ also benchmarked in this repository on real input (see the [plan](../PLAN.md), s
   run, and whether the collecting job's own time is measured.
 - Formats for the rollout's tools that have no route here yet: mypy writes JSON and JUnit XML but
   no SARIF, so its findings need a converter for its JSON or another route; Biome writes SARIF only
-  from 2.4; and Vitest's benchmark output has no table converter.
+  from 2.4 (to confirm); and Vitest's benchmark output has no table converter.
 - Whether to read the Prometheus text format as well as OpenMetrics, and whether `size` reads the
   members of archives such as packages.
 - Which published JUnit schemas the `junit` converter is tested against, and whether the TRX
   schema may be used in tests.
 - Whether the format version each source was read as is added to the entry schema.
+- Whether the entry schema gains the `truncated` field that states what a budget dropped.
 - Whether a duration column in a table may declare a unit, such as `ms`, rather than always
   holding nanoseconds; the root file schema gives `duration` no unit today.
 - Whether the CI timing shape meets decision 6's "per job and for the longest path": it records

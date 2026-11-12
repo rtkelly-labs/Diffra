@@ -497,7 +497,7 @@ public static class RecordEntryTests
     {
         var linux = new Dictionary<string, string>(StringComparer.Ordinal) { ["os"] = "linux" };
         var windows = new Dictionary<string, string>(StringComparer.Ordinal) { ["os"] = "windows" };
-        var none = new Dictionary<string, string>(StringComparer.Ordinal);
+        var none = System.Collections.ObjectModel.ReadOnlyDictionary<string, string>.Empty;
         var result = EntryMerge.Merge(
             Commit,
             [

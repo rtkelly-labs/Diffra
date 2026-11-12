@@ -484,8 +484,8 @@ public static class MergeCommandTests
     private static (int ExitCode, string Output, string Error) MergeWithEnvironment(Folder run, string failOn, params string[] arguments)
     {
         var environment = new Dictionary<string, string> { ["DIFFRA_FAIL_ON"] = failOn };
-        return RecordCommandTests.RunCli(run.Directory, environment,
-            ["merge", "--root-file", run.RootFilePath, "--commit", Commit, "--entries", run.Entries, "-o", run.Output, .. arguments]);
+        string[] command = ["merge", "--root-file", run.RootFilePath, "--commit", Commit, "--entries", run.Entries, "-o", run.Output, .. arguments];
+        return RecordCommandTests.RunCli(run.Directory, environment, command);
     }
 
     private static void WritesUnderTheRunFolderByDefault()

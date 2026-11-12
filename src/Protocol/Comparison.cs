@@ -308,7 +308,7 @@ public static class StructuredNumericComparator
                 {
                     if (!TryReadNumber(measurementValue, out var number))
                     {
-                        error = $"Measurement at '{childPath}' must have a finite decimal value.";
+                        error = $"Measurement at '{childPath}' must have a value written as plain digits that can be held exactly: no more than 28 decimal places and about 28 significant digits.";
                         return false;
                     }
 
@@ -361,11 +361,31 @@ public static class StructuredNumericComparator
     {
         number = default;
         if (value.ValueKind == JsonValueKind.Number) return value.TryGetDecimal(out number);
-        return value.ValueKind == JsonValueKind.String && decimal.TryParse(
-            value.GetString(),
+        if (value.ValueKind != JsonValueKind.String) return false;
+        var text = value.GetString()!;
+        return decimal.TryParse(
+            text,
             System.Globalization.NumberStyles.AllowLeadingSign | System.Globalization.NumberStyles.AllowDecimalPoint,
             System.Globalization.CultureInfo.InvariantCulture,
-            out number);
+            out number) && IsHeldExactly(text, number);
+    }
+
+    // decimal.TryParse rounds a value that has more digits than a decimal holds. Two different
+    // values could then round to the same decimal and compare as unchanged, so a value that was
+    // rounded is refused. The text has already parsed, so apart from a trailing NUL, which the
+    // parser lets through, it is an optional sign, digits and an optional point. It is held exactly
+    // when it is the parsed value in another spelling, and a NUL makes it no spelling of any value.
+    private static bool IsHeldExactly(string text, decimal number)
+    {
+        var digits = text.AsSpan().TrimStart("+-");
+        var point = digits.IndexOf('.');
+        var whole = (point < 0 ? digits : digits[..point]).TrimStart('0');
+        var fraction = (point < 0 ? [] : digits[(point + 1)..]).TrimEnd('0');
+        var held = Format(Math.Abs(number)).AsSpan();
+        var heldPoint = held.IndexOf('.');
+        var heldWhole = (heldPoint < 0 ? held : held[..heldPoint]).TrimStart('0');
+        var heldFraction = heldPoint < 0 ? [] : held[(heldPoint + 1)..];
+        return whole.SequenceEqual(heldWhole) && fraction.SequenceEqual(heldFraction);
     }
 
     // Delta and Assessment decimal strings are plain invariant decimals: an optional leading

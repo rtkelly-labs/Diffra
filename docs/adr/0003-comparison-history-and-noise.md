@@ -52,8 +52,8 @@ changes other pull requests had made. Noisy values such as timings cannot be jud
 
 ## Current code
 
-`diff` takes an explicit Baseline reference and baseline Evidence. `GitBaselineResolver` and
-`Promotion` exist as library code. `scripts/RunDogfood.cs` compares with the merge base, or with
+`diff` takes an explicit Baseline reference and baseline Evidence. `GitBaselineResolver` exists
+as library code; the two-run promotion code has been removed. `scripts/RunDogfood.cs` compares with the merge base, or with
 the nearest recorded first-parent ancestor in a fixed window of 20 commits ending at the merge
 base, and states the distance and the commits in between. With no record in the window it
 reports that it cannot attribute the change. The window is not yet a setting. Keyed collection

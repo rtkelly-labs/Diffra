@@ -42,7 +42,6 @@ built.
 | Self-verification pipeline | CI script | `scripts/RunDogfood.cs` | |
 | Enforcement setting `fail-on` | Library; `merge` calls it | `Enforcement.cs`, `src/Cli/MergeCommand.cs` | [0005](adr/0005-surface-do-not-enforce.md) |
 | Git merge-base baseline resolver | Library | `GitBaselineResolver.cs` | [0003](adr/0003-comparison-history-and-noise.md) |
-| Two-run verification and promotion records | Library | `Promotion.cs` | [0005](adr/0005-surface-do-not-enforce.md) |
 | Keyed and ordered collection comparison | Library | `KeyedCollectionComparator.cs` | [0003](adr/0003-comparison-history-and-noise.md) |
 | Cyclomatic complexity evidence | Library | `Complexity.cs`, `schemas/complexity-v1.schema.json` | |
 | Code coverage evidence | Library | `Coverage.cs`, `schemas/coverage-v1.schema.json` | [0002](adr/0002-project-file-and-datasets.md) |

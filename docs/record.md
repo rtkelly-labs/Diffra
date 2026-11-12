@@ -108,7 +108,8 @@ The `sarif` converter reads SARIF 2.1.0 logs, as CodeQL and Ruff write them:
   `rule.index` or `ruleIndex` names. The descriptor is looked up in the extension that
   `rule.toolComponent.index` names, else in the driver or extension whose `guid` matches
   `rule.toolComponent.guid`, ignoring case, else in the driver; a `toolComponent` that gives only
-  a `name` uses the driver. A result with no rule rejects the entry.
+  a `name` uses the driver, and a `guid` that matches none finds no descriptor. A result with no
+  rule rejects the entry.
 - The level is the result's `level` when given. Otherwise, when `kind` is absent or `fail`, it is
   the level of the invocation's `ruleConfigurationOverrides` entry for the rule, the invocation
   being the one the result's `provenance.invocationIndex` names, else the rule's

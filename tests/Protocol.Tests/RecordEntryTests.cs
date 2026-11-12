@@ -107,7 +107,7 @@ public static class RecordEntryTests
     {
         Equal(true, RecordEntries.Validate(Entry("build\n", 1, value: "1")).Count > 0);
         Equal(true, RecordEntries.Validate(Entry("pack", 1, value: "12\n")).Count > 0);
-        Equal(true, RecordEntries.Validate(Entry("pack", 1, value: "1", key: "﻿Suite.Case")).Count > 0);
+        Equal(true, RecordEntries.Validate(Entry("pack", 1, value: "1", key: "\ufeffSuite.Case")).Count > 0);
         Equal(0, RecordEntries.Validate(Entry("pack", 1, value: "1", key: "Suite.Case\u0085")).Count);
         Equal(false, RecordEntries.IsSafeSourcePath("a/b\n"));
 
@@ -126,6 +126,7 @@ public static class RecordEntryTests
 
         var loneSurrogate = Entry("lint", 1, status: "skipped").Replace("Not run on this platform.", "\\ud800", StringComparison.Ordinal);
         Equal(1, RecordEntries.Validate(loneSurrogate).Count);
+        Equal(1, RecordEntries.Validate(Entry("pack", 1, value: "1").Replace("pack", "pa\ud800ck", StringComparison.Ordinal)).Count);
     }
 
     private static void ReadsPastBadBytes()
@@ -133,7 +134,7 @@ public static class RecordEntryTests
         var path = TempFile();
         try
         {
-            File.WriteAllBytes(path, [0xFF, (byte)'\n']);
+            File.WriteAllBytes(path, [0xEF, 0xBB, 0xBF, 0xFF, (byte)'\n']);
             EntriesFile.Append(path, Entry("pack", 1, value: "1"));
             File.AppendAllText(path, Entry("lint", 1, status: "skipped").Replace("Not run on this platform.", "\\udc00", StringComparison.Ordinal) + "\n");
             EntriesFile.Append(path, Entry("pack", 1, value: "1", dataset: "warnings"));
@@ -291,12 +292,19 @@ public static class RecordEntryTests
         Equal(0, keyless.Entries.Count);
         Equal(MergeFindingKind.ValueAndData, Single(keyless.Findings).Kind);
 
+        var skipped = Merge(
+            Entry("pack", 1, value: "1", dataset: "tests"),
+            DataEntry("test", "{\"a\":1}"),
+            Entry("lint", 1, dataset: "tests", status: "skipped"));
+        Equal(0, skipped.Entries.Count);
+        Equal("StatusConflict,ValueAndData", string.Join(",", skipped.Findings.Select(finding => finding.Kind)));
+
         var conflicted = Merge(
             Entry("pack-a", 1, value: "1", dataset: "tests", key: "Suite.Case"),
             Entry("pack-b", 1, value: "2", dataset: "tests", key: "Suite.Case"),
             DataEntry("test-c", "{\"a\":1}"));
         Equal(0, conflicted.Entries.Count);
-        Equal(MergeFindingKind.ValueAndData, Single(conflicted.Findings).Kind);
+        Equal("Conflict,ValueAndData", string.Join(",", conflicted.Findings.Select(finding => finding.Kind)));
     }
 
     private static void ReportsWhatWasNotCollected()

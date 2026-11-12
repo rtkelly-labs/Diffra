@@ -139,9 +139,9 @@ public static partial class RecordEntries
         {
             return [$"The entry is not valid JSON: {exception.Message}"];
         }
-        catch (InvalidOperationException)
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
         {
-            // An escaped lone surrogate, such as "\ud800", parses but is not text.
+            // A lone surrogate, escaped or raw, is not text.
             return ["The entry holds text that is not valid Unicode."];
         }
     }
@@ -768,7 +768,7 @@ public static partial class RecordEntries
     [GeneratedRegex(@"^(0|-?[1-9][0-9]*(\.[0-9]*[1-9])?|-?0\.[0-9]*[1-9])\z", RegexOptions.CultureInvariant)]
     private static partial Regex CanonicalNumberPattern();
 
-    [GeneratedRegex(@"^[^\t\n\v\f\r    -     　﻿\x00-\x1f\x7f]([^\x00-\x1f\x7f]*[^\t\n\v\f\r    -     　﻿\x00-\x1f\x7f])?\z", RegexOptions.CultureInvariant | RegexOptions.Singleline)]
+    [GeneratedRegex(@"^[^\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff\x00-\x1f\x7f]([^\x00-\x1f\x7f]*[^\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff\x00-\x1f\x7f])?\z", RegexOptions.CultureInvariant | RegexOptions.Singleline)]
     private static partial Regex TrimmedPattern();
 
     [GeneratedRegex(@"^[^/\\~\x00-\x1f\x7f][^\\\x00-\x1f\x7f]*\z", RegexOptions.CultureInvariant | RegexOptions.Singleline)]
@@ -858,7 +858,8 @@ public static partial class EntriesFile
         var strict = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
         var bytes = File.ReadAllBytes(path);
         var number = 0;
-        var start = 0;
+        // A byte-order mark written by another tool is skipped, as File.ReadLines would.
+        var start = bytes.AsSpan().StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF]) ? 3 : 0;
         while (start < bytes.Length)
         {
             var end = Array.IndexOf(bytes, (byte)'\n', start);
@@ -1013,7 +1014,7 @@ public static class EntryMerge
         foreach (var entry in stated)
         {
             var identity = entry.Identity;
-            if (blocked.Contains(DatasetIdentity(entry)) || conflicted.Contains(identity))
+            if (conflicted.Contains(identity))
             {
                 continue;
             }
@@ -1024,8 +1025,11 @@ public static class EntryMerge
                 continue;
             }
 
-            if (RecordEntries.AreIdentical(earlier, entry))
+            if (RecordEntries.AreIdentical(earlier, entry)
+                || (earlier.Status == EntryStatus.Recorded && entry.Status == EntryStatus.Recorded
+                    && (earlier.Value is null) != (entry.Value is null)))
             {
+                // A --value against data is already reported as given both ways.
                 continue;
             }
 
@@ -1037,6 +1041,12 @@ public static class EntryMerge
                     : $"{Describe(entry)} has different values in jobs '{earlier.JobName}' and '{entry.JobName}'."));
             chosen.Remove(identity);
             conflicted.Add(identity);
+        }
+
+        // A dataset given both ways keeps neither, after its other conflicts are reported.
+        foreach (var identity in chosen.Where(pair => blocked.Contains(DatasetIdentity(pair.Value))).Select(pair => pair.Key).ToList())
+        {
+            chosen.Remove(identity);
         }
 
         // Rule 5: a required dataset with no entry for a planned dimension value. An entry that

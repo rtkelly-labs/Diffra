@@ -48,6 +48,7 @@ PackageReferenceTests.RunAll();
 ExternalCommandAdapterTests.RunAll();
 BaselineTrustTests.RunAll();
 DogfoodPipelineTests.RunAll();
+SizeConverterTests.RunAll();
 RecordCommandTests.RunAll();
 MergeCommandTests.RunAll();
 

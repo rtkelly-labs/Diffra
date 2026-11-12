@@ -33,15 +33,17 @@ Records one dataset for the job it runs in, by appending one entry to the job's 
 merges the entries of every job.
 
 ```sh
-diffra record --name <dataset> [--value <number> [--unit <unit>] [--key <key>] [--replace]
-  | --from <path-or-glob> | --skipped --reason <text> | --failed --reason <text>]
+diffra record --name <dataset> [--value <number> [--unit <unit>] [--key <key>]
+  | --from <path-or-glob> | --skipped --reason <text> | --failed --reason <text>] [--replace]
   [--project <name>] [--commit <id>] [--job <name>] [--attempt <n>] [--dimension <name>=<value>]... [--root-file <file>]
   [--run-dir <dir>] [--json]
 ```
 
-No converter is built yet, so `record` cannot read the files a dataset's `from` names: a number
-is given with `--value`, and `--from`, or giving no source, is saved as a rejected entry. `record`
-reads the root file from `--root-file`, then `DIFFRA_ROOT_FILE`, and checks the value against it.
+One converter is built: `files`, for a `diffra/size@1` dataset, which records the length and
+SHA-256 digest of every file the dataset's `from` glob, or `--from`, matches under the repository
+root ([Reading files](record.md#reading-files)). For any other dataset type a number is given with
+`--value`, and `--from`, or giving no source, is saved as a rejected entry. `record` reads the
+root file from `--root-file`, then `DIFFRA_ROOT_FILE`, and checks the value against it.
 Every problem is saved in a rejected entry and `record` exits 0. It exits 2 when there is no
 usable dataset name, project, commit or job, or a repeated `--run-dir`, and 1 when no run folder
 can be found or the entries file cannot be written.

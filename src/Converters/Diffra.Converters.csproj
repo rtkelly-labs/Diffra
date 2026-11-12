@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The built-in converters that `diffra record` runs on the files a dataset's `from` names
+    (docs/datasets.md). They use only the .NET base library, so they add no package references
+    (docs/adr/0009-dependencies-and-extensions.md). The CLI references this library; it is not
+    packed on its own. Unsafe blocks are allowed only for the generated open(2) call that reads a
+    file without blocking on Unix.
+  -->
+  <PropertyGroup>
+    <AssemblyName>Diffra.Converters</AssemblyName>
+    <RootNamespace>Diffra.Converters</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Diffra.Protocol.Tests" />
+    <InternalsVisibleTo Include="Diffra.Protocol.Tests.Stryker" />
+  </ItemGroup>
+</Project>

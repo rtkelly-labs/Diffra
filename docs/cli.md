@@ -18,10 +18,10 @@ accept `--help`.
 | 0 | The command completed. For `eval`, the Assessment outcome is `pass` or `warn`. |
 | 1 | A file or execution error, such as an unreadable path. |
 | 2 | Invalid input: an unknown or repeated option, a malformed document, or a digest mismatch. |
+| 3 | `eval` only: the Assessment outcome is `fail`, `needs-review` or `inconclusive`. The Assessment is still written. |
 
 `record` is the exception: it saves invalid input as a rejected entry and exits 0, and exits 1 or
 2 only when it cannot save an entry. See below.
-| 3 | `eval` only: the Assessment outcome is `fail`, `needs-review` or `inconclusive`. The Assessment is still written. |
 
 `diff` does not use the exit code to report change. A changed and an unchanged comparison both exit
 0; the Delta's `status` records which.
@@ -34,8 +34,8 @@ merges the entries of every job.
 
 ```sh
 diffra record --name <dataset> [--value <number> [--unit <unit>] [--key <key>] [--replace]
-  | --skipped --reason <text> | --failed --reason <text>] [--project <name>] [--commit <id>]
-  [--job <name>] [--attempt <n>] [--dimension <name>=<value>]... [--root-file <file>]
+  | --from <path-or-glob> | --skipped --reason <text> | --failed --reason <text>]
+  [--project <name>] [--commit <id>] [--job <name>] [--attempt <n>] [--dimension <name>=<value>]... [--root-file <file>]
   [--run-dir <dir>] [--json]
 ```
 
@@ -43,7 +43,8 @@ No converter is built yet, so `record` cannot read the files a dataset's `from` 
 is given with `--value`, and `--from`, or giving no source, is saved as a rejected entry. `record`
 reads the root file from `--root-file`, then `DIFFRA_ROOT_FILE`, and checks the value against it.
 Every problem is saved in a rejected entry and `record` exits 0. It exits 2 when there is no
-usable dataset name, project, commit or job, and 1 when the entries file cannot be written.
+usable dataset name, project, commit or job, or a repeated `--run-dir`, and 1 when no run folder
+can be found or the entries file cannot be written.
 
 ## `collect`
 

@@ -38,12 +38,16 @@ public static class RecordCommandTests
             type: enum
             values: [fast, slow]
             from: { payload: "artifacts/metrics.json" }
+          byRunner:
+            type: integer
+            stratify: [runner]
+            from: { payload: "artifacts/metrics.json" }
           unselected:
             type: integer
             from: { payload: "artifacts/metrics.json" }
         projects:
           main:
-            datasets: { packageSize: null, suiteTime: null, warnings: null, ratio: null, mode: null }
+            datasets: { packageSize: null, suiteTime: null, warnings: null, ratio: null, mode: null, byRunner: null }
         """;
 
     public static void RunAll()
@@ -87,7 +91,7 @@ public static class RecordCommandTests
         Equal(0, stratified.Record("--name", "packageSize", "--value", "1024", "--unit", "B", "--dimension", "os=linux").ExitCode);
         var size = Single(stratified.Entries());
         Equal("linux", size.Dimensions["os"]);
-        Equal("B", size.Value!.Unit);
+        Equal(null, size.Value!.Unit); // The declared unit, so it is not written.
         Equal(true, File.Exists(Path.Combine(stratified.Directory, "run", "entries", EntriesFile.FileName("pack", 1))));
     }
 
@@ -113,6 +117,8 @@ public static class RecordCommandTests
             ["--name", "ratio", "--value", "1", "--commit", Commit.ToUpperInvariant()],
             ["--name", "ratio", "--value", "1", "--job", " pack"],
             ["--name", "ratio", "--value", "1", "--job", "pa\tck"],
+            ["--name", "ratio", "--value", "1", "--job", "\ufeffpack"],
+            ["--name", "ratio", "--value", "1", "--run-dir", "a", "--run-dir", "b"],
             ["--name", "ratio", "--value", "1", "--attempt", "0"],
             ["--name", "ratio", "--value", "1", "--attempt", "1.5"],
             ["--name", "ratio", "--value", "1", "--attempt", "99999999999"],
@@ -121,7 +127,7 @@ public static class RecordCommandTests
         {
             using var run = new Run();
             var result = run.Record(arguments);
-            if (result.ExitCode != 2 || result.Error.Contains("more than once", StringComparison.Ordinal) != (arguments.Count(argument => argument == "--name") > 1))
+            if (result.ExitCode != 2 || result.Error.Contains("more than once", StringComparison.Ordinal) != (arguments.Count(argument => argument is "--name" or "--run-dir") > 1))
             {
                 throw new InvalidOperationException($"Expected exit 2 for {string.Join(" ", arguments)}, got {result.ExitCode}: {result.Error}");
             }
@@ -207,6 +213,11 @@ public static class RecordCommandTests
             ["--name", "ratio", "--value", "1", "--dimension", "os=" + new string('x', 1500)],
             ["--name", "ratio", "--value", "1", "--dimension", new string('n', 300) + "=v"],
             ["--name", "ratio", "--value", "1", "--dimension", "os=\u0001"],
+            ["--name", "byRunner", "--value", "1", "--dimension", "runner=\u0001"],
+            ["--name", "byRunner", "--value", "1", "--dimension", "runner=\ufeffx"],
+            ["--name", "byRunner", "--value", "1", "--dimension", "runner=x\u0085"],
+            ["--name", "suiteTime", "--value", "1", "--key", "suite\ufeff"],
+            ["--name", "ratio", "--value", "1", "--unit", "\ufeffms"],
             ["--name", "ratio", "--value", "1", "--unit", new string('u', 300)],
             ["--name", "ratio", "--value", "1", "--key", "a\nb"],
             ["--name", "ratio", "--value", "1", .. manyDimensions],
@@ -257,6 +268,23 @@ public static class RecordCommandTests
 
         var merged = EntryMerge.Merge(Commit, run.Entries(), []);
         Equal("2", Single(merged.Entries.Where(entry => entry.Status == EntryStatus.Recorded)).Value!.Value);
+
+        // Giving the declared unit is the same as leaving it out, so the same value is not refused.
+        using var units = new Run();
+        Equal(0, units.Record("--name", "warnings", "--value", "1").ExitCode);
+        Equal(0, units.Record("--name", "warnings", "--value", "1", "--unit", "warnings").ExitCode);
+        Equal("Recorded -,Recorded -", string.Join(",", units.Entries().Select(entry => $"{entry.Status} {entry.Value?.Unit ?? "-"}")));
+
+        // A last line left unfinished is ended before the next entry, so neither entry is lost.
+        using var unfinished = new Run();
+        Equal(0, unfinished.Record("--name", "ratio", "--value", "1").ExitCode);
+        File.WriteAllText(unfinished.EntriesFile, File.ReadAllText(unfinished.EntriesFile).TrimEnd('\n'));
+        Equal(0, unfinished.Record("--name", "ratio", "--value", "1").ExitCode);
+        File.WriteAllText(unfinished.EntriesFile, File.ReadAllText(unfinished.EntriesFile).TrimEnd('\n'));
+        Equal(0, unfinished.Record("--name", "warnings", "--skipped", "--reason", "Not built here.").ExitCode);
+        var read = EntriesFile.Read(unfinished.EntriesFile);
+        Equal(0, read.Problems.Count);
+        Equal(3, read.Entries.Count);
     }
 
     private static void ReadsTheEnvironment()
@@ -290,6 +318,11 @@ public static class RecordCommandTests
         var unstratified = RunCli(run.Directory, environment, "record", "--name", "ratio", "--value", "1");
         Equal(0, unstratified.ExitCode);
         Equal(EntryStatus.Recorded, EntriesFile.Read(Path.Combine(runDirectory, "entries", EntriesFile.FileName("build (linux)", 3))).Entries[^1].Status);
+
+        // An empty variable or an empty --run-dir counts as not given.
+        environment["DIFFRA_JOB_ATTEMPT"] = string.Empty;
+        Equal(0, RunCli(run.Directory, environment, "record", "--name", "ratio", "--value", "1", "--run-dir", string.Empty).ExitCode);
+        Equal(1, EntriesFile.Read(Path.Combine(runDirectory, "entries", EntriesFile.FileName("build (linux)", 1))).Entries.Count);
     }
 
     private static void WritesUnderTheGitDirectory()
@@ -309,6 +342,13 @@ public static class RecordCommandTests
         Directory.CreateDirectory(Path.Combine(plain, ".git"));
         Equal(0, RunCli(plain, environment, "record", "--name", "ratio", "--value", "1").ExitCode);
         Equal(1, EntriesFile.Read(Path.Combine(plain, ".git", "diffra", "run", "entries", EntriesFile.FileName("pack", 1))).Entries.Count);
+
+        // A .git file that names no directory gives no run folder, rather than one in the checkout.
+        var unnamed = Path.Combine(run.Directory, "unnamed");
+        Directory.CreateDirectory(unnamed);
+        File.WriteAllText(Path.Combine(unnamed, ".git"), "gitdir:\n");
+        Equal(1, RunCli(unnamed, environment, "record", "--name", "ratio", "--value", "1").ExitCode);
+        Equal(false, Directory.Exists(Path.Combine(unnamed, "diffra")));
     }
 
     private static void AnswersInJson()

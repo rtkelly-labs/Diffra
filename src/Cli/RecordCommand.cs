@@ -33,7 +33,7 @@ internal static partial class RecordCommand
     private static readonly string[] Valued =
         ["name", "value", "unit", "from", "reason", "project", "key", "commit", "job", "attempt", "dimension", "root-file", "run-dir"];
 
-    private static readonly string[] ContextOptions = ["name", "project", "commit", "job", "attempt"];
+    private static readonly string[] ContextOptions = ["name", "project", "commit", "job", "attempt", "run-dir"];
     private static readonly string[] Once = ["value", "unit", "from", "reason", "key", "skipped", "failed", "replace", "json"];
     private static readonly string[] Sources = ["value", "from", "skipped", "failed"];
     private static readonly string[] ValueOnly = ["unit", "key", "replace"];
@@ -104,6 +104,12 @@ internal static partial class RecordCommand
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or NotSupportedException)
         {
             Console.Error.WriteLine($"The entries file '{path}' cannot be written: {exception.Message}");
+            return 1;
+        }
+        catch (JsonException exception)
+        {
+            // The checks above should make this unreachable; nothing was written.
+            Console.Error.WriteLine($"The entry is not valid and was not saved: {exception.Message}");
             return 1;
         }
 
@@ -228,14 +234,24 @@ internal static partial class RecordCommand
             return false;
         }
 
-        var stated = First(given, "run-dir") ?? Environment("DIFFRA_RUN_DIR");
+        var stated = First(given, "run-dir") is { Length: > 0 } option ? option : Environment("DIFFRA_RUN_DIR");
         if (!string.IsNullOrEmpty(stated))
         {
             directory = Path.GetFullPath(stated);
             return true;
         }
 
-        var gitDirectory = FindGitDirectory(Directory.GetCurrentDirectory());
+        string? gitDirectory;
+        try
+        {
+            gitDirectory = FindGitDirectory(Directory.GetCurrentDirectory());
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
+        {
+            failure = $"No run folder: the Git directory cannot be read ({exception.Message}). Give --run-dir or set DIFFRA_RUN_DIR.";
+            return false;
+        }
+
         if (gitDirectory is null)
         {
             failure = "No run folder: give --run-dir or set DIFFRA_RUN_DIR, or run inside a Git repository.";
@@ -261,12 +277,8 @@ internal static partial class RecordCommand
             {
                 var line = File.ReadLines(candidate).FirstOrDefault() ?? string.Empty;
                 const string prefix = "gitdir:";
-                if (line.StartsWith(prefix, StringComparison.Ordinal))
-                {
-                    return Path.GetFullPath(line[prefix.Length..].Trim(), current.FullName);
-                }
-
-                return null;
+                var target = line.StartsWith(prefix, StringComparison.Ordinal) ? line[prefix.Length..].Trim() : string.Empty;
+                return target.Length == 0 ? null : Path.GetFullPath(target, current.FullName);
             }
         }
 
@@ -432,6 +444,12 @@ internal static partial class RecordCommand
         if (document is not null)
         {
             CheckDeclared(context, document, dimensions, value is null ? null : canonical, unit, key, problems);
+
+            // The declared unit applies when none is given, so stating it is the same as leaving it out.
+            if (unit is not null && document.Datasets.TryGetValue(context.Dataset, out var declared) && string.Equals(unit, declared.Unit, StringComparison.Ordinal))
+            {
+                unit = null;
+            }
         }
 
         return new Source(status, canonical, unit, key, reason, replaces);
@@ -611,7 +629,7 @@ internal static partial class RecordCommand
         Dictionary<string, List<string>> given,
         RecordEntry held)
     {
-        var earlier = held.Value?.Value ?? "a different value";
+        var earlier = held.Value is { } value ? value.Value + (value.Unit is null ? string.Empty : " " + value.Unit) : "a different value";
         return Rejected(context, dimensions, given,
         [
             $"Job '{context.Job}' attempt {context.Attempt.ToString(CultureInfo.InvariantCulture)} already recorded {earlier} for this dataset; give --replace to replace it.",
@@ -748,8 +766,9 @@ internal static partial class RecordCommand
 
     private static string? Environment(string name)
     {
+        // An empty variable, as CI templating often leaves, counts as not set.
         var value = System.Environment.GetEnvironmentVariable(name);
-        return value is null ? null : Clean(value);
+        return string.IsNullOrEmpty(value) ? null : Clean(value);
     }
 
     // Text with unpaired surrogates replaced, so that it can always be written as JSON.
@@ -769,14 +788,10 @@ internal static partial class RecordCommand
         return builder.ToString();
     }
 
+    // The entry schema's rule for names, keys, units and dimension values, and no control
+    // character of any kind.
     private static bool IsTrimmed(string text) =>
-        text.Length > 0
-        && text.EnumerateRunes().All(rune => !Rune.IsControl(rune))
-        && !Rune.IsWhiteSpace(Rune.GetRuneAt(text, 0))
-        && !Rune.IsWhiteSpace(LastRune(text));
-
-    private static Rune LastRune(string text) =>
-        Rune.DecodeLastFromUtf16(text, out var rune, out _) == System.Buffers.OperationStatus.Done ? rune : Rune.ReplacementChar;
+        RecordEntries.IsTrimmed(text) && text.EnumerateRunes().All(rune => !Rune.IsControl(rune));
 
     private static int Length(string text) => text.EnumerateRunes().Count();
 

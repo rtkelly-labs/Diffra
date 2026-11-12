@@ -749,6 +749,12 @@ public static partial class RecordEntries
         }
     }
 
+    /// <summary>
+    /// Whether <paramref name="text"/> is non-empty text with no leading or trailing whitespace and no
+    /// control characters, as the entry schema requires of names, keys, units and dimension values.
+    /// </summary>
+    public static bool IsTrimmed(string text) => TrimmedPattern().IsMatch(text);
+
     // JSON Schema counts lengths in Unicode code points, not UTF-16 units. The patterns use \z, not
     // $, and spell out ECMA-262's \s, because .NET's $ and \s differ from the schema's.
     private static int CodePoints(string text) => text.EnumerateRunes().Count();
@@ -824,6 +830,15 @@ public static partial class EntriesFile
         var entry = RecordEntries.Parse(entryJson);
         var bytes = Encoding.UTF8.GetBytes(entry.Json + "\n");
         using var stream = OpenAlone(path);
+        if (stream.Length > 0)
+        {
+            stream.Seek(-1, SeekOrigin.End);
+            if (stream.ReadByte() != (byte)'\n')
+            {
+                stream.Write("\n"u8);
+            }
+        }
+
         stream.Seek(0, SeekOrigin.End);
         stream.Write(bytes);
         stream.Flush(flushToDisk: true);
@@ -856,8 +871,11 @@ public static partial class EntriesFile
             : null;
         var conflicting = held is not null && !RecordEntries.AreIdentical(held, entry);
         var written = conflicting ? RecordEntries.Parse(rejection(held!)) : entry;
+        // A line left unfinished, by a writer that stopped or a hand edit, is ended first so that
+        // this entry does not join it.
+        var separator = existing.Length > 0 && existing[^1] != (byte)'\n' ? "\n" : string.Empty;
         stream.Seek(0, SeekOrigin.End);
-        stream.Write(Encoding.UTF8.GetBytes(written.Json + "\n"));
+        stream.Write(Encoding.UTF8.GetBytes(separator + written.Json + "\n"));
         stream.Flush(flushToDisk: true);
         return !conflicting;
     }

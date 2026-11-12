@@ -2,10 +2,11 @@
 
 This page specifies the standard dataset types and the converters that fill them: what each type
 holds in a record entry, what its items are keyed by, which formats it reads, how two records of
-it are compared, its limits, and how its converters are tested. None of it is built. The root
-file schema still lists the earlier types (`diffra/benchmark@1`, `diffra/coverage@1`,
+it are compared, its limits, and how its converters are tested. Only the `files` converter for `diffra/size@1` is built, in
+`src/Converters/` ([Recording a run](record.md#reading-files)); the rest is not. The root file
+schema still lists the earlier types (`diffra/benchmark@1`, `diffra/coverage@1`,
 `diffra/findings@1`, `diffra/size@1` and `diffra/test-results@1`), and `diffra record` cannot
-yet read the files a dataset's `from` names ([Recording a run](record.md)).
+yet read the files `from` names for any other type.
 
 ## What is decided
 
@@ -457,7 +458,9 @@ Sizes are deterministic and compared with fixed thresholds in bytes.
 
 ### Limits and budgets
 
-`maxKeys` caps `files`; the largest files are kept first. `total` stays exact.
+`maxKeys` caps `files`; the largest files are kept first. `total` stays exact. Until the entry
+schema has `truncated`, the built converter rejects the entry instead when more files match than
+`maxKeys`.
 
 ### Tests
 

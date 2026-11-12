@@ -94,8 +94,8 @@ the file against the schema, so rule bodies are checked only by the schema. [Rec
 `schemas/record-entry-v1.schema.json` the entries it writes. Both cover a `--value` and the
 dataset's `from` source, with `from` preferred. `src/Cli/RecordCommand.cs` is the command: it
 loads the root file and records a `--value`, a skipped or a failed dataset, and saves every
-problem as a rejected entry. No converter exists, so `from` cannot be read yet, and the schema
-still requires `from` on every dataset. `src/Protocol/Recording.cs` validates an entry against the
+problem as a rejected entry. Only the `files` converter for `diffra/size@1` exists, so `from`
+cannot be read for other types yet, and the schema still requires `from` on every dataset. `src/Protocol/Recording.cs` validates an entry against the
 schema's rules, appends entries to and reads an entries file, refuses a different value for the
 same job and attempt unless it replaces, and merges the entries of every job by the proposed
 rules; no collecting job calls the merge yet.

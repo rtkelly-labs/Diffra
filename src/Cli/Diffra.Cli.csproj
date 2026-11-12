@@ -12,6 +12,7 @@
   <ItemGroup>
     <None Include="../../README.md" Pack="true" PackagePath="\" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../Converters/Diffra.Converters.csproj" />
     <ProjectReference Include="../Protocol/Diffra.Protocol.csproj" />
     <ProjectReference Include="../RootFile/Diffra.RootFile.csproj" />
   </ItemGroup>

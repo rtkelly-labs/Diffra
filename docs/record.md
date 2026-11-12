@@ -1,9 +1,10 @@
 # Recording a run
 
 This page specifies `diffra record`, the one command each job that produces data runs, and the
-entries file it writes. The command is built for `--value`, `--skipped` and `--failed`. No
-converter exists yet, so it cannot read the files a dataset's `from` names: `--from`, or giving no
-source, is saved as a rejected entry that says so. The protocol library's `Recording.cs` validates
+entries file it writes. The command is built for `--value`, `--skipped` and `--failed`, and reads
+files with one converter so far: `files`, for a `diffra/size@1` dataset (see "Reading files"
+below). For any other dataset type, `--from`, or giving no source, is saved as a rejected entry
+that says no converter is built yet for that type. The protocol library's `Recording.cs` validates
 entries, writes and reads entries files, and merges them by the rules below, and `diffra merge`
 runs that merge for a collecting job.
 
@@ -48,6 +49,33 @@ keyed dataset that a `--value` belongs to.
 When the converter cannot run, the entry is `rejected`, with the sources it did read: `from` or
 `--from` matches no file, a file does not parse, a file lies outside the repository, or more files
 match than the schema's safety limit. Giving two sources at once is also rejected.
+
+### Reading files
+
+Built for the `files` converter of `diffra/size@1`:
+
+- The repository root is the nearest folder, from the current folder up, that holds `.git`
+  (a folder, or the file a linked worktree has). With no such folder, no file is read and the
+  entry is rejected.
+- The glob in `from`, or in `--from`, is relative to the repository root wherever `record` runs.
+  A glob that is absolute, starts with `~`, has a backslash, an empty segment or a `.` or `..`
+  segment is rejected; a leading `./` is allowed.
+- In a segment, `*` matches any run of characters and `?` one character, never a `/`. A segment
+  that is exactly `**` matches any number of folders, none included, and a final `**` matches
+  every file below. A `*` also matches names that start with a dot. Matching is ordinal and
+  case-sensitive against the names on disk, on every file system. A folder named `.git` is never
+  searched.
+- Links are not followed. A linked folder is not searched, and a link the glob matches rejects
+  the entry, so no file outside the repository is read.
+- More than 1,000 matched files reject the entry before any file is read. The root file's
+  `maxKeys` budget also rejects the entry when more files match: keeping only the largest files
+  needs the `truncated` field [Dataset types](datasets.md#budgets) proposes, which the entry
+  schema does not have yet.
+- The files are read in ordinal path order. Each is read once, for its length and its SHA-256
+  digest, and the entry holds every file as a source and
+  `{ "files": { "<path>": { "value": "<bytes>" } }, "total": { "value": "<bytes>" } }` as its
+  `data`.
+- `--replace` applies to files read as it does to a `--value`.
 
 ### Context
 

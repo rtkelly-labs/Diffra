@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Diffra.Converters;
 using Diffra.Protocol;
 using Diffra.RootFile;
 
@@ -36,7 +37,7 @@ internal static partial class RecordCommand
     private static readonly string[] ContextOptions = ["name", "project", "commit", "job", "attempt", "run-dir"];
     private static readonly string[] Once = ["value", "unit", "from", "reason", "key", "skipped", "failed", "replace", "json"];
     private static readonly string[] Sources = ["value", "from", "skipped", "failed"];
-    private static readonly string[] ValueOnly = ["unit", "key", "replace"];
+    private static readonly string[] ValueOnly = ["unit", "key"];
 
     private static readonly string[] Numeric = ["count", "integer", "decimal", "bytes", "duration", "ratio"];
 
@@ -85,7 +86,7 @@ internal static partial class RecordCommand
         var source = Check(given, context, document, dimensions, problems);
         var entry = problems.Count == 0
             ? Stated(context, dimensions, source)
-            : Rejected(context, dimensions, given, problems);
+            : Rejected(context, dimensions, given, problems, source.Sources);
 
         var path = Path.Combine(runDirectory, "entries", EntriesFile.FileName(context.Job, context.Attempt));
         try
@@ -122,7 +123,16 @@ internal static partial class RecordCommand
 
     private sealed record Context(string Dataset, string Project, string Commit, string Job, int Attempt);
 
-    private sealed record Source(EntryStatus Status, string? Value, string? Unit, string? Key, string? Reason, bool Replaces);
+    // What the entry states: a value, or the sources and data a converter read, or a reason.
+    private sealed record Source(
+        EntryStatus Status,
+        string? Value,
+        string? Unit,
+        string? Key,
+        string? Reason,
+        bool Replaces,
+        IReadOnlyList<ConverterSource> Sources,
+        string? Data);
 
     // Every option, by name without the dashes, with its values in the order given. A flag has
     // one empty value per use.
@@ -265,6 +275,22 @@ internal static partial class RecordCommand
         return true;
     }
 
+    // The repository root: the nearest folder, from the current one up, that holds .git, a folder
+    // or, in a linked worktree, a file.
+    private static string? FindRepositoryRoot(string start)
+    {
+        for (var current = new DirectoryInfo(start); current is not null; current = current.Parent)
+        {
+            var candidate = Path.Combine(current.FullName, ".git");
+            if (Directory.Exists(candidate) || File.Exists(candidate))
+            {
+                return current.FullName;
+            }
+        }
+
+        return null;
+    }
+
     // The repository's Git directory. In a linked worktree, .git is a file that names it.
     private static string? FindGitDirectory(string start)
     {
@@ -401,10 +427,8 @@ internal static partial class RecordCommand
         {
             problems.Add($"Give at most one source; {string.Join(", ", sources.Select(name => "--" + name))} were given.");
         }
-        else if (sources.Count == 0 || sources[0] == "from")
-        {
-            problems.Add("No converter is built yet, so files cannot be read; give the number with --value.");
-        }
+
+        var readsFiles = sources.Count == 0 || sources is ["from"];
 
         if (value is null)
         {
@@ -419,6 +443,11 @@ internal static partial class RecordCommand
 
         if (status is EntryStatus.Skipped or EntryStatus.Failed)
         {
+            if (replaces)
+            {
+                problems.Add("--replace applies to a value or to files read, not to --skipped or --failed.");
+            }
+
             if (string.IsNullOrEmpty(reason))
             {
                 problems.Add($"--{RecordEntries.Token(status)} needs --reason <text>.");
@@ -455,7 +484,51 @@ internal static partial class RecordCommand
             }
         }
 
-        return new Source(status, canonical, unit, key, reason, replaces);
+        ConverterResult? read = null;
+        if (readsFiles && document is not null && document.Datasets.TryGetValue(context.Dataset, out var target))
+        {
+            read = ReadFiles(target, First(given, "from"), document.Settings.MaxKeys, problems);
+        }
+
+        return new Source(status, canonical, unit, key, reason, replaces, read?.Sources ?? [], read?.Data);
+    }
+
+    // Reads the files the dataset's from names, or --from instead of its glob, with the converter
+    // from names. Globs are relative to the repository root.
+    private static ConverterResult? ReadFiles(RootDataset dataset, string? from, int? maximumKeys, List<string> problems)
+    {
+        if (dataset.TypeName != SizeConverter.DatasetType)
+        {
+            problems.Add($"No converter is built yet for dataset type '{dataset.TypeName}', so its files cannot be read; give the number with --value.");
+            return null;
+        }
+
+        if (!dataset.From.TryGetValue(SizeConverter.Name, out var glob))
+        {
+            problems.Add($"Dataset '{dataset.Name}' does not read from '{SizeConverter.Name}', the converter for {SizeConverter.DatasetType}.");
+            return null;
+        }
+
+        string? root;
+        try
+        {
+            root = FindRepositoryRoot(Directory.GetCurrentDirectory());
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
+        {
+            problems.Add($"The repository root cannot be found ({exception.Message}), so no file can be read.");
+            return null;
+        }
+
+        if (root is null)
+        {
+            problems.Add("Files are read relative to the repository root, and no Git repository holds the current folder.");
+            return null;
+        }
+
+        var result = SizeConverter.Read(root, from ?? glob, maximumKeys);
+        problems.AddRange(result.Problems);
+        return result;
     }
 
     // The unit a dataset is measured in: the one it declares, or B for bytes, whose unit is fixed.
@@ -627,6 +700,14 @@ internal static partial class RecordCommand
                     writer.WriteBoolean("replaces", true);
                 }
 
+                if (source.Data is not null)
+                {
+                    WriteSources(writer, source.Sources);
+                    writer.WritePropertyName("data");
+                    writer.WriteRawValue(source.Data);
+                    return;
+                }
+
                 writer.WriteStartObject("value");
                 writer.WriteString("value", source.Value);
                 if (source.Unit is not null)
@@ -660,7 +741,8 @@ internal static partial class RecordCommand
         Context context,
         SortedDictionary<string, string> dimensions,
         Dictionary<string, List<string>> given,
-        List<string> problems)
+        List<string> problems,
+        IReadOnlyList<ConverterSource>? sources = null)
     {
         var stated = new List<string>(problems);
         var input = new SortedDictionary<string, List<string>>(StringComparer.Ordinal);
@@ -703,6 +785,11 @@ internal static partial class RecordCommand
             }
 
             writer.WriteEndObject();
+            if (sources is { Count: > 0 })
+            {
+                WriteSources(writer, sources);
+            }
+
             writer.WriteStartArray("problems");
             foreach (var problem in stated)
             {
@@ -711,6 +798,21 @@ internal static partial class RecordCommand
 
             writer.WriteEndArray();
         });
+    }
+
+    private static void WriteSources(Utf8JsonWriter writer, IReadOnlyList<ConverterSource> sources)
+    {
+        writer.WriteStartArray("sources");
+        foreach (var source in sources)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("path", source.Path);
+            writer.WriteString("format", source.Format);
+            writer.WriteString("sha256", source.Sha256);
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
     }
 
     private static string Write(Context context, SortedDictionary<string, string> dimensions, Action<Utf8JsonWriter> body)
@@ -768,10 +870,25 @@ internal static partial class RecordCommand
         var what = $"{entry.Project}/{entry.Dataset}";
         Console.WriteLine(entry.Status switch
         {
-            EntryStatus.Recorded => $"Recorded {what}{(entry.Key is null ? string.Empty : $" key '{entry.Key}'")} = {entry.Value!.Value}{(entry.Value.Unit is null ? string.Empty : " " + entry.Value.Unit)}.",
+            EntryStatus.Recorded when entry.Value is null => $"Recorded {what} from {Read(entry)}.",
+            EntryStatus.Recorded => $"Recorded {what}{(entry.Key is null ? string.Empty : $" key '{entry.Key}'")} = {entry.Value.Value}{(entry.Value.Unit is null ? string.Empty : " " + entry.Value.Unit)}.",
             EntryStatus.Rejected => $"Rejected {what}: {string.Join(" ", Problems(entry))}",
             _ => $"{(entry.Status == EntryStatus.Skipped ? "Skipped" : "Failed")} {what}.",
         });
+    }
+
+    // What a converter read, for the one-line report: how many files and, for a size, their total.
+    private static string Read(RecordEntry entry)
+    {
+        using var document = JsonDocument.Parse(entry.Json);
+        var count = document.RootElement.GetProperty("sources").GetArrayLength();
+        var files = count == 1 ? "1 file" : $"{count.ToString(CultureInfo.InvariantCulture)} files";
+        return document.RootElement.GetProperty("data") is { ValueKind: JsonValueKind.Object } data
+            && data.TryGetProperty("total", out var total)
+            && total.ValueKind == JsonValueKind.Object
+            && total.TryGetProperty("value", out var value)
+            ? $"{files}, {value.GetString()} B in total"
+            : files;
     }
 
     private static IEnumerable<string> Problems(RecordEntry entry)

@@ -44,9 +44,12 @@ public static class RecordCommandTests
           unselected:
             type: integer
             from: { payload: "artifacts/metrics.json" }
+          packages:
+            type: diffra/size@1
+            from: { files: "artifacts/*.nupkg" }
         projects:
           main:
-            datasets: { packageSize: null, suiteTime: null, warnings: null, ratio: null, mode: null, byRunner: null }
+            datasets: { packageSize: null, suiteTime: null, warnings: null, ratio: null, mode: null, byRunner: null, packages: null }
         """;
 
     public static void RunAll()
@@ -60,6 +63,8 @@ public static class RecordCommandTests
         ReadsTheEnvironment();
         WritesUnderTheGitDirectory();
         AnswersInJson();
+        ReadsFilesWithTheConverter();
+        RejectsFilesItCannotRead();
         Console.WriteLine("PASS diffra record");
     }
 
@@ -148,8 +153,10 @@ public static class RecordCommandTests
             (["--name", "ratio", "--value", "12,5"], "'12,5' is not a number."),
             (["--name", "ratio", "--value", "1e999"], "has an exponent outside"),
             (["--name", "ratio", "--value", "1", "--from", "x.json"], "Give at most one source"),
-            (["--name", "ratio", "--from", "x.json"], "No converter is built yet"),
-            (["--name", "ratio"], "No converter is built yet"),
+            (["--name", "ratio", "--from", "x.json"], "No converter is built yet for dataset type 'decimal'"),
+            (["--name", "ratio"], "No converter is built yet for dataset type 'decimal'"),
+            (["--name", "packages", "--value", "1"], "has type 'diffra/size@1'; --value takes a number"),
+            (["--name", "packages", "--unit", "B"], "--unit applies to --value only."),
             (["--name", "mode", "--value", "1"], "--value takes a number"),
             (["--name", "warnings", "--value", "1.5"], "takes whole numbers only"),
             (["--name", "warnings", "--value", "-1"], "cannot be negative"),
@@ -166,7 +173,7 @@ public static class RecordCommandTests
             (["--name", "ratio", "--value", "1", "--dimension", "noequals"], "is not <name>=<value>"),
             (["--name", "ratio", "--skipped"], "--skipped needs --reason"),
             (["--name", "ratio", "--value", "1", "--reason", "why"], "--reason applies to --skipped and --failed only."),
-            (["--name", "ratio", "--skipped", "--reason", "x", "--replace"], "--replace applies to --value only."),
+            (["--name", "ratio", "--skipped", "--reason", "x", "--replace"], "--replace applies to a value or to files read, not to --skipped or --failed."),
             (["--name", "ratio", "--value", "1", "--value", "2"], "--value was given more than once."),
             (["--name", "ratio", "--value", "1", "--colour", "red"], "Unknown option '--colour'."),
             (["--name", "ratio", "--value", "1", "stray"], "Unexpected argument 'stray'."),
@@ -363,6 +370,103 @@ public static class RecordCommandTests
         Equal("'ten' is not a number.", document.RootElement.GetProperty("entry").GetProperty("problems")[0].GetString());
     }
 
+    // The size dataset's files are read with the files converter, from the glob in the root file
+    // or from --from, relative to the repository root wherever record runs.
+    private static void ReadsFilesWithTheConverter()
+    {
+        using var run = new Run();
+        run.MakeRepository();
+        run.Write("artifacts/b.nupkg", "1234567");
+        run.Write("artifacts/a.nupkg", "12345");
+        run.Write("artifacts/notes.txt", "ignored");
+        run.Write("other/c.nupkg", "123");
+
+        var result = run.Record("--name", "packages");
+        Equal(0, result.ExitCode);
+        Equal(true, result.Output.Contains("Recorded main/packages from 2 files, 12 B in total.", StringComparison.Ordinal));
+        var line = File.ReadAllLines(run.EntriesFile).Single();
+        Equal(0, RecordEntries.Validate(line).Count);
+        var entry = RecordEntries.Parse(line);
+        Equal(EntryStatus.Recorded, entry.Status);
+        Equal(null, entry.Value);
+        Equal("""{"files":{"artifacts/a.nupkg":{"value":"5"},"artifacts/b.nupkg":{"value":"7"}},"total":{"value":"12"}}""", entry.Data!.Value.GetRawText());
+        using (var document = JsonDocument.Parse(line))
+        {
+            var sources = document.RootElement.GetProperty("sources").EnumerateArray().ToList();
+            Equal(2, sources.Count);
+            Equal("artifacts/a.nupkg", sources[0].GetProperty("path").GetString());
+            Equal("files", sources[0].GetProperty("format").GetString());
+            Equal(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData("12345"u8)), sources[0].GetProperty("sha256").GetString());
+        }
+
+        // The same files again are the same entry; a changed file is refused unless replaced.
+        Equal(0, run.Record("--name", "packages").ExitCode);
+        run.Write("artifacts/a.nupkg", "123456");
+        Equal(true, run.Record("--name", "packages").Output.Contains("already recorded a different value", StringComparison.Ordinal));
+        Equal(0, run.Record("--name", "packages", "--replace").ExitCode);
+        Equal("recorded,recorded,rejected,recorded replaces", string.Join(",", run.Entries().Select(item =>
+            RecordEntries.Token(item.Status) + (item.Replaces ? " replaces" : string.Empty))));
+
+        // --from replaces the root file's glob, and the keys stay relative to the repository root
+        // when record runs in a folder below it.
+        using var other = new Run();
+        other.MakeRepository();
+        other.Write("other/c.nupkg", "123");
+        var nested = Path.Combine(other.Directory, "other");
+        var fromOption = RunCli(nested, Context(other), "record", "--run-dir", Path.Combine(other.Directory, "run"), "--name", "packages", "--from", "other/*.nupkg");
+        Equal(0, fromOption.ExitCode);
+        Equal("""{"files":{"other/c.nupkg":{"value":"3"}},"total":{"value":"3"}}""", Single(other.Entries()).Data!.Value.GetRawText());
+
+        // --json answers with the entry.
+        var json = other.Record("--name", "packages", "--from", "other/*.nupkg", "--json");
+        using var answer = JsonDocument.Parse(json.Output);
+        Equal("recorded", answer.RootElement.GetProperty("status").GetString());
+        Equal("3", answer.RootElement.GetProperty("entry").GetProperty("data").GetProperty("total").GetProperty("value").GetString());
+    }
+
+    private static void RejectsFilesItCannotRead()
+    {
+        var cases = new (string[] Arguments, string Problem)[]
+        {
+            (["--name", "packages", "--from", "dist/*.zip"], "No file matches 'dist/*.zip'."),
+            (["--name", "packages", "--from", "../*.nupkg"], "must stay inside the repository"),
+            (["--name", "packages", "--from", "/etc/hosts"], "is not relative to the repository root"),
+            (["--name", "packages", "--from", "artifacts/*.nupkg", "--dimension", "os=linux"], "is not stratified by 'os'"),
+        };
+        foreach (var (arguments, problem) in cases)
+        {
+            using var run = new Run();
+            run.MakeRepository();
+            run.Write("artifacts/a.nupkg", "1");
+            Equal(0, run.Record(arguments).ExitCode);
+            var line = File.ReadAllLines(run.EntriesFile).Single();
+            Equal(0, RecordEntries.Validate(line).Count);
+            var entry = RecordEntries.Parse(line);
+            Equal(EntryStatus.Rejected, entry.Status);
+            if (!Problems(entry).Any(text => text.Contains(problem, StringComparison.Ordinal)))
+            {
+                throw new InvalidOperationException($"Expected a problem containing '{problem}', got: {string.Join(" | ", Problems(entry))}");
+            }
+        }
+
+        // A rejected entry keeps the sources that were read.
+        using var kept = new Run();
+        kept.MakeRepository();
+        kept.Write("artifacts/a.nupkg", "1");
+        Equal(0, kept.Record("--name", "packages", "--dimension", "os=linux").ExitCode);
+        using var document = JsonDocument.Parse(File.ReadAllLines(kept.EntriesFile).Single());
+        Equal("artifacts/a.nupkg", document.RootElement.GetProperty("sources")[0].GetProperty("path").GetString());
+
+        // A maxKeys budget the files pass rejects the entry, since the entry cannot yet state which
+        // keys a budget dropped.
+        using var budget = new Run(RootFile.Replace("\ndatasets:", "\nsettings: { limits: { maxKeys: 1 } }\ndatasets:", StringComparison.Ordinal));
+        budget.MakeRepository();
+        budget.Write("artifacts/a.nupkg", "1");
+        budget.Write("artifacts/b.nupkg", "2");
+        Equal(0, budget.Record("--name", "packages").ExitCode);
+        Equal(true, Problems(Single(budget.Entries()))[0].Contains("maxKeys budget of 1", StringComparison.Ordinal));
+    }
+
     private static List<string> Problems(RecordEntry entry)
     {
         using var document = JsonDocument.Parse(entry.Json);
@@ -390,6 +494,16 @@ public static class RecordCommandTests
         }
 
         public string Directory { get; }
+
+        // Makes the folder a repository root, so that files are read relative to it.
+        public void MakeRepository() => System.IO.Directory.CreateDirectory(Path.Combine(Directory, ".git"));
+
+        public void Write(string path, string content)
+        {
+            var full = Path.Combine(Directory, path);
+            System.IO.Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+            File.WriteAllText(full, content);
+        }
 
         public string RootFilePath { get; }
 

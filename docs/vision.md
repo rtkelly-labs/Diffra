@@ -96,8 +96,10 @@ recorded as failed when it is `fail` or `warn`; and `diffra record` records a nu
 checked against the root file, and `diffra merge` merges the entries files of every job,
 reporting every disagreement in values or statuses, naming each job involved, and listing the
 planned datasets no job collected. Nothing yet carries the jobs' files to a collecting job or
-writes the merged entries to history, and no converter for a tool's own format exists, so
-`record` cannot yet read the files a dataset's `from` names. The names Evidence, Delta and Assessment come from the earlier design; the
+writes the merged entries to history. One converter exists: `files`, with which `record` reads
+the files a `diffra/size@1` dataset's `from` names and records each file's length and the total.
+No converter for a tool's own format exists, so `record` cannot yet read the files `from` names
+for any other type. The names Evidence, Delta and Assessment come from the earlier design; the
 glossary gives the words that replace them. The [sample
 workflow](../examples/sample-project/workflow/) contains inputs and checked-in outputs, the
 [protocol](protocol.md) describes the current document shapes, and the [CLI reference](cli.md)

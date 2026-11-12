@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Protocol/Diffra.Protocol.csproj" />
     <Project Path="src/Cli/Diffra.Cli.csproj" />
+    <Project Path="src/Converters/Diffra.Converters.csproj" />
     <Project Path="src/Graph/Diffra.Graph.csproj" />
     <Project Path="src/RootFile/Diffra.RootFile.csproj" />
   </Folder>

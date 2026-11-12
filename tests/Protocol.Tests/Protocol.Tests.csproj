@@ -6,6 +6,7 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../../src/Converters/Diffra.Converters.csproj" />
     <ProjectReference Include="../../src/Protocol/Diffra.Protocol.csproj" />
     <ProjectReference Include="../../src/Graph/Diffra.Graph.csproj" />
     <ProjectReference Include="../../src/RootFile/Diffra.RootFile.csproj" />

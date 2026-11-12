@@ -25,8 +25,8 @@ emitter's error never reached the pull request.
    into a typed dataset, so the adopter does not reshape output for Diffra. All standard dataset
    types are built before the first adopter installs Diffra: test results, findings, coverage, a
    generic table, size, CI timing and the job graph, files with their hashes, and flame graphs,
-   with Parquet and OpenMetrics as inputs. Converters are tested against published validators for each format and
-   against synthetic values.
+   with Parquet and OpenMetrics as inputs. Converters are tested against published validators for
+   each format and against synthetic values.
 6. **CI timing and the CI job graph are datasets from the first install.** Each run records wait
    time, queue time and execution time per job and for the longest path through the job graph.
    Rules apply to execution time only. A re-run uses the latest attempt and notes that earlier

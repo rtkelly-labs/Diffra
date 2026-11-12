@@ -137,9 +137,9 @@ The `sarif` converter reads SARIF 2.1.0 logs, as CodeQL and Ruff write them:
   source and, with every number a decimal string,
   `{ "byRule": { "<tool>/<rule>": { "value": "<count>" } }, "results": { "<key>": { "value": { "level", "line", "message", "occurrences", "path", "rule", "tool" } } }, "total": { "value": "<count>" } }`
   as its `data`. A log with no results records zero findings.
-- `diffra merge` reads an entries file of at most 16 MiB, so a job whose findings entry passes
-  that cannot be merged; setting the root file's `maxKeys` and `maxTextLength` budgets bounds
-  the entry's size.
+- `diffra merge` reads an entries file of at most 16 MiB. A findings entry that would take the
+  file past that is saved as a rejected entry instead (see the entries file below); setting the
+  root file's `maxKeys` and `maxTextLength` budgets bounds the entry's size.
 
 ### Context
 
@@ -214,6 +214,11 @@ characters. The schema's length and count limits are safety limits: an entry tha
 them is rejected, as is an entry nested more than 256 deep or holding text that is not valid
 Unicode, and raw text kept in a rejected entry is cut to the limit, with the cut stated
 in `problems`.
+
+The file is kept within the 16 MiB that `diffra merge` reads. An entry, from any converter or
+from `--value`, that would make the file larger is not appended; a rejected entry saying so, with
+the options and sources given, is appended in its place, so that merge still reads the file and
+sees why. When not even that fits, nothing is written and `diffra record` exits 1.
 
 ## Merging the jobs' entries (proposed)
 

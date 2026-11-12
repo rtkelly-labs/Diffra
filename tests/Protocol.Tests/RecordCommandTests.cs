@@ -70,6 +70,7 @@ public static class RecordCommandTests
         RejectsFilesItCannotRead();
         ReadsFindingsWithTheSarifConverter();
         RejectsFindingsItCannotRead();
+        KeepsTheEntriesFileWithinWhatMergeReads();
         Console.WriteLine("PASS diffra record");
     }
 
@@ -558,6 +559,41 @@ public static class RecordCommandTests
         budget.Write("reports/a.sarif", """{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"t"}},"results":[{"ruleId":"A","message":{"text":"a"}},{"ruleId":"B","message":{"text":"b"}}]}]}""");
         Equal(0, budget.Record("--name", "lint").ExitCode);
         Equal(true, Problems(Single(budget.Entries()))[0].Contains("maxKeys budget of 1", StringComparison.Ordinal));
+    }
+
+    private static void KeepsTheEntriesFileWithinWhatMergeReads()
+    {
+        // diffra merge reads an entries file of at most 16 MiB. The file is filled with empty
+        // lines, which are valid, to just under that.
+        const long limit = 16L * 1024 * 1024;
+        using var run = new Run();
+        run.MakeRepository();
+        // Fingerprints ignore digits, so each message differs in its letters.
+        var results = string.Join(",", Enumerable.Range(0, 400).Select(index =>
+            $$$"""{"ruleId":"R","message":{"text":"finding {{{(char)('a' + (index / 26))}}}{{{new string((char)('a' + (index % 26)), 100)}}}"}}"""));
+        run.Write("reports/a.sarif", $$$"""{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"t"}},"results":[{{{results}}}]}]}""");
+        Directory.CreateDirectory(Path.GetDirectoryName(run.EntriesFile)!);
+        File.WriteAllBytes(run.EntriesFile, Enumerable.Repeat((byte)'\n', (int)(limit - 20_000)).ToArray());
+
+        // An entry that does not fit is saved as a short rejected entry, with its sources.
+        var findings = run.Record("--name", "lint");
+        Equal(0, findings.ExitCode);
+        var rejected = Single(run.Entries());
+        Equal(EntryStatus.Rejected, rejected.Status);
+        Equal("The entry would make the entries file larger than 16777216 bytes, the most diffra merge reads; it was not recorded.", Single(Problems(rejected)));
+        Equal(true, rejected.Json.Contains("reports/a.sarif", StringComparison.Ordinal));
+        Equal(true, new FileInfo(run.EntriesFile).Length <= limit);
+
+        // A small entry still fits.
+        Equal(0, run.Record("--name", "ratio", "--value", "1").ExitCode);
+        Equal("rejected,recorded", string.Join(",", run.Entries().Select(item => RecordEntries.Token(item.Status))));
+
+        // When not even the rejected entry fits, nothing is written and the command fails.
+        File.WriteAllBytes(run.EntriesFile, Enumerable.Repeat((byte)'\n', (int)(limit - 10)).ToArray());
+        var full = run.Record("--name", "ratio", "--value", "2");
+        Equal(1, full.ExitCode);
+        Equal(true, full.Error.Contains("cannot be written: the file would hold more than 16777216 bytes", StringComparison.Ordinal));
+        Equal(limit - 10, new FileInfo(run.EntriesFile).Length);
     }
 
     private static List<string> Problems(RecordEntry entry)

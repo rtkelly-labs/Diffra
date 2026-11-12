@@ -837,27 +837,26 @@ public static partial class EntriesFile
     /// <summary>
     /// Appends one entry as a single line. The file is opened for this process alone while the line
     /// is written, so two steps of one job that record at once wait for each other rather than
-    /// overwrite each other's line. Throws <see cref="JsonException"/> when the entry is not valid;
-    /// the file is then left as it was.
+    /// overwrite each other's line. When the line would make the file larger than
+    /// <paramref name="maximumBytes"/>, the entry that <paramref name="tooLarge"/> builds is
+    /// appended instead; when that does not fit either, or no <paramref name="tooLarge"/> is given,
+    /// nothing is written and <see cref="IOException"/> is thrown. Throws
+    /// <see cref="JsonException"/> when an entry to be written is not valid; the file is then left
+    /// as it was.
     /// </summary>
-    public static void Append(string path, string entryJson)
+    public static void Append(string path, string entryJson, long maximumBytes = long.MaxValue, Func<string>? tooLarge = null)
     {
         ArgumentNullException.ThrowIfNull(path);
         var entry = RecordEntries.Parse(entryJson);
-        var bytes = Encoding.UTF8.GetBytes(entry.Json + "\n");
         using var stream = OpenAlone(path);
+        var endsLine = true;
         if (stream.Length > 0)
         {
             stream.Seek(-1, SeekOrigin.End);
-            if (stream.ReadByte() != (byte)'\n')
-            {
-                stream.Write("\n"u8);
-            }
+            endsLine = stream.ReadByte() == (byte)'\n';
         }
 
-        stream.Seek(0, SeekOrigin.End);
-        stream.Write(bytes);
-        stream.Flush(flushToDisk: true);
+        WriteWithin(stream, endsLine, entry, maximumBytes, tooLarge);
     }
 
     /// <summary>
@@ -866,10 +865,12 @@ public static partial class EntriesFile
     /// replace it. On such a conflict, the entry that <paramref name="rejection"/> builds from the
     /// value already held is appended instead, and the result is <see langword="false"/>. The check
     /// and the write happen while the file is held for this process alone, so two steps that record
-    /// at once cannot both pass the check. Throws <see cref="JsonException"/> when an entry to be
-    /// written is not valid; the file is then left as it was.
+    /// at once cannot both pass the check. The entry written is bounded by
+    /// <paramref name="maximumBytes"/> as <see cref="Append"/> bounds it. Throws
+    /// <see cref="JsonException"/> when an entry to be written is not valid; the file is then left
+    /// as it was.
     /// </summary>
-    public static bool AppendUnlessConflicting(string path, string entryJson, Func<RecordEntry, string> rejection)
+    public static bool AppendUnlessConflicting(string path, string entryJson, Func<RecordEntry, string> rejection, long maximumBytes = long.MaxValue, Func<string>? tooLarge = null)
     {
         ArgumentNullException.ThrowIfNull(path);
         ArgumentNullException.ThrowIfNull(rejection);
@@ -887,13 +888,30 @@ public static partial class EntriesFile
             : null;
         var conflicting = held is not null && !RecordEntries.AreIdentical(held, entry);
         var written = conflicting ? RecordEntries.Parse(rejection(held!)) : entry;
-        // A line left unfinished, by a writer that stopped or a hand edit, is ended first so that
-        // this entry does not join it.
-        var separator = existing.Length > 0 && existing[^1] != (byte)'\n' ? "\n" : string.Empty;
-        stream.Seek(0, SeekOrigin.End);
-        stream.Write(Encoding.UTF8.GetBytes(separator + written.Json + "\n"));
-        stream.Flush(flushToDisk: true);
+        WriteWithin(stream, existing.Length == 0 || existing[^1] == (byte)'\n', written, maximumBytes, tooLarge);
         return !conflicting;
+    }
+
+    // Writes the entry at the end of the file, or the entry tooLarge builds when the file would
+    // then hold more than maximumBytes. A line left unfinished, by a writer that stopped or a hand
+    // edit, is ended first so that this entry does not join it.
+    private static void WriteWithin(FileStream stream, bool endsLine, RecordEntry entry, long maximumBytes, Func<string>? tooLarge)
+    {
+        var separator = endsLine ? string.Empty : "\n";
+        var bytes = Encoding.UTF8.GetBytes(separator + entry.Json + "\n");
+        if (stream.Length + bytes.Length > maximumBytes && tooLarge is not null)
+        {
+            bytes = Encoding.UTF8.GetBytes(separator + RecordEntries.Parse(tooLarge()).Json + "\n");
+        }
+
+        if (stream.Length + bytes.Length > maximumBytes)
+        {
+            throw new IOException($"the file would hold more than {maximumBytes.ToString(CultureInfo.InvariantCulture)} bytes, the most an entries file may, so nothing was written.");
+        }
+
+        stream.Seek(0, SeekOrigin.End);
+        stream.Write(bytes);
+        stream.Flush(flushToDisk: true);
     }
 
     private static FileStream OpenAlone(string path)

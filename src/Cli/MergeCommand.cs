@@ -20,7 +20,7 @@ internal static class MergeCommand
 {
     // Entries files come from other jobs and are read as untrusted data, within these limits.
     private const int MaximumFiles = 1000;
-    private const long MaximumFileBytes = 16L * 1024 * 1024;
+    internal const long MaximumFileBytes = 16L * 1024 * 1024;
     private const long MaximumTotalBytes = 256L * 1024 * 1024;
     private const int MaximumProblemsPerFile = 20;
     private const int MaximumInvalidLinesPerFile = 100;

@@ -89,21 +89,27 @@ internal static partial class RecordCommand
             : Rejected(context, dimensions, given, problems, source.Sources);
 
         var path = Path.Combine(runDirectory, "entries", EntriesFile.FileName(context.Job, context.Attempt));
+        // An entry that would make the file larger than diffra merge reads is saved as a short
+        // rejected entry instead, so that merge still reads the file and sees why.
+        string? oversized = null;
+        string TooLarge() => oversized = Rejected(context, dimensions, given, [TooLargeProblem], source.Sources);
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             if (problems.Count == 0 && source.Status == EntryStatus.Recorded)
             {
                 string? rejection = null;
-                if (!EntriesFile.AppendUnlessConflicting(path, entry, held => rejection = Conflicting(context, dimensions, given, held, source.Sources)))
+                if (!EntriesFile.AppendUnlessConflicting(path, entry, held => rejection = Conflicting(context, dimensions, given, held, source.Sources), MergeCommand.MaximumFileBytes, TooLarge))
                 {
                     entry = rejection!;
                 }
             }
             else
             {
-                EntriesFile.Append(path, entry);
+                EntriesFile.Append(path, entry, MergeCommand.MaximumFileBytes, TooLarge);
             }
+
+            entry = oversized ?? entry;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or NotSupportedException)
         {
@@ -120,6 +126,9 @@ internal static partial class RecordCommand
         Report(RecordEntries.Parse(entry), path, json);
         return 0;
     }
+
+    private static readonly string TooLargeProblem =
+        $"The entry would make the entries file larger than {MergeCommand.MaximumFileBytes.ToString(CultureInfo.InvariantCulture)} bytes, the most diffra merge reads; it was not recorded.";
 
     private sealed record Context(string Dataset, string Project, string Commit, string Job, int Attempt);
 

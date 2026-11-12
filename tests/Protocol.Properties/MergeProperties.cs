@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using CsCheck;
 
 namespace Diffra.Protocol.Properties;
@@ -29,8 +30,8 @@ internal sealed class MergeProperties : IPropertySuite
                 Assert.Equal(string.Join("\n", expected.Entries), string.Join("\n", actual.Entries.Select(entry => entry.Json)), "merged entries differ");
                 Assert.Equal(string.Join("\n", expected.Superseded), string.Join("\n", actual.SupersededAttempts), "superseded attempts differ");
                 Assert.Equal(
-                    MergeModel.Describe(expected.Findings),
-                    MergeModel.Describe(Enum.GetValues<MergeFindingKind>().ToDictionary(kind => kind, kind => actual.Findings.Count(finding => finding.Kind == kind))),
+                    string.Join("\n", expected.Named.Order(StringComparer.Ordinal)),
+                    string.Join("\n", actual.Findings.Select(MergeModel.Named).Order(StringComparer.Ordinal)),
                     "findings differ");
             },
             input => MergeInputs.Print(input.Item1, input.Item2));
@@ -139,6 +140,7 @@ internal enum EntryKind
 internal sealed record EntrySpec(
     string Job,
     int Attempt,
+    string Project,
     string Dataset,
     int Dimensions,
     EntryKind Kind,
@@ -159,14 +161,17 @@ internal static class MergeInputs
         [("os", "linux")],
         [("os", "mac")],
         [("arch", "x64"), ("os", "linux")],
+        [("arch", "x64"), ("os", "mac")],
     ];
 
-    // Data to respell: two values that differ, and one holding an exponent the runtime cannot compare.
+    // Data to respell: two values that differ, one holding an exponent the runtime cannot compare,
+    // and one holding zero and a negative fraction.
     private static readonly J[] DataPool =
     [
         new JObj([("n", new JNum("1")), ("m", new JArr([new JNum("250"), new JStr("x")]))]),
         new JObj([("n", new JNum("2")), ("m", new JArr([new JNum("250"), new JStr("x")]))]),
         new JObj([("n", new JNum("1")), ("m", new JNum("1e4000000000"))]),
+        new JObj([("n", new JNum("0")), ("m", new JNum("-1.5"))]),
     ];
 
     private static readonly Func<string?> NoText = () => null;
@@ -175,8 +180,9 @@ internal static class MergeInputs
     public const int AsWritten = 2;
 
     public static readonly Gen<EntrySpec> Entry =
-        from job in Gen.OneOfConst("a", "b", "c")
-        from attempt in Gen.Frequency((5, Gen.Const(1)), (2, Gen.Const(2)), (1, Gen.Const(3)))
+        from job in Gen.Frequency((9, Gen.OneOfConst("a", "b", "c")), (1, Gen.Const("B")))
+        from attempt in Gen.Frequency((10, Gen.Const(1)), (4, Gen.Const(2)), (2, Gen.Const(3)), (1, Gen.OneOfConst(9, 10, 11)))
+        from project in Gen.Frequency((7, Gen.Const("main")), (1, Gen.Const("docs")))
         from dataset in Gen.OneOfConst("alpha", "beta")
         from dimensions in Gen.Frequency((3, Gen.Const(0)), (2, Gen.Int[1, DimensionSets.Length - 1]))
         from kind in Gen.Frequency(
@@ -188,19 +194,47 @@ internal static class MergeInputs
         from key in Gen.Frequency((3, Gen.Const(NoText)), (1, Gen.OneOfConst<string?>("k1", "k2")))
         from value in Gen.Frequency((3, Gen.Const("1")), (1, Gen.OneOfConst("2", "1.5", "-1")))
         from unit in Gen.Frequency((4, Gen.Const(NoText)), (1, Gen.OneOfConst<string?>("ms")))
-        from replaces in Gen.Frequency((2, Gen.Const(false)), (1, Gen.Const(true)))
+        from replaces in Gen.Bool
         from data in Gen.Frequency((3, Gen.Const(0)), (1, Gen.Int[1, DataPool.Length - 1]))
         from spelling in Gen.Int
         from otherCommit in Gen.Frequency((15, Gen.Const(false)), (1, Gen.Const(true)))
-        select new EntrySpec(job, attempt, dataset, dimensions, kind, key, value, unit, replaces, data, spelling, otherCommit);
+        select new EntrySpec(job, attempt, project, dataset, dimensions, kind, key, value, unit, replaces, data, spelling, otherCommit);
 
-    public static readonly Gen<EntrySpec[]> Entries = Entry.Array[0, 10];
+    /// <summary>
+    /// Up to ten entries. About one in four says something more about what an earlier entry of the
+    /// same job and attempt spoke of, since that is where --replace and a conflict within a job arise.
+    /// </summary>
+    public static readonly Gen<EntrySpec[]> Entries = Gen.Select(Entry.Array[0, 10], Gen.Int, (entries, seed) =>
+    {
+        var random = new Random(seed);
+        for (var index = 1; index < entries.Length; index++)
+        {
+            if (random.Next(4) == 0)
+            {
+                var earlier = entries[random.Next(index)];
+                entries[index] = entries[index] with
+                {
+                    Job = earlier.Job,
+                    Attempt = earlier.Attempt,
+                    Project = earlier.Project,
+                    Dataset = earlier.Dataset,
+                    Dimensions = earlier.Dimensions,
+                    Key = earlier.Key,
+                };
+            }
+        }
 
-    public static readonly Gen<ExpectedEntry[]> Plans = Gen.Select(Gen.OneOfConst("alpha", "beta"), Gen.Int[0, 2])
+        return entries;
+    });
+
+    public static readonly Gen<ExpectedEntry[]> Plans = Gen.Select(
+            Gen.OneOfConst("alpha", "beta"),
+            Gen.Int[0, DimensionSets.Length - 1],
+            Gen.Frequency((7, Gen.Const("main")), (1, Gen.Const("docs"))))
         .Array[0, 3]
         .Select(plans => plans
             .Select(plan => new ExpectedEntry(
-                "main",
+                plan.Item3,
                 plan.Item1,
                 DimensionSets[plan.Item2].ToDictionary(dimension => dimension.Name, dimension => dimension.Value, StringComparer.Ordinal)))
             .ToArray());
@@ -211,16 +245,18 @@ internal static class MergeInputs
         var commit = spec.OtherCommit ? Properties.Entries.OtherCommit : Properties.Entries.Commit;
         return spec.Kind switch
         {
-            EntryKind.Value => Properties.Entries.FromValue(spec.Job, spec.Attempt, spec.Dataset, dimensions, spec.Key, spec.Value, spec.Unit, spec.Replaces, commit),
+            EntryKind.Value => Properties.Entries.FromValue(spec.Job, spec.Attempt, spec.Dataset, dimensions, spec.Key, spec.Value, spec.Unit, spec.Replaces, commit, spec.Project),
             EntryKind.Data => Properties.Entries.FromData(
                 spec.Job,
                 spec.Attempt,
                 spec.Dataset,
                 dimensions,
                 Properties.Json.Render(DataTrees.Respell(DataPool[spec.Data], new Random(spec.Spelling), keepValue: true)),
-                commit),
-            EntryKind.Rejected => Properties.Entries.Rejected(spec.Job, spec.Attempt, spec.Dataset, dimensions, spec.Value == "1" ? "ten" : "x", commit),
-            _ => Properties.Entries.Unrecorded(spec.Job, spec.Attempt, spec.Dataset, dimensions, spec.Kind == EntryKind.Failed, "The collector did not run.", commit),
+                commit,
+                spec.Replaces,
+                spec.Project),
+            EntryKind.Rejected => Properties.Entries.Rejected(spec.Job, spec.Attempt, spec.Dataset, dimensions, spec.Value == "1" ? "ten" : "x", commit, spec.Project),
+            _ => Properties.Entries.Unrecorded(spec.Job, spec.Attempt, spec.Dataset, dimensions, spec.Kind == EntryKind.Failed, "The collector did not run.", commit, spec.Project),
         };
     }
 
@@ -265,7 +301,7 @@ internal static class MergeInputs
     public static string Print(IEnumerable<EntrySpec> specs, IEnumerable<ExpectedEntry> plans) =>
         string.Join("\n", specs.Select(Json))
         + "\n  planned: "
-        + string.Join("; ", plans.Select(plan => $"{plan.Dataset} {string.Join(",", plan.Dimensions.Select(dimension => $"{dimension.Key}={dimension.Value}"))}"));
+        + string.Join("; ", plans.Select(plan => $"{plan.Project}/{plan.Dataset} {string.Join(",", plan.Dimensions.Select(dimension => $"{dimension.Key}={dimension.Value}"))}"));
 }
 
 /// <summary>What the model expects of a merge.</summary>
@@ -274,19 +310,28 @@ internal sealed record MergeExpectation(
     int Kept,
     IReadOnlyList<string> Superseded,
     IReadOnlyDictionary<MergeFindingKind, int> Findings,
+    IReadOnlyList<string> Named,
     bool Replaced);
 
 /// <summary>
 /// The merge rules of <c>docs/record.md</c>, written to be read against them rather than to be
 /// fast: nothing is hashed, and every pair of entries for an identity is compared.
 /// </summary>
-internal static class MergeModel
+/// <remarks>
+/// Three things here are taken from the implementation and its comments, because rules 1 to 5 do
+/// not state them, so this model cannot say whether they are right. A second entry in a job that
+/// differs only in status or form is a conflict of values as well as a finding for the dataset.
+/// A conflict within a job is reported once for an identity, naming the first job that has it.
+/// A rejected entry is kept once per job, after the merged entries. The model also takes an
+/// entry's identity and whether two entries are identical from <see cref="RecordEntries"/>.
+/// </remarks>
+internal static partial class MergeModel
 {
     public static MergeExpectation Expect(string commit, IReadOnlyList<RecordEntry> all, IReadOnlyList<ExpectedEntry> plans)
     {
-        var findings = Enum.GetValues<MergeFindingKind>().ToDictionary(kind => kind, _ => 0);
+        var named = new List<(MergeFindingKind Kind, string Names)>();
         var mine = all.Where(entry => entry.Commit == commit).ToList();
-        findings[MergeFindingKind.OtherCommit] = all.Count - mine.Count;
+        named.AddRange(all.Where(entry => entry.Commit != commit).Select(entry => (MergeFindingKind.OtherCommit, $"'{entry.JobName}' {entry.Commit}")));
 
         // Rule 1: only the last attempt of each job counts.
         var jobs = mine.Select(entry => entry.JobName).Distinct().Order(StringComparer.Ordinal).ToList();
@@ -303,10 +348,13 @@ internal static class MergeModel
         var rejected = new List<string>();
         foreach (var job in jobs)
         {
-            rejected.AddRange(last.Where(entry => entry.JobName == job && entry.Status == EntryStatus.Rejected).Select(entry => entry.Json).Distinct());
+            foreach (var entry in last.Where(entry => entry.JobName == job && entry.Status == EntryStatus.Rejected).DistinctBy(entry => entry.Json))
+            {
+                rejected.Add(entry.Json);
+                named.Add((MergeFindingKind.Rejected, string.Create(CultureInfo.InvariantCulture, $"'{job}' attempt {entry.Attempt} is not a number")));
+            }
         }
 
-        findings[MergeFindingKind.Rejected] = rejected.Count;
         var stated = last.Where(entry => entry.Status != EntryStatus.Rejected).ToList();
 
         // Rule 2: within a job, --replace replaces the earlier recorded entry. Any other second
@@ -327,9 +375,9 @@ internal static class MergeModel
                         current = next;
                         replaced = true;
                     }
-                    else if (!RecordEntries.AreIdentical(current, next))
+                    else if (!RecordEntries.AreIdentical(current, next) && conflictedWithin.Add(identity))
                     {
-                        conflictedWithin.Add(identity);
+                        named.Add((MergeFindingKind.Conflict, string.Create(CultureInfo.InvariantCulture, $"'{job}' attempt {next.Attempt}")));
                     }
                 }
 
@@ -342,29 +390,32 @@ internal static class MergeModel
         foreach (var dataset in stated.Select(DatasetOf).Distinct().ToList())
         {
             var given = stated.Where(entry => DatasetOf(entry) == dataset).ToList();
-            if (given.Select(entry => entry.Status).Distinct().Count() > 1)
+            var statuses = given.Select(entry => entry.Status).Distinct().Order().ToList();
+            if (statuses.Count > 1)
             {
-                findings[MergeFindingKind.StatusConflict]++;
+                // Each status, with the jobs that gave it.
+                named.Add((MergeFindingKind.StatusConflict, string.Join(" ", statuses.Select(status => $"{RecordEntries.Token(status)} in {Jobs(given.Where(entry => entry.Status == status))}"))));
                 blocked.Add(dataset);
             }
 
             if (given.Exists(entry => entry.Value is not null) && given.Exists(entry => entry.Data is not null))
             {
-                findings[MergeFindingKind.ValueAndData]++;
+                named.Add((MergeFindingKind.ValueAndData, $"--value {Jobs(given.Where(entry => entry.Value is not null))} from files {Jobs(given.Where(entry => entry.Data is not null))}"));
                 blocked.Add(dataset);
             }
         }
 
         // Rules 3 and 4, across jobs: the values given one way must all be identical.
-        findings[MergeFindingKind.Conflict] = conflictedWithin.Count;
         var kept = new SortedDictionary<string, string>(StringComparer.Ordinal);
         foreach (var identity in standing.Select(entry => entry.Identity).Distinct().ToList())
         {
             var given = standing.Where(entry => entry.Identity == identity).ToList();
             var conflicts = new[] { given.FindAll(entry => entry.Value is not null), given.FindAll(entry => entry.Data is not null) }
-                .Count(form => form.Exists(first => form.Exists(second => !RecordEntries.AreIdentical(first, second))));
-            findings[MergeFindingKind.Conflict] += conflicts;
-            if (conflicts == 0 && !conflictedWithin.Contains(identity) && !blocked.Contains(DatasetOf(given[0])))
+                .Where(form => form.Exists(first => form.Exists(second => !RecordEntries.AreIdentical(first, second))))
+                .Select(form => (MergeFindingKind.Conflict, string.Create(CultureInfo.InvariantCulture, $"{Different(form)} different {Jobs(form)}")))
+                .ToList();
+            named.AddRange(conflicts);
+            if (conflicts.Count == 0 && !conflictedWithin.Contains(identity) && !blocked.Contains(DatasetOf(given[0])))
             {
                 kept[identity] = given[0].Json;
             }
@@ -378,19 +429,41 @@ internal static class MergeModel
                 && plan.Dimensions.All(dimension => entry.Dimensions.TryGetValue(dimension.Key, out var value) && value == dimension.Value)).ToList();
             if (matching.Count == 0)
             {
-                findings[MergeFindingKind.NotCollected]++;
+                named.Add((MergeFindingKind.NotCollected, string.Empty));
             }
             else if (matching.Exists(entry => entry.Status == EntryStatus.Failed))
             {
-                findings[MergeFindingKind.CollectionFailed]++;
+                named.Add((MergeFindingKind.CollectionFailed, $"failed in {Jobs(matching.Where(entry => entry.Status == EntryStatus.Failed))}"));
             }
         }
 
-        return new MergeExpectation([.. kept.Values, .. rejected], kept.Count, superseded, findings, replaced);
+        var findings = Enum.GetValues<MergeFindingKind>().ToDictionary(kind => kind, kind => named.Count(finding => finding.Kind == kind));
+        return new MergeExpectation(
+            [.. kept.Values, .. rejected],
+            kept.Count,
+            superseded,
+            findings,
+            named.Select(finding => $"{finding.Kind}: {finding.Names}".TrimEnd()).ToList(),
+            replaced);
     }
 
-    public static string Describe(IReadOnlyDictionary<MergeFindingKind, int> findings) =>
-        string.Join(", ", findings.OrderBy(pair => pair.Key).Select(pair => $"{pair.Key} {pair.Value.ToString(CultureInfo.InvariantCulture)}"));
+    /// <summary>
+    /// What a finding names, read from its message: the jobs, each status or form they are named
+    /// under, how many values differ, an attempt, another commit, and the problem of a rejected entry. The words between
+    /// are not compared.
+    /// </summary>
+    public static string Named(MergeFinding finding) =>
+        $"{finding.Kind}: {string.Join(" ", NamedParts().Matches(finding.Message).Select(match => match.Value))}".TrimEnd();
+
+    // How many values there are, counting two entries that say the same thing once.
+    private static int Different(List<RecordEntry> entries) =>
+        entries.Where((entry, index) => !entries.Take(index).Any(earlier => RecordEntries.AreIdentical(earlier, entry))).Count();
+
+    private static string Jobs(IEnumerable<RecordEntry> entries) =>
+        string.Join(" ", entries.Select(entry => $"'{entry.JobName}'").Distinct().Order(StringComparer.Ordinal));
+
+    [GeneratedRegex(@"[0-9]+ different|(?:recorded|skipped|failed) in|'(?:a|b|c|B)'|attempt [0-9]+|--value|from files|is not a number|\b[0-9a-f]{40}(?=,)")]
+    private static partial Regex NamedParts();
 
     private static string DatasetOf(RecordEntry entry) =>
         $"{entry.Project}\n{entry.Dataset}\n{string.Join("\n", entry.Dimensions.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => $"{pair.Key}\n{pair.Value}"))}";

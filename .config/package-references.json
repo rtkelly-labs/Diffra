@@ -11,7 +11,7 @@
       "project": "src/RootFile/Diffra.RootFile.csproj",
       "kind": "PackageReference",
       "name": "YamlDotNet",
-      "reason": "Parses the root file. Read through its event parser only, with no reflection-based deserializer, and kept out of the protocol library, which takes no package references. The CLI reaches it through this library for `diffra record`."
+      "reason": "Parses the root file. Read through its event parser only, with no reflection-based deserializer, and kept out of the protocol library, which takes no package references. The CLI reaches it through this library for `diffra record`, which adds about 180 KB to the CLI package. Kept for now; the intent is to vendor and trim it to the parser the root file needs."
     },
     {
       "project": "scripts/CiTiming.cs",

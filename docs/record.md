@@ -76,12 +76,12 @@ Built for the `files` converter of `diffra/size@1` and the `sarif` converter of
   entry, since reading one may never end, and so does a file whose length changes while it is
   read.
 - A folder the glob reaches that cannot be listed rejects the entry, so a total is never short.
-- More than 1,000 matched files reject the entry before any file is read. The root file's
-  `maxKeys` budget also rejects the entry when more files match: keeping only the largest files
-  needs the `truncated` field [Dataset types](datasets.md#budgets) proposes, which the entry
-  schema does not have yet.
-- For `files`, the files are read in ordinal path order. Each is read once, for its length and its SHA-256
-  digest, and the entry holds every file as a source and
+- More than 1,000 matched files reject the entry before any file is read. For `files`, the root
+  file's `maxKeys` budget also rejects the entry when more files match: keeping only the largest
+  files needs the `truncated` field [Dataset types](datasets.md#budgets) proposes, which the
+  entry schema does not have yet.
+- For `files`, the files are read in ordinal path order. Each is read once, for its length and
+  its SHA-256 digest, and the entry holds every file as a source and
   `{ "files": { "<path>": { "value": "<bytes>" } }, "total": { "value": "<bytes>" } }` as its
   `data`. The root file's `fields` selection is not applied yet for size, so both `total` and
   `files` are always written.
@@ -129,6 +129,9 @@ The `sarif` converter reads SARIF 2.1.0 logs, as CodeQL and Ruff write them:
   source and, with every number a decimal string,
   `{ "byRule": { "<tool>/<rule>": { "value": "<count>" } }, "results": { "<key>": { "value": { "level", "line", "message", "occurrences", "path", "rule", "tool" } } }, "total": { "value": "<count>" } }`
   as its `data`. A log with no results records zero findings.
+- `diffra merge` reads an entries file of at most 16 MiB, so a job whose findings entry passes
+  that cannot be merged; setting the root file's `maxKeys` and `maxTextLength` budgets bounds
+  the entry's size.
 
 ### Context
 

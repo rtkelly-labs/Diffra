@@ -120,7 +120,7 @@ Every file a converter reads is untrusted, even when it came from the adopter's 
   file over 64 MiB, or files that together pass 256 MiB in one entry, are not read and the entry
   is rejected. The `files` converter for `diffra/size@1` does not parse what it reads: it streams
   each file once to take its length and the SHA-256 digest its source needs, so these byte limits
-  do not apply to it.
+  do not apply to it. The `sarif` converter for `diffra/findings@1` applies them.
 - A glob that matches more than the entry schema's 1,000 sources rejects the entry, as
   [Recording a run](record.md#the-command-proposed) says. This is a safety limit, not a budget,
   so a size dataset covers at most 1,000 files.

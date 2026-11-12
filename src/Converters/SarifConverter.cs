@@ -110,7 +110,7 @@ public static class SarifConverter
 
             sources.Add(new ConverterSource(path, Name, Convert.ToHexStringLower(SHA256.HashData(bytes))));
             var fileProblems = new List<string>();
-            new LogReader(path, root, maximumTextLength, findings, fileProblems).Read(bytes);
+            new LogReader(path, root, maximumTextLength, findings, fileProblems).ReadFile(bytes);
             if (fileProblems.Count > MaximumProblemsPerFile)
             {
                 var more = fileProblems.Count - MaximumProblemsPerFile;
@@ -276,7 +276,7 @@ public static class SarifConverter
     // Reads one SARIF file into the findings, adding a problem for anything it cannot read.
     private sealed class LogReader(string file, string root, int? maximumTextLength, Findings findings, List<string> problems)
     {
-        public void Read(byte[] bytes)
+        public void ReadFile(byte[] bytes)
         {
             ReadOnlyMemory<byte> json = bytes;
             if (json.Span.StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF]))

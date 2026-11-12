@@ -4,7 +4,9 @@
 > baseline, approval and promotion. Under the decision records, approval and promotion are not
 > part of the open tool ([0005](adr/0005-surface-do-not-enforce.md)), and records are named by
 > commit, project and dataset, with the hash kept as an integrity check
-> ([0004](adr/0004-records-integrity-and-storage.md)). The code has not changed yet.
+> ([0004](adr/0004-records-integrity-and-storage.md)). The promotion library code has been
+> removed; the "Candidate promotion" section below describes the removed design. The rest of the
+> code has not changed yet.
 
 This reference defines how Diffra v1 names evidence, resolves baselines, and records approval. A trusted baseline is an immutable set of bytes and decisions, not a branch label.
 

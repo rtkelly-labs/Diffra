@@ -113,7 +113,7 @@ namespace Diffra.Protocol.Fuzz
 
             using var document = JsonDocument.Parse(data[1..].ToArray());
             var root = document.RootElement;
-            switch (data[0] % 5)
+            switch (data[0] % 4)
             {
                 case 0:
                     foreach (var file in CoveragePayload.FromJsonElement(root).Files)
@@ -127,11 +127,8 @@ namespace Diffra.Protocol.Fuzz
                 case 2:
                     _ = DiffraCloudEvent.FromJsonElement(root);
                     break;
-                case 3:
-                    _ = TimeSeriesProjection.FromJsonElement(root);
-                    break;
                 default:
-                    _ = PromotionApprovalRecord.FromJsonElement(root);
+                    _ = TimeSeriesProjection.FromJsonElement(root);
                     break;
             }
         }
@@ -339,7 +336,6 @@ namespace Diffra.Protocol.Fuzz
             """{"scope":"diffra/protocol","methodology":"roslyn","unit":"cyclomatic","summary":{"totalMethods":2,"totalComplexity":7,"meanComplexity":3.5,"quantiles":{"p50":3,"p75":4,"p90":4,"p99":4},"outliers":[{"methodId":"A.B()","complexity":4,"linesOfCode":20}]},"methods":[{"methodId":"A.B()","complexity":4,"linesOfCode":20},{"methodId":"A.C()","complexity":3,"linesOfCode":9}]}""",
             """{"specversion":"1.0","id":"sha256:1111111111111111111111111111111111111111111111111111111111111111","source":"diffra://repo/example/subject/core","type":"dev.diffra.evidence.v1","time":"2026-01-02T03:04:05Z","dataschema":"https://diffra.dev/schemas/evidence-v1.schema.json","data":{"value":1},"subject":"commit:2222222222222222222222222222222222222222","diffraoutcome":"pass","diffragithubpr":12,"traceparent":"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"}""",
             """{"metricId":"diffra.coverage.lines.rate","subjectId":"diffra/core","unit":"percent","points":[{"commit":"1111111111111111111111111111111111111111","timestamp":"2026-01-01T00:00:00Z","value":85,"tag":"v0.1.0"}],"candidate":{"commit":"3333333333333333333333333333333333333333","value":91,"delta":2.5},"thresholds":{"min":80,"max":100}}""",
-            """{"schema":"https://diffra.dev/schemas/promotion-approval-v1.schema.json","decisionId":"d1","issuer":"ci","headCommit":"2222222222222222222222222222222222222222","evidenceId":"sha256:1111111111111111111111111111111111111111111111111111111111111111","payloadDigest":"sha256:1111111111111111111111111111111111111111111111111111111111111111","policyId":"p","policyVersion":"1","rulesDigest":"sha256:1111111111111111111111111111111111111111111111111111111111111111","verificationRunEvidenceId":"sha256:1111111111111111111111111111111111111111111111111111111111111111","timestamp":"2026-01-02T03:04:05Z"}""",
         ];
 
         public static void Write(string corpusRoot, string repositoryRoot)
@@ -365,7 +361,7 @@ namespace Diffra.Protocol.Fuzz
             Emit(corpusRoot, "document", fixtures.SelectMany(fixture => Enumerable.Range(0, 4).Select(kind => Prefix((byte)kind, fixture))));
             Emit(corpusRoot, "delivery-index", [.. fixtures, deliveryIndex]);
             Emit(corpusRoot, "payloads", [
-                .. fixtures.SelectMany(fixture => Enumerable.Range(0, 5).Select(kind => Prefix((byte)kind, fixture))),
+                .. fixtures.SelectMany(fixture => Enumerable.Range(0, 4).Select(kind => Prefix((byte)kind, fixture))),
                 .. PayloadSeeds.Select((seed, kind) => Prefix((byte)kind, Encoding.UTF8.GetBytes(seed)))]);
             Emit(corpusRoot, "line-ranges", [
                 "14-16, 25"u8.ToArray(), "1"u8.ToArray(), "3-1,7"u8.ToArray(), "0-2147483647"u8.ToArray(),

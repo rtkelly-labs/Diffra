@@ -19,10 +19,7 @@ public static class BaselineTrustTests
         ComplexityEvaluatorEnforcesPolicy();
         ComplexityEvaluatorTreatsIncompatibleMeasurementsAsInconclusive();
         ComplexityEvaluatorUsesPolicyOutlierThreshold();
-        PromotionRequiresIdenticalTwoRunVerification();
-        PromotionInvalidatesOnStaleIdentities();
-        PromotionRejectsTamperedEvidence();
-        Console.WriteLine("PASS Phase 3 baselines, Git merge-base resolver, keyed comparison, complexity, and promotion");
+        Console.WriteLine("PASS Phase 3 baselines, Git merge-base resolver, keyed comparison, and complexity");
     }
 
     private static async Task GitBaselineResolverResolvesAndVerifiesMergeBase()
@@ -252,81 +249,6 @@ public static class BaselineTrustTests
         if (!findings.Any(f => f.Id == "complexity/new-outlier" && f.ChangePaths.Contains("MethodA")))
         {
             throw new InvalidOperationException("Policy threshold of 10 should flag MethodA crossing from 9 to 12.");
-        }
-    }
-
-    private static void PromotionRequiresIdenticalTwoRunVerification()
-    {
-        var commit = "5555555555555555555555555555555555555555";
-        var payloadBytes = Encoding.UTF8.GetBytes("{\"deterministic\": true}");
-        var canonical = CanonicalJson.Canonicalize(payloadBytes);
-
-        var (_, _, run1) = EvidenceDocumentBuilder.Build("diffra.metric", "1.0", "core", commit, "prod", "1.0", canonical, "macOS", "10.0");
-        var (_, _, run2) = EvidenceDocumentBuilder.Build("diffra.metric", "1.0", "core", commit, "prod", "1.0", canonical, "macOS", "10.0");
-
-        var approval = PromotionManager.VerifyAndApprove(run1, run2, commit, "policy.v1", "1.0", "sha256:rules123");
-        Equal(commit, approval.HeadCommit);
-        Equal("policy.v1", approval.PolicyId);
-
-        // Test flaky run rejection
-        var divergentPayload = CanonicalJson.Canonicalize(Encoding.UTF8.GetBytes("{\"deterministic\": false}"));
-        var (_, _, runDivergent) = EvidenceDocumentBuilder.Build("diffra.metric", "1.0", "core", commit, "prod", "1.0", divergentPayload, "macOS", "10.0");
-
-        try
-        {
-            PromotionManager.VerifyAndApprove(run1, runDivergent, commit, "policy.v1", "1.0", "sha256:rules123");
-            throw new InvalidOperationException("Promotion should have failed due to divergent runs.");
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("Flaky observation", StringComparison.Ordinal))
-        {
-            // Expected
-        }
-    }
-
-    private static void PromotionInvalidatesOnStaleIdentities()
-    {
-        var commit = "6666666666666666666666666666666666666666";
-        var payloadBytes = CanonicalJson.Canonicalize(Encoding.UTF8.GetBytes("{\"ok\": true}"));
-        var (_, _, run1) = EvidenceDocumentBuilder.Build("diffra.metric", "1.0", "core", commit, "prod", "1.0", payloadBytes, "macOS", "10.0");
-
-        var approval = PromotionManager.VerifyAndApprove(run1, run1, commit, "policy.v1", "1.0", "sha256:rules123");
-
-        // Validate against matching evidence -> Valid
-        var (isValid, _) = PromotionManager.ValidateApproval(approval, run1, "policy.v1", "1.0", "sha256:rules123");
-        Equal(true, isValid);
-
-        // Validate against altered policy -> Invalid
-        var (isPolicyStale, reason) = PromotionManager.ValidateApproval(approval, run1, "policy.v1", "1.0", "sha256:newRules");
-        Equal(false, isPolicyStale);
-        if (string.IsNullOrEmpty(reason)) throw new InvalidOperationException("Expected invalidation reason for altered policy.");
-
-        // Validate against a new policy version with the same rules digest -> Invalid
-        var (isVersionStale, versionReason) = PromotionManager.ValidateApproval(approval, run1, "policy.v1", "2.0", "sha256:rules123");
-        Equal(false, isVersionStale);
-        if (string.IsNullOrEmpty(versionReason)) throw new InvalidOperationException("Expected invalidation reason for altered policy version.");
-    }
-
-    private static void PromotionRejectsTamperedEvidence()
-    {
-        var commit = "8888888888888888888888888888888888888888";
-        var payloadBytes = CanonicalJson.Canonicalize(Encoding.UTF8.GetBytes("{\"ok\": true}"));
-        var (_, _, run1) = EvidenceDocumentBuilder.Build("diffra.metric", "1.0", "core", commit, "prod", "1.0", payloadBytes, "macOS", "10.0");
-        var approval = PromotionManager.VerifyAndApprove(run1, run1, commit, "policy.v1", "1.0", "sha256:rules123");
-
-        // Change the payload but keep the approved id and payloadDigest strings.
-        var original = Encoding.UTF8.GetString(run1);
-        var tamperedText = original.Replace("{\"ok\":true}", "{\"ok\":false}", StringComparison.Ordinal);
-        if (string.Equals(original, tamperedText, StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException("Test setup failed to tamper with the evidence payload.");
-        }
-
-        var (isValid, reason) = PromotionManager.ValidateApproval(
-            approval, Encoding.UTF8.GetBytes(tamperedText), "policy.v1", "1.0", "sha256:rules123");
-        Equal(false, isValid);
-        if (reason is null || !reason.Contains("identity verification", StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException($"Expected identity verification failure, got: {reason}");
         }
     }
 

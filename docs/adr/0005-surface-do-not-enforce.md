@@ -44,7 +44,6 @@ is an agent asked to make CI pass, and branch protection already decides what bl
   not.
 - Whether an optional dataset recorded as `failed` is reported or counts towards `fail-on`.
 - Whether a change to the scripts that collect the data is also surfaced, and how it is detected.
-- The fate of the promotion code and of the Baseline reference's trust fields.
 
 ## Current code
 
@@ -52,4 +51,5 @@ is an agent asked to make CI pass, and branch protection already decides what bl
 build on those. `Enforcement` in the protocol library reads `fail-on` and decides whether findings
 fail the step. `diffra merge` calls it with `--fail-on` or `DIFFRA_FAIL_ON` and exits 3 when its
 findings fail the step; nothing else calls it yet. The Baseline reference carries `trusted`, `candidate` and `untrusted` statuses
-and an `approved-main` role, and `Promotion` implements two-run promotion as library code.
+and an `approved-main` role; the two-run promotion library code has been removed, and the
+reference's trust fields go with the Baseline reference itself.

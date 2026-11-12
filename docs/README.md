@@ -11,7 +11,7 @@ differential testing. The [repository README](../README.md) has a runnable local
 | [Recording a run](record.md) | The `diffra record` command, the entries file each job writes, and how the collecting job merges them |
 | [Dataset types and converters](datasets.md) | What each standard dataset type holds, the converters that fill it, how it is compared and tested |
 | [Protocol v1](protocol.md) | Document shapes, result states, and CLI flow |
-| [Trust and identity](trust-and-identity.md) | The hash rules, baseline roles and promotion requirements the current code implements |
+| [Trust and identity](trust-and-identity.md) | The hash rules and baseline roles the current code implements, and the removed promotion design |
 | [Publication](publication.md) | The route into `docs.ryankelly.dev` and its build dependencies |
 | [Artifact delivery and CI](artifact-delivery-and-ci.md) | Private and large artifact retrieval, local hosting, CLI packages, and release flow |
 | [Parquet.SourceGenerator adopter](adopters/parquet-source-generator.md) | An earlier integration plan; the repository is now second in the rollout |
@@ -42,7 +42,6 @@ built.
 | Self-verification pipeline | CI script | `scripts/RunDogfood.cs` | |
 | Enforcement setting `fail-on` | Library; `merge` calls it | `Enforcement.cs`, `src/Cli/MergeCommand.cs` | [0005](adr/0005-surface-do-not-enforce.md) |
 | Git merge-base baseline resolver | Library | `GitBaselineResolver.cs` | [0003](adr/0003-comparison-history-and-noise.md) |
-| Two-run verification and promotion records | Library | `Promotion.cs` | [0005](adr/0005-surface-do-not-enforce.md) |
 | Keyed and ordered collection comparison | Library | `KeyedCollectionComparator.cs` | [0003](adr/0003-comparison-history-and-noise.md) |
 | Cyclomatic complexity evidence | Library | `Complexity.cs`, `schemas/complexity-v1.schema.json` | |
 | Code coverage evidence | Library | `Coverage.cs`, `schemas/coverage-v1.schema.json` | [0002](adr/0002-project-file-and-datasets.md) |

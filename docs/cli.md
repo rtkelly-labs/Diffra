@@ -18,10 +18,10 @@ Run the CLI from a build with `dotnet run --project src/Cli/Diffra.Cli.csproj -c
 | 0 | The command completed. For `eval`, the Assessment outcome is `pass` or `warn`. |
 | 1 | A file or execution error, such as an unreadable path. |
 | 2 | Invalid input: an unknown or repeated option, a malformed document, or a digest mismatch. |
-| 3 | `eval` only: the Assessment outcome is `fail`, `needs-review` or `inconclusive`. The Assessment is still written. |
+| 3 | `eval`: the Assessment outcome is `fail`, `needs-review` or `inconclusive`. `merge`: the findings fail the step under `fail-on`. The output is still written. |
 
 `record` is the exception: it saves invalid input as a rejected entry and exits 0, and exits 1 or
-2 only when it cannot save an entry. `merge` exits 0 whatever the merge finds. See below.
+2 only when it cannot save an entry. `merge` exits 0 whatever the merge finds, unless the adopter sets `fail-on`. See below.
 
 `diff` does not use the exit code to report change. A changed and an unchanged comparison both exit
 0; the Delta's `status` records which.
@@ -54,10 +54,12 @@ plans for that were not collected, and lines or files it could not read.
 
 ```sh
 diffra merge [--commit <id>] [--root-file <file>] [--run-dir <dir>] [--entries <dir>]...
-  [-o <file>] [--json]
+  [-o <file>] [--fail-on never|fail|warn] [--json]
 ```
 
-What the merge finds never fails the command. It exits 1 when it cannot read the entries folders
+What the merge finds fails the command only when the adopter opts in with `--fail-on`, or
+`DIFFRA_FAIL_ON`: under `warn`, a required dataset that was not collected exits 3 after the output
+is written. It exits 1 when it cannot read the entries folders
 or write its output, and 2 when there is no usable commit, root file, run folder, entries folder
 or output path, or an option is wrong. [Recording a run](record.md#the-collecting-step) gives the
 rules, the limits and the `--json` shape.

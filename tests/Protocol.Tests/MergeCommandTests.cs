@@ -50,6 +50,7 @@ public static class MergeCommandTests
         MergesFilesThatAreNotCopies();
         ReportsRejectedEntries();
         RefusesOutputsThatReplaceInputs();
+        FailsTheStepOnlyWhenTheAdopterOptsIn();
         Console.WriteLine("PASS diffra merge");
     }
 
@@ -411,6 +412,80 @@ public static class MergeCommandTests
         Equal(true, unreadable[2].Contains(": Line 3:", StringComparison.Ordinal));
         Equal(1, document.RootElement.GetProperty("entriesFiles").GetInt32());
         Equal(1, File.ReadAllLines(run.Output).Length);
+    }
+
+    // A required dataset that was not collected, or only rejected, counts as a warning under
+    // fail-on: it fails the step with warn, not with fail or never. Other findings do not count.
+    private static void FailsTheStepOnlyWhenTheAdopterOptsIn()
+    {
+        using var run = new Folder();
+        run.Record("linux", 1, "--name", "packageSize", "--value", "10", "--dimension", "os=linux", "--dimension", "runner=a");
+        run.Record("linux", 1, "--name", "warnings", "--value", "not a number");
+
+        Equal(0, run.Merge().ExitCode);
+        Equal(0, run.Merge("--fail-on", "never").ExitCode);
+        Equal(0, run.Merge("--fail-on", "fail").ExitCode);
+        var warned = run.Merge("--fail-on", "warn", "--json");
+        Equal(3, warned.ExitCode);
+        Equal(true, File.Exists(run.Output));
+        Equal(true, warned.Error.Contains("fail-on is warn", StringComparison.Ordinal));
+        using (var document = JsonDocument.Parse(warned.Output))
+        {
+            Equal("warn", document.RootElement.GetProperty("failOn").GetString());
+            Equal(true, document.RootElement.GetProperty("failsStep").GetBoolean());
+            var findings = document.RootElement.GetProperty("findings").EnumerateArray().ToList();
+            var missing = findings.Where(finding => finding.GetProperty("kind").GetString() == "not-collected").ToList();
+            Equal(true, missing.Count > 0);
+            Equal(true, missing.All(finding => finding.GetProperty("countsAs").GetString() == "warn"));
+            var rejected = findings.Where(finding => finding.GetProperty("kind").GetString() == "rejected").ToList();
+            Equal(1, rejected.Count);
+            Equal(false, rejected[0].TryGetProperty("countsAs", out _));
+        }
+
+        // The setting is read from DIFFRA_FAIL_ON when the option is not given; the option wins,
+        // an empty value means never, and a misspelt value is an error.
+        Equal(3, MergeWithEnvironment(run, "warn").ExitCode);
+        Equal(0, MergeWithEnvironment(run, "warn", "--fail-on", "never").ExitCode);
+        Equal(3, MergeWithEnvironment(run, "never", "--fail-on", "warn").ExitCode);
+        Equal(0, MergeWithEnvironment(run, string.Empty).ExitCode);
+        Equal(2, MergeWithEnvironment(run, "warning").ExitCode);
+        Equal(2, run.Merge("--fail-on", "warning").ExitCode);
+        Equal(2, run.Merge("--fail-on", "warn", "--fail-on", "fail").ExitCode);
+
+        // Everything planned was collected: a conflict alone does not fail the step.
+        using var complete = new Folder();
+        complete.Record("a", 1, "--name", "packageSize", "--value", "10", "--dimension", "os=linux", "--dimension", "runner=a");
+        complete.Record("a", 1, "--name", "packageSize", "--value", "10", "--dimension", "os=windows", "--dimension", "runner=a");
+        complete.Record("a", 1, "--name", "warnings", "--value", "3");
+        complete.Record("b", 1, "--name", "warnings", "--value", "4");
+        var conflicted = complete.Merge("--fail-on", "warn", "--json");
+        Equal(0, conflicted.ExitCode);
+        using var conflicts = JsonDocument.Parse(conflicted.Output);
+        Equal(false, conflicts.RootElement.GetProperty("failsStep").GetBoolean());
+        Equal(1, conflicts.RootElement.GetProperty("findings").GetArrayLength());
+
+        // Every planned packageSize was collected and warnings has only a rejected entry: the
+        // rejected-only dataset alone fails the step under warn.
+        using var rejectedOnly = new Folder();
+        rejectedOnly.Record("a", 1, "--name", "packageSize", "--value", "10", "--dimension", "os=linux", "--dimension", "runner=a");
+        rejectedOnly.Record("a", 1, "--name", "packageSize", "--value", "10", "--dimension", "os=windows", "--dimension", "runner=a");
+        rejectedOnly.Record("a", 1, "--name", "warnings", "--value", "not a number");
+        Equal(0, rejectedOnly.Merge("--fail-on", "fail").ExitCode);
+        var onlyRejected = rejectedOnly.Merge("--fail-on", "warn", "--json");
+        Equal(3, onlyRejected.ExitCode);
+        using var onlyRejectedDocument = JsonDocument.Parse(onlyRejected.Output);
+        var notCollected = onlyRejectedDocument.RootElement.GetProperty("findings").EnumerateArray()
+            .Where(finding => finding.GetProperty("kind").GetString() == "not-collected").ToList();
+        Equal(1, notCollected.Count);
+        Equal(true, notCollected[0].GetProperty("message").GetString()!.StartsWith("main/warnings", StringComparison.Ordinal));
+        Equal("warn", notCollected[0].GetProperty("countsAs").GetString());
+    }
+
+    private static (int ExitCode, string Output, string Error) MergeWithEnvironment(Folder run, string failOn, params string[] arguments)
+    {
+        var environment = new Dictionary<string, string> { ["DIFFRA_FAIL_ON"] = failOn };
+        string[] command = ["merge", "--root-file", run.RootFilePath, "--commit", Commit, "--entries", run.Entries, "-o", run.Output, .. arguments];
+        return RecordCommandTests.RunCli(run.Directory, environment, command);
     }
 
     private static void WritesUnderTheRunFolderByDefault()

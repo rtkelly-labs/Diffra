@@ -161,7 +161,7 @@ that produce data, whether they succeeded or not.
 
 ```sh
 diffra merge [--commit <id>] [--root-file <file>] [--run-dir <dir>] [--entries <dir>]...
-  [-o <file>] [--json]
+  [-o <file>] [--fail-on never|fail|warn] [--json]
 ```
 
 - `--entries` names a folder holding the jobs' entries files, and may be repeated; a folder named
@@ -197,9 +197,9 @@ diffra merge [--commit <id>] [--root-file <file>] [--run-dir <dir>] [--entries <
   more there were. Text that comes from the entries files, file names or the command line is
   printed with control characters, the Unicode line and paragraph separators and the
   bidirectional controls written as `\uXXXX`, so that no line can pass for another.
-- What it finds never changes the exit code: it exits 0, 1 when it cannot read the entries
-  folders or write its output, and 2 when there is no usable commit, root file, run folder,
-  entries folder or output path, or an option is wrong.
+- It exits 0, or 3 when what it finds fails the step under `fail-on` (see "Failing the step"
+  below); 1 when it cannot read the entries folders or write its output; and 2 when there is no
+  usable commit, root file, run folder, entries folder or output path, or an option is wrong.
 
 With `--json`, `merge` prints one JSON object instead:
 
@@ -209,9 +209,11 @@ With `--json`, `merge` prints one JSON object instead:
 | `entriesFile` | The full path of the merged entries file. |
 | `entries` | How many entries it holds. |
 | `entriesFiles` | How many entries files were read. |
+| `failOn` | The `fail-on` setting in force: `never`, `fail` or `warn`. |
+| `failsStep` | Whether the findings fail the step under that setting. |
 | `supersededAttempts` | Each superseded attempt, as `<job> attempt <n>`, up to 1,000. |
 | `supersededAttemptsNotListed` | How many more superseded attempts there were. |
-| `findings` | Each finding, as `{ "kind", "message" }`, up to 1,000. |
+| `findings` | Each finding, as `{ "kind", "message" }`, up to 1,000. A finding that counts towards `fail-on` also has `countsAs`, the status it counts as. |
 | `findingsNotListed` | How many more findings there were. |
 | `unreadable` | Each problem met while reading, as `{ "file", "message" }`. The `file` is empty for the line that says more problems were found. |
 
@@ -226,6 +228,17 @@ A finding's `kind` is one of:
 | `not-collected` | The root file plans for a dataset and dimensions that no job recorded. |
 | `rejected` | A job gave something `record` could not record. The rejected entry is kept in the merged file, and the finding names the job and shows the first three of its problems. |
 
+Failing the step:
+
+`merge` exits 0 whatever it finds, unless the adopter opts in with `--fail-on`, or the
+`DIFFRA_FAIL_ON` variable, set to `never`, `fail` or `warn` (see
+[decision 0005](adr/0005-surface-do-not-enforce.md)). A required dataset that no job collected,
+including one collected only as rejected entries, is a `not-collected` finding and counts as a
+warning: it fails the step under `warn` and not under `fail`. When the findings fail the step,
+`merge` still writes the merged file and the report, says so on standard error, and exits 3. No
+other finding counts towards `fail-on` yet; see "Not yet decided" below. Any other value of the
+setting is an error, so a misspelling never turns enforcement off.
+
 Decided and not built yet:
 
 - Datasets produced by another workflow file. Each workflow file has its own collecting job; the
@@ -233,13 +246,13 @@ Decided and not built yet:
   will not report a dataset another workflow file is responsible for as not collected. Until the
   root file can say so, a collecting job reports a required dataset produced elsewhere as not
   collected.
-- With the Action's `fail-on` setting, a required dataset that is not collected, or is collected
-  only as rejected entries, counts as a warning: it fails the step with `fail-on: warn` and not
-  with `fail-on: fail`.
 
 Not yet decided:
 
 - The format of the partial record, and how it travels and is written to history.
+- Whether a conflict, a status conflict, a dataset given two ways, an entry for another commit or
+  a rejected entry for an optional dataset counts towards `fail-on`. Until it is decided, none of
+  them does.
 - How jobs' entries files reach the collecting job. A CI integration owns that transport; on
   GitHub, each job uploads its file as an artifact and the collecting job downloads them into one
   folder.

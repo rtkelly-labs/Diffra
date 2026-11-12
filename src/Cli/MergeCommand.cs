@@ -12,7 +12,8 @@ namespace Diffra.Cli;
 /// <summary>
 /// <c>diffra merge</c>: the collecting job's step. It reads the entries file of every job, merges
 /// them by the rules in docs/record.md, writes the merged entries and reports what the merge found.
-/// What it finds is reported and never fails the command; it exits non-zero only when it has no
+/// What it finds is reported. It fails the step, with exit code 3, only when the adopter sets
+/// <c>fail-on</c> and a finding counts towards it; otherwise it exits non-zero only when it has no
 /// usable commit, root file, folder or output path, or cannot write its output.
 /// </summary>
 internal static class MergeCommand
@@ -26,10 +27,10 @@ internal static class MergeCommand
     private const int MaximumProblems = 1000;
     private const int MaximumReported = 1000;
 
-    internal const string Usage = "Usage: merge [--commit <id>] [--root-file <file>] [--run-dir <dir>] [--entries <dir>]... [-o <file>] [--json]";
+    internal const string Usage = "Usage: merge [--commit <id>] [--root-file <file>] [--run-dir <dir>] [--entries <dir>]... [-o <file>] [--fail-on never|fail|warn] [--json]";
 
-    private static readonly string[] Valued = ["commit", "root-file", "run-dir", "entries", "o"];
-    private static readonly string[] Once = ["commit", "root-file", "run-dir", "o"];
+    private static readonly string[] Valued = ["commit", "root-file", "run-dir", "entries", "o", "fail-on"];
+    private static readonly string[] Once = ["commit", "root-file", "run-dir", "o", "fail-on"];
     private static readonly JsonWriterOptions WriterOptions = new() { Encoder = ReportEncoder(), Indented = true };
 
     private static StringComparison PathComparison =>
@@ -47,6 +48,13 @@ internal static class MergeCommand
             || !TryCommit(given, out var commit, out failure))
         {
             return Fail(failure);
+        }
+
+        // A misspelt setting is an error, so that it never turns enforcement off without a word.
+        var failOnText = given.TryGetValue("fail-on", out var failOnValues) ? failOnValues[0] : Environment.GetEnvironmentVariable("DIFFRA_FAIL_ON");
+        if (!Enforcement.TryParse(failOnText, out var failOn))
+        {
+            return Fail($"fail-on must be never, fail or warn, not '{Shown(failOnText ?? string.Empty)}'.");
         }
 
         var rootProblems = new List<string>();
@@ -118,7 +126,15 @@ internal static class MergeCommand
             var (entries, files) = ReadAll(folders, problems);
             var result = EntryMerge.Merge(commit, entries, Expected(rootFile));
             WriteAtomically(output, result.Entries);
-            Report(commit, output, files, result, problems.Listed, json);
+            var failsStep = Enforcement.MergeFailsStep(failOn, result.Findings);
+            Report(commit, output, files, result, problems.Listed, json, failOn, failsStep);
+            if (failsStep)
+            {
+                var counted = result.Findings.Count(finding => Enforcement.Status(finding.Kind) is not null);
+                Console.Error.WriteLine($"merge fails the step: fail-on is {Enforcement.Token(failOn)} and {Count(counted, "finding counts", "findings count")} towards it.");
+                return 3;
+            }
+
             return 0;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -481,7 +497,9 @@ internal static class MergeCommand
         int files,
         MergeResult result,
         List<(string File, string Message)> problems,
-        bool json)
+        bool json,
+        FailOn failOn,
+        bool failsStep)
     {
         Console.OutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
         if (!json)
@@ -526,6 +544,8 @@ internal static class MergeCommand
             writer.WriteString("entriesFile", output);
             writer.WriteNumber("entries", result.Entries.Count);
             writer.WriteNumber("entriesFiles", files);
+            writer.WriteString("failOn", Enforcement.Token(failOn));
+            writer.WriteBoolean("failsStep", failsStep);
             writer.WriteStartArray("supersededAttempts");
             foreach (var attempt in result.SupersededAttempts.Take(MaximumReported))
             {
@@ -540,6 +560,11 @@ internal static class MergeCommand
                 writer.WriteStartObject();
                 writer.WriteString("kind", Kind(finding.Kind));
                 writer.WriteString("message", finding.Message);
+                if (Enforcement.Status(finding.Kind) is { } status)
+                {
+                    writer.WriteString("countsAs", status);
+                }
+
                 writer.WriteEndObject();
             }
 

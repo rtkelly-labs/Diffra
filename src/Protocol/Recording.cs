@@ -919,7 +919,7 @@ public enum MergeFindingKind
     /// <summary>Two entries with the same identity give different values.</summary>
     Conflict,
 
-    /// <summary>One job recorded a dataset that another job skipped or failed.</summary>
+    /// <summary>Entries for one dataset and dimensions have different statuses, in one job or several.</summary>
     StatusConflict,
 
     /// <summary>A dataset was given both with <c>--value</c> and from files.</summary>
@@ -976,6 +976,7 @@ public static class EntryMerge
         var superseded = new List<string>();
         var conflicted = new HashSet<string>(StringComparer.Ordinal);
         var latest = new List<RecordEntry>();
+        var lastAttempts = new List<RecordEntry>();
         foreach (var job in forCommit.GroupBy(entry => entry.JobName, StringComparer.Ordinal)
             .OrderBy(group => group.Key, StringComparer.Ordinal))
         {
@@ -985,65 +986,88 @@ public static class EntryMerge
                 superseded.Add($"{job.Key} attempt {attempt.ToString(CultureInfo.InvariantCulture)}");
             }
 
+            lastAttempts.AddRange(job.Where(entry => entry.Attempt == lastAttempt && entry.Status != EntryStatus.Rejected));
             latest.AddRange(MergeWithinJob(job.Where(entry => entry.Attempt == lastAttempt), findings, conflicted));
         }
 
         var rejected = latest.Where(entry => entry.Status == EntryStatus.Rejected).ToList();
         var stated = latest.Where(entry => entry.Status != EntryStatus.Rejected).ToList();
 
-        // Rule 4: a --value entry against data read from files for the same dataset and dimensions.
-        // Checked before anything is chosen, so a conflict elsewhere cannot hide it.
+        // Rule 4, for the whole dataset and dimensions: entries with different statuses, and a
+        // --value entry against data read from files. A skipped or failed entry has no key, so
+        // these are found per dataset rather than per identity. They are checked over every entry
+        // of each job's last attempt, before anything is chosen or replaced within a job, so no
+        // other conflict can hide them.
         var blocked = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var group in stated
-            .Where(entry => entry.Status == EntryStatus.Recorded)
-            .GroupBy(DatasetIdentity, StringComparer.Ordinal))
+        foreach (var group in lastAttempts.GroupBy(DatasetIdentity, StringComparer.Ordinal))
         {
-            var value = group.FirstOrDefault(entry => entry.Value is not null);
-            var files = group.FirstOrDefault(entry => entry.Data is not null);
-            if (value is not null && files is not null)
+            var first = group.First();
+            var statuses = group.GroupBy(entry => entry.Status).OrderBy(status => status.Key).ToList();
+            if (statuses.Count > 1)
+            {
+                var parts = statuses.Select(status => $"{RecordEntries.Token(status.Key)} in {Jobs(status)}");
+                findings.Add(new MergeFinding(
+                    MergeFindingKind.StatusConflict,
+                    $"{Describe(first.Project, first.Dataset, null, first.Dimensions)} is {string.Join("; ", parts)}."));
+                blocked.Add(group.Key);
+            }
+
+            var values = group.Where(entry => entry is { Status: EntryStatus.Recorded, Value: not null }).ToList();
+            var files = group.Where(entry => entry is { Status: EntryStatus.Recorded, Data: not null }).ToList();
+            if (values.Count > 0 && files.Count > 0)
             {
                 findings.Add(new MergeFinding(
                     MergeFindingKind.ValueAndData,
-                    $"{Describe(files)} was given with --value in job '{value.JobName}' and read from files in job '{files.JobName}'."));
+                    $"{Describe(first.Project, first.Dataset, null, first.Dimensions)} was given with --value in {Jobs(values)} and read from files in {Jobs(files)}."));
                 blocked.Add(group.Key);
             }
         }
 
-        // Rules 3 and 4: across jobs, in job name order.
+        // Rules 3 and 4: across jobs, in job name order. The entries for one identity are compared
+        // as a whole, so that different values are reported within the --value entries and within
+        // the data entries. An identity that conflicted within a job is still compared, so that a
+        // disagreement between jobs is reported too, but no value is chosen for it.
         var chosen = new Dictionary<string, RecordEntry>(StringComparer.Ordinal);
-        foreach (var entry in stated)
+        foreach (var group in stated.GroupBy(entry => entry.Identity, StringComparer.Ordinal))
         {
-            var identity = entry.Identity;
-            if (conflicted.Contains(identity))
+            var list = group.ToList();
+            var first = list[0];
+            var found = false;
+            foreach (var form in new[]
             {
-                continue;
+                list.FindAll(entry => entry is { Status: EntryStatus.Recorded, Value: not null }),
+                list.FindAll(entry => entry is { Status: EntryStatus.Recorded, Data: not null }),
+            })
+            {
+                var distinct = new List<RecordEntry>();
+                foreach (var entry in form)
+                {
+                    if (!distinct.Exists(other => RecordEntries.AreIdentical(other, entry)))
+                    {
+                        distinct.Add(entry);
+                    }
+                }
+
+                if (distinct.Count > 1)
+                {
+                    findings.Add(new MergeFinding(
+                        MergeFindingKind.Conflict,
+                        $"{Describe(first)} has {distinct.Count.ToString(CultureInfo.InvariantCulture)} different values across {Jobs(form)}."));
+                    found = true;
+                }
             }
 
-            if (!chosen.TryGetValue(identity, out var earlier))
+            if (found)
             {
-                chosen[identity] = entry;
-                continue;
+                conflicted.Add(group.Key);
             }
-
-            if (RecordEntries.AreIdentical(earlier, entry)
-                || (earlier.Status == EntryStatus.Recorded && entry.Status == EntryStatus.Recorded
-                    && (earlier.Value is null) != (entry.Value is null)))
+            else if (!conflicted.Contains(group.Key))
             {
-                // A --value against data is already reported as given both ways.
-                continue;
+                chosen[group.Key] = first;
             }
-
-            var statusConflict = earlier.Status != entry.Status;
-            findings.Add(new MergeFinding(
-                statusConflict ? MergeFindingKind.StatusConflict : MergeFindingKind.Conflict,
-                statusConflict
-                    ? $"{Describe(entry)} is {RecordEntries.Token(earlier.Status)} in job '{earlier.JobName}' and {RecordEntries.Token(entry.Status)} in job '{entry.JobName}'."
-                    : $"{Describe(entry)} has different values in jobs '{earlier.JobName}' and '{entry.JobName}'."));
-            chosen.Remove(identity);
-            conflicted.Add(identity);
         }
 
-        // A dataset given both ways keeps neither, after its other conflicts are reported.
+        // A dataset given two ways keeps nothing, after its other conflicts are reported.
         foreach (var identity in chosen.Where(pair => blocked.Contains(DatasetIdentity(pair.Value))).Select(pair => pair.Key).ToList())
         {
             chosen.Remove(identity);
@@ -1069,6 +1093,15 @@ public static class EntryMerge
             .ThenBy(finding => finding.Message, StringComparer.Ordinal)
             .ToList();
         return new MergeResult(merged, orderedFindings, superseded);
+    }
+
+    // The jobs, in name order and each once: "job 'a'" or "jobs 'a', 'b' and 'c'".
+    private static string Jobs(IEnumerable<RecordEntry> entries)
+    {
+        var names = entries.Select(entry => $"'{entry.JobName}'").Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        return names.Count == 1
+            ? $"job {names[0]}"
+            : $"jobs {string.Join(", ", names.Take(names.Count - 1))} and {names[^1]}";
     }
 
     private static string DatasetIdentity(RecordEntry entry) =>

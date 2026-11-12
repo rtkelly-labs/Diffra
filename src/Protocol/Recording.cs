@@ -232,7 +232,16 @@ public static partial class RecordEntries
             return first.Value == second.Value;
         }
 
-        return JsonElement.DeepEquals(first.Data!.Value, second.Data!.Value);
+        try
+        {
+            return JsonElement.DeepEquals(first.Data!.Value, second.Data!.Value);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            // A number whose exponent is too large to compare: the data is the same only when it is
+            // written the same way.
+            return string.Equals(Compact(first.Data!.Value), Compact(second.Data!.Value), StringComparison.Ordinal);
+        }
     }
 
     internal static string IdentityOf(

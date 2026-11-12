@@ -373,7 +373,8 @@ internal static class MergeCommand
         return true;
     }
 
-    // The JSON report keeps text as it is, except for the characters the plain report escapes.
+    // The JSON report escapes the characters the plain report escapes, and the characters the default
+    // encoder escapes, such as quotes and angle brackets.
     private static JavaScriptEncoder ReportEncoder()
     {
         var settings = new System.Text.Encodings.Web.TextEncoderSettings(System.Text.Unicode.UnicodeRanges.All);

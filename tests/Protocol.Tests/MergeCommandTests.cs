@@ -267,10 +267,28 @@ public static class MergeCommandTests
 
         var plain = run.Merge();
         Equal(true, plain.Output.Contains(" more findings are not listed.", StringComparison.Ordinal));
+
+        // Numbers with exponents too large to compare, across jobs and within one job, are merged
+        // without a crash; equal numbers written differently agree.
+        using var numbers = new Folder();
+        File.WriteAllText(Path.Combine(numbers.Entries, "d.jsonl"), DataEntry("d", 1, "1e99999999999") + "\n");
+        File.WriteAllText(Path.Combine(numbers.Entries, "e.jsonl"), DataEntry("e", 1, "10e99999999998") + "\n" + DataEntry("e", 1, "1e99999999999") + "\n");
+        var huge = numbers.Merge("--json");
+        Equal(0, huge.ExitCode);
+        Equal(true, File.Exists(numbers.Output));
+
+        using var spellings = new Folder();
+        File.WriteAllText(Path.Combine(spellings.Entries, "f.jsonl"), DataEntry("f", 1, "100") + "\n");
+        File.WriteAllText(Path.Combine(spellings.Entries, "g.jsonl"), DataEntry("g", 1, "1E+2") + "\n");
+        File.WriteAllText(Path.Combine(spellings.Entries, "h.jsonl"), DataEntry("h", 1, "100.0") + "\n");
+        var same = spellings.Merge("--json");
+        Equal(0, same.ExitCode);
+        using var agreed = JsonDocument.Parse(same.Output);
+        Equal(0, agreed.RootElement.GetProperty("findings").EnumerateArray().Count(finding => finding.GetProperty("kind").GetString() == "conflict"));
     }
 
-    // Two files for one job attempt are copies, one perhaps written further: the longer one is kept,
-    // with no conflict between them.
+    // A file whose entries are the first entries of another file is an earlier copy of it: the
+    // longer one is kept, with no conflict between them.
     private static void KeepsOneCopyOfAJobAttempt()
     {
         using var run = new Folder();

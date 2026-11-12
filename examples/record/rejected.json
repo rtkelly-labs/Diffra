@@ -1,0 +1,1 @@
+{"schema":"https://diffra.net/schemas/record-entry-v1.schema.json","project":"main","dataset":"packageSzie","commit":"0123456789abcdef0123456789abcdef01234567","job":{"name":"pack","attempt":1},"status":"rejected","input":{"name":"packageSzie","value":"10"},"problems":["The root file declares no dataset 'packageSzie'."]}

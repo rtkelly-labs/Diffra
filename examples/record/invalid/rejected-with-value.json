@@ -1,0 +1,1 @@
+{"schema":"https://diffra.net/schemas/record-entry-v1.schema.json","project":"main","dataset":"a","commit":"0123456789abcdef0123456789abcdef01234567","job":{"name":"j","attempt":1},"status":"rejected","value":{"value":"1"},"input":{"value":"1"},"problems":["x"]}

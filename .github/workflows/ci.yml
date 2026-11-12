@@ -148,7 +148,8 @@ jobs:
       - name: Check the schemas against the JSON Schema metaschema
         run: |
           $CHECK_JSONSCHEMA --check-metaschema schemas/project-v1.schema.json schemas/collection-v1.schema.json \
-            $E/benchmarks/payload.schema.json $E/test-results/payload.schema.json schemas/root-file-v1.schema.json
+            $E/benchmarks/payload.schema.json $E/test-results/payload.schema.json schemas/root-file-v1.schema.json \
+            schemas/record-entry-v1.schema.json
 
       - name: Validate the valid fixtures
         run: |
@@ -157,6 +158,7 @@ jobs:
           $CHECK_JSONSCHEMA --schemafile $E/benchmarks/payload.schema.json $E/benchmarks/payload.json
           $CHECK_JSONSCHEMA --schemafile $E/test-results/payload.schema.json $E/test-results/payload.json
           $CHECK_JSONSCHEMA --schemafile schemas/root-file-v1.schema.json $R/*.yml
+          $CHECK_JSONSCHEMA --schemafile schemas/record-entry-v1.schema.json examples/record/*.json
 
       - name: Require every invalid fixture to fail validation
         run: |
@@ -174,7 +176,8 @@ jobs:
           for f in $E/invalid/benchmarks-payload-*.json; do expect_invalid $E/benchmarks/payload.schema.json "$f"; done
           for f in $E/invalid/test-results-payload-*.json; do expect_invalid $E/test-results/payload.schema.json "$f"; done
           for f in $R/invalid/*.yml; do expect_invalid schemas/root-file-v1.schema.json "$f"; done
-          count=$(( $(ls $E/invalid | wc -l) + $(ls $R/invalid | wc -l) ))
+          for f in examples/record/invalid/*.json; do expect_invalid schemas/record-entry-v1.schema.json "$f"; done
+          count=$(( $(ls $E/invalid | wc -l) + $(ls $R/invalid | wc -l) + $(ls examples/record/invalid | wc -l) ))
           echo "checked $count invalid fixtures"
           exit $status
 

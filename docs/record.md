@@ -174,9 +174,12 @@ diffra merge [--commit <id>] [--root-file <file>] [--run-dir <dir>] [--entries <
   not searched, and more than 1,000 such files, a file over 16 MiB or more than 256 MiB in all are
   reported and not read. A file with the same bytes as one already read is reported and not read
   again. A file that cannot be read is reported, and the merge goes on without it.
+- Each job attempt writes one entries file, so two files holding the same job and attempt are
+  copies of one file. The one with the most entries is kept, or the first by name when they have
+  as many, and the others are reported and not merged.
 - Each line that is not a valid entry is reported and left out, up to 20 lines for each file and
-  then one line saying how many more there were; after 1,000 problems in all, one line says that
-  there were more.
+  then one line saying how many more there were. Reading a file stops after 100 such lines. After
+  1,000 problems in all, one line says that there were more.
 - `merge` checks each entry against the entry schema and the rules above, not against the root
   file. `record` checked the entries it saved against the root file in force when it ran, so an
   entry for a dataset the root file no longer declares is merged as it is.
@@ -185,11 +188,13 @@ diffra merge [--commit <id>] [--root-file <file>] [--run-dir <dir>] [--entries <
   so the plan leaves it out, and an entry with any value for it matches.
 - The merged entries are written to `-o`, or `<run-dir>/merged.jsonl`, as an entries file: one
   valid entry per line, in the merge's order. The same entries give the same file. The output
-  must be a file path, and may not be in an entries folder the merge reads.
+  must be a file path, and may be neither the root file nor in an entries folder the merge reads,
+  with links followed.
 - `merge` prints one line for the result and one for each superseded attempt, finding and
-  problem. Text that comes from the entries files or file names is printed with control
-  characters, and the Unicode line and paragraph separators, written as `\uXXXX`, so that no line
-  can pass for another.
+  problem, listing at most 1,000 superseded attempts and 1,000 findings and then saying how many
+  more there were. Text that comes from the entries files, file names or the command line is
+  printed with control characters, the Unicode line and paragraph separators and the
+  bidirectional controls written as `\uXXXX`, so that no line can pass for another.
 - What it finds never changes the exit code: it exits 0, 1 when it cannot read the entries
   folders or write its output, and 2 when there is no usable commit, root file, run folder,
   entries folder or output path, or an option is wrong.
@@ -202,8 +207,10 @@ With `--json`, `merge` prints one JSON object instead:
 | `entriesFile` | The full path of the merged entries file. |
 | `entries` | How many entries it holds. |
 | `entriesFiles` | How many entries files were read. |
-| `supersededAttempts` | Each superseded attempt, as `<job> attempt <n>`. |
-| `findings` | Each finding, as `{ "kind", "message" }`. |
+| `supersededAttempts` | Each superseded attempt, as `<job> attempt <n>`, up to 1,000. |
+| `supersededAttemptsNotListed` | How many more superseded attempts there were. |
+| `findings` | Each finding, as `{ "kind", "message" }`, up to 1,000. |
+| `findingsNotListed` | How many more findings there were. |
 | `unreadable` | Each problem met while reading, as `{ "file", "message" }`. The `file` is empty for the line that says more problems were found. |
 
 A finding's `kind` is one of:

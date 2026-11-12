@@ -21,7 +21,9 @@ internal static class MergeCommand
     private const long MaximumFileBytes = 16L * 1024 * 1024;
     private const long MaximumTotalBytes = 256L * 1024 * 1024;
     private const int MaximumProblemsPerFile = 20;
+    private const int MaximumInvalidLinesPerFile = 100;
     private const int MaximumProblems = 1000;
+    private const int MaximumReported = 1000;
 
     internal const string Usage = "Usage: merge [--commit <id>] [--root-file <file>] [--run-dir <dir>] [--entries <dir>]... [-o <file>] [--json]";
 
@@ -88,9 +90,25 @@ internal static class MergeCommand
             return Fail($"The output '{Shown(output)}' is not a file path.");
         }
 
-        if (folders.Exists(folder => string.Equals(Folder(outputFolder), folder, PathComparison)))
+        // Links are resolved, so a path through a link to an entries folder or the root file is caught.
+        try
         {
-            return Fail($"The output '{Shown(output)}' is inside an entries folder; write it elsewhere.");
+            var realOutputFolder = RealPath(outputFolder);
+            if (folders.Exists(folder => string.Equals(realOutputFolder, RealPath(folder), PathComparison)))
+            {
+                return Fail($"The output '{Shown(output)}' is inside an entries folder; write it elsewhere.");
+            }
+
+            var rootPath = given.TryGetValue("root-file", out var roots) ? roots[0] : System.Environment.GetEnvironmentVariable("DIFFRA_ROOT_FILE");
+            if (!string.IsNullOrEmpty(rootPath)
+                && string.Equals(Path.Combine(realOutputFolder, Path.GetFileName(output)), RealPath(rootPath), PathComparison))
+            {
+                return Fail($"The output '{Shown(output)}' is the root file; write it elsewhere.");
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return Fail($"A path cannot be checked: {exception.Message}");
         }
 
         try
@@ -212,7 +230,7 @@ internal static class MergeCommand
     // of file, such as named pipes, are not looked for.
     private static (List<RecordEntry> Entries, int Files) ReadAll(List<string> folders, Problems problems)
     {
-        var entries = new List<RecordEntry>();
+        var contents = new List<(string File, IReadOnlyList<RecordEntry> Entries)>();
         var read = new Dictionary<string, string>(StringComparer.Ordinal);
         var seen = 0;
         var total = 0L;
@@ -232,7 +250,7 @@ internal static class MergeCommand
                 if (++seen > MaximumFiles)
                 {
                     problems.Add(file.FullName, $"More than {MaximumFiles.ToString(CultureInfo.InvariantCulture)} entries files were found; this one and the rest were not read.");
-                    return (entries, read.Count);
+                    return (Distinct(contents, problems), read.Count);
                 }
 
                 if (file.Attributes.HasFlag(FileAttributes.ReparsePoint))
@@ -269,8 +287,18 @@ internal static class MergeCommand
 
                 read[digest] = file.FullName;
                 total += bytes.Length;
-                var content = EntriesFile.Read(bytes);
-                entries.AddRange(content.Entries);
+                EntriesFileContent content;
+                try
+                {
+                    content = EntriesFile.Read(bytes, MaximumInvalidLinesPerFile);
+                }
+                catch (Exception exception) when (exception is JsonException or InvalidOperationException or ArgumentException)
+                {
+                    problems.Add(file.FullName, $"The file cannot be read as entries: {exception.Message}");
+                    continue;
+                }
+
+                contents.Add((file.FullName, content.Entries));
                 foreach (var problem in content.Problems.Take(MaximumProblemsPerFile))
                 {
                     problems.Add(file.FullName, problem);
@@ -280,10 +308,70 @@ internal static class MergeCommand
                 {
                     problems.Add(file.FullName, $"{(content.Problems.Count - MaximumProblemsPerFile).ToString(CultureInfo.InvariantCulture)} more lines were not valid entries.");
                 }
+
+                if (content.Stopped)
+                {
+                    problems.Add(file.FullName, $"Reading stopped after {MaximumInvalidLinesPerFile.ToString(CultureInfo.InvariantCulture)} lines that were not valid entries.");
+                }
             }
         }
 
-        return (entries, read.Count);
+        return (Distinct(contents, problems), read.Count);
+    }
+
+    // Each job attempt writes one entries file, so two files that hold the same job and attempt are
+    // copies of one file, one perhaps written further than the other. The file with the most entries
+    // is kept, and the first by name when they have as many; the others are reported and left out.
+    private static List<RecordEntry> Distinct(List<(string File, IReadOnlyList<RecordEntry> Entries)> contents, Problems problems)
+    {
+        static string Attempt(RecordEntry entry) => entry.JobName + "\n" + entry.Attempt.ToString(CultureInfo.InvariantCulture);
+
+        var owners = new Dictionary<string, string>(StringComparer.Ordinal);
+        var kept = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (file, entries) in contents.OrderByDescending(content => content.Entries.Count))
+        {
+            var attempts = entries.Select(Attempt).Distinct(StringComparer.Ordinal).ToList();
+            if (attempts.Select(attempt => owners.GetValueOrDefault(attempt)).FirstOrDefault(owner => owner is not null) is { } owner)
+            {
+                problems.Add(file, $"The file holds a job attempt that '{owner}' also holds, with more entries or an earlier name; it was not merged.");
+                continue;
+            }
+
+            foreach (var attempt in attempts)
+            {
+                owners[attempt] = file;
+            }
+
+            kept.Add(file);
+        }
+
+        return [.. contents.Where(content => kept.Contains(content.File)).SelectMany(content => content.Entries)];
+    }
+
+    // The full path with every link in it resolved, without a trailing separator. A link loop or
+    // a chain longer than 40 links throws IOException.
+    private static string RealPath(string path, int depth = 0)
+    {
+        if (depth > 40)
+        {
+            throw new IOException($"Too many links in '{path}'.");
+        }
+
+        var full = Path.GetFullPath(path);
+        var current = Path.GetPathRoot(full) ?? string.Empty;
+        foreach (var segment in full[current.Length..].Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var next = Path.Combine(current, segment);
+            FileSystemInfo info = Directory.Exists(next) ? new DirectoryInfo(next) : new FileInfo(next);
+            if (info.LinkTarget is not null && info.ResolveLinkTarget(returnFinalTarget: true) is { } target)
+            {
+                next = RealPath(target.FullName, depth + 1);
+            }
+
+            current = next;
+        }
+
+        return Path.TrimEndingDirectorySeparator(current);
     }
 
     // At most `limit` bytes, read through one handle so that a file that grows after it was listed
@@ -350,14 +438,24 @@ internal static class MergeCommand
             // escaped: a line break in them must not start a line that reads as a finding, or as a
             // command to the CI host.
             Console.WriteLine($"Merged {Count(result.Entries.Count, "entry", "entries")} from {Count(files, "entries file", "entries files")} for commit {commit} into {Escape(output)}.");
-            foreach (var attempt in result.SupersededAttempts)
+            foreach (var attempt in result.SupersededAttempts.Take(MaximumReported))
             {
                 Console.WriteLine($"Superseded: {Escape(attempt)}");
             }
 
-            foreach (var finding in result.Findings)
+            if (result.SupersededAttempts.Count > MaximumReported)
+            {
+                Console.WriteLine($"{(result.SupersededAttempts.Count - MaximumReported).ToString(CultureInfo.InvariantCulture)} more superseded attempts are not listed.");
+            }
+
+            foreach (var finding in result.Findings.Take(MaximumReported))
             {
                 Console.WriteLine($"{Kind(finding.Kind)}: {Escape(finding.Message)}");
+            }
+
+            if (result.Findings.Count > MaximumReported)
+            {
+                Console.WriteLine($"{(result.Findings.Count - MaximumReported).ToString(CultureInfo.InvariantCulture)} more findings are not listed.");
             }
 
             foreach (var (file, message) in problems)
@@ -377,14 +475,15 @@ internal static class MergeCommand
             writer.WriteNumber("entries", result.Entries.Count);
             writer.WriteNumber("entriesFiles", files);
             writer.WriteStartArray("supersededAttempts");
-            foreach (var attempt in result.SupersededAttempts)
+            foreach (var attempt in result.SupersededAttempts.Take(MaximumReported))
             {
                 writer.WriteStringValue(attempt);
             }
 
             writer.WriteEndArray();
+            writer.WriteNumber("supersededAttemptsNotListed", Math.Max(0, result.SupersededAttempts.Count - MaximumReported));
             writer.WriteStartArray("findings");
-            foreach (var finding in result.Findings)
+            foreach (var finding in result.Findings.Take(MaximumReported))
             {
                 writer.WriteStartObject();
                 writer.WriteString("kind", Kind(finding.Kind));
@@ -393,6 +492,7 @@ internal static class MergeCommand
             }
 
             writer.WriteEndArray();
+            writer.WriteNumber("findingsNotListed", Math.Max(0, result.Findings.Count - MaximumReported));
             writer.WriteStartArray("unreadable");
             foreach (var (file, message) in problems)
             {
@@ -433,7 +533,9 @@ internal static class MergeCommand
         return builder.ToString();
     }
 
-    private static bool NeedsEscape(char character) => char.IsControl(character) || character is '\u2028' or '\u2029';
+    // Also the bidirectional controls, which can make a line read as other text.
+    private static bool NeedsEscape(char character) =>
+        char.IsControl(character) || character is '\u2028' or '\u2029' or (>= '\u202a' and <= '\u202e') or (>= '\u2066' and <= '\u2069') or '\u200e' or '\u200f' or '\u061c';
 
     // A folder's full path without a trailing separator, so that 'd' and 'd/' are one folder.
     private static string Folder(string path) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
@@ -456,7 +558,7 @@ internal static class MergeCommand
 
     private static int Fail(string message)
     {
-        Console.Error.WriteLine(message);
+        Console.Error.WriteLine(Escape(message));
         Console.Error.WriteLine(Usage);
         return 2;
     }

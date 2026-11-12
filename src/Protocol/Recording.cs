@@ -133,6 +133,13 @@ public static partial class RecordEntries
             using var document = JsonDocument.Parse(json, DocumentOptions);
             var problems = new List<string>();
             Check(document.RootElement, problems);
+            if (problems.Count == 0)
+            {
+                // Writing the entry out reads every string in it, so a lone surrogate anywhere, such
+                // as in a data value that Check does not look into, is found here.
+                Compact(document.RootElement);
+            }
+
             return problems;
         }
         catch (JsonException exception)
@@ -862,7 +869,7 @@ public static partial class EntriesFile
         var existing = new byte[stream.Length];
         stream.ReadExactly(existing);
         var held = entry is { Status: EntryStatus.Recorded, Replaces: false }
-            ? ReadLines(existing).Entries.LastOrDefault(other =>
+            ? ReadLines(existing, int.MaxValue).Entries.LastOrDefault(other =>
                 other.Status == EntryStatus.Recorded
                 && other.Attempt == entry.Attempt
                 && string.Equals(other.JobName, entry.JobName, StringComparison.Ordinal)
@@ -904,17 +911,29 @@ public static partial class EntriesFile
     public static EntriesFileContent Read(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
-        return ReadLines(File.ReadAllBytes(path));
+        return ReadLines(File.ReadAllBytes(path), int.MaxValue);
     }
 
     /// <summary>Reads every entry in the bytes of an entries file, as <see cref="Read"/> does.</summary>
     public static EntriesFileContent Read(byte[] bytes)
     {
         ArgumentNullException.ThrowIfNull(bytes);
-        return ReadLines(bytes);
+        return ReadLines(bytes, int.MaxValue);
     }
 
-    private static EntriesFileContent ReadLines(byte[] bytes)
+    /// <summary>
+    /// Reads the entries in the bytes of an entries file from another job, which may be hostile:
+    /// reading stops after <paramref name="maximumProblems"/> lines that are not valid entries, and
+    /// <see cref="EntriesFileContent.Stopped"/> says so.
+    /// </summary>
+    public static EntriesFileContent Read(byte[] bytes, int maximumProblems)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumProblems);
+        return ReadLines(bytes, maximumProblems);
+    }
+
+    private static EntriesFileContent ReadLines(byte[] bytes, int maximumProblems)
     {
         var entries = new List<RecordEntry>();
         var problems = new List<string>();
@@ -931,6 +950,11 @@ public static partial class EntriesFile
             }
 
             number++;
+            if (problems.Count == maximumProblems)
+            {
+                return new EntriesFileContent(entries, problems) { Stopped = true };
+            }
+
             var span = bytes.AsSpan(start, end - start);
             start = end + 1;
             if (span.IsEmpty)
@@ -967,7 +991,11 @@ public static partial class EntriesFile
 }
 
 /// <summary>The valid entries of an entries file, in file order, and the lines that were not valid.</summary>
-public sealed record EntriesFileContent(IReadOnlyList<RecordEntry> Entries, IReadOnlyList<string> Problems);
+public sealed record EntriesFileContent(IReadOnlyList<RecordEntry> Entries, IReadOnlyList<string> Problems)
+{
+    /// <summary>Whether reading stopped at the limit of lines that are not valid entries.</summary>
+    public bool Stopped { get; init; }
+}
 
 /// <summary>
 /// A dataset the root file plans for, for one combination of the values of the dimensions whose
@@ -1198,6 +1226,9 @@ public static class EntryMerge
                 return combined.ToHashCode();
             case JsonValueKind.String:
                 return StringComparer.Ordinal.GetHashCode(element.GetString()!);
+            case JsonValueKind.Number:
+                // Equal numbers, such as 1 and 1.0, give the same double; zero is hashed once.
+                return element.TryGetDouble(out var number) && number != 0 && double.IsFinite(number) ? number.GetHashCode() : 0;
             default:
                 return (int)element.ValueKind;
         }

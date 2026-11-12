@@ -45,6 +45,9 @@ public static class MergeCommandTests
         LimitsWhatItReports();
         EscapesControlCharactersInTheReport();
         MergesManyJobsQuickly();
+        SurvivesHostileEntriesFiles();
+        KeepsOneCopyOfAJobAttempt();
+        RefusesOutputsThatReplaceInputs();
         Console.WriteLine("PASS diffra merge");
     }
 
@@ -194,7 +197,95 @@ public static class MergeCommandTests
         using var document = JsonDocument.Parse(result.Output);
         Equal(1, document.RootElement.GetProperty("entries").GetInt32());
         Equal(0, document.RootElement.GetProperty("unreadable").GetArrayLength());
+
+        // Data that differs only in numbers: every job disagrees, and the merge is still quick.
+        using var numbers = new Folder();
+        File.WriteAllLines(
+            Path.Combine(numbers.Entries, "data.jsonl"),
+            Enumerable.Range(0, 4000).Select(index => DataEntry($"job{index.ToString(System.Globalization.CultureInfo.InvariantCulture)}", 1, index.ToString(System.Globalization.CultureInfo.InvariantCulture))));
+        watch.Restart();
+        var differing = numbers.Merge("--json");
+        Equal(0, differing.ExitCode);
+        Equal(true, watch.Elapsed < TimeSpan.FromSeconds(60));
     }
+
+    private static void SurvivesHostileEntriesFiles()
+    {
+        using var run = new Folder();
+
+        // A lone surrogate in a data value is a line problem, not a crash.
+        File.WriteAllText(Path.Combine(run.Entries, "a.jsonl"), DataEntry("a", 1, "\"\\ud800\"") + "\n");
+
+        // A file of invalid lines is read only up to a limit.
+        File.WriteAllText(Path.Combine(run.Entries, "b.jsonl"), string.Concat(Enumerable.Repeat("x\n", 5000)));
+
+        // More findings than are listed.
+        var other = new string('b', 40);
+        File.WriteAllLines(
+            Path.Combine(run.Entries, "c.jsonl"),
+            Enumerable.Range(0, 1500).Select(index => DataEntry($"c{index.ToString(System.Globalization.CultureInfo.InvariantCulture)}", 1, "1").Replace(Commit, other, StringComparison.Ordinal)));
+
+        var result = run.Merge("--json");
+        Equal(0, result.ExitCode);
+        using var document = JsonDocument.Parse(result.Output);
+        var root = document.RootElement;
+        var messages = root.GetProperty("unreadable").EnumerateArray().Select(problem => problem.GetProperty("message").GetString()!).ToList();
+        Equal(true, messages.Exists(message => message.Contains("not valid Unicode", StringComparison.Ordinal)));
+        Equal(true, messages.Contains("Reading stopped after 100 lines that were not valid entries."));
+        Equal(true, messages.Contains("80 more lines were not valid entries."));
+        Equal(1000, root.GetProperty("findings").GetArrayLength());
+        Equal(true, root.GetProperty("findingsNotListed").GetInt32() >= 500);
+
+        var plain = run.Merge();
+        Equal(true, plain.Output.Contains(" more findings are not listed.", StringComparison.Ordinal));
+    }
+
+    // Two files for one job attempt are copies, one perhaps written further: the longer one is kept,
+    // with no conflict between them.
+    private static void KeepsOneCopyOfAJobAttempt()
+    {
+        using var run = new Folder();
+        run.Record("r", 1, "--name", "warnings", "--value", "1");
+        run.Record("r", 1, "--name", "warnings", "--value", "2", "--replace");
+        var file = Directory.GetFiles(run.Entries).Single();
+        File.Copy(file, Path.Combine(run.Entries, "a-copy.jsonl"));
+        File.AppendAllText(Path.Combine(run.Entries, "a-copy.jsonl"), "\n");
+        run.Record("r", 1, "--name", "warnings", "--value", "3", "--replace");
+
+        var result = run.Merge("--json");
+        Equal(0, result.ExitCode);
+        using var document = JsonDocument.Parse(result.Output);
+        Equal(0, document.RootElement.GetProperty("findings").EnumerateArray().Count(finding => finding.GetProperty("kind").GetString() == "conflict"));
+        Equal("3", RecordEntries.Parse(File.ReadAllLines(run.Output).Single(line => line.Contains("\"warnings\"", StringComparison.Ordinal))).Value!.Value);
+        Equal(true, document.RootElement.GetProperty("unreadable").EnumerateArray()
+            .Any(problem => Path.GetFileName(problem.GetProperty("file").GetString()) == "a-copy.jsonl"));
+    }
+
+    private static void RefusesOutputsThatReplaceInputs()
+    {
+        using var run = new Folder();
+        Equal(2, run.Raw("--entries", run.Entries, "-o", run.RootFilePath).ExitCode);
+        Equal(RootFile, File.ReadAllText(run.RootFilePath));
+
+        if (!OperatingSystem.IsWindows())
+        {
+            var link = Path.Combine(run.Directory, "link");
+            Directory.CreateSymbolicLink(link, Path.Combine(run.Directory, "run"));
+            Equal(2, run.Raw("--entries", run.Entries, "-o", Path.Combine(link, "entries", "merged.jsonl")).ExitCode);
+            Equal(0, Directory.GetFiles(run.Entries).Length);
+        }
+
+        // A bidirectional control in an argument is escaped in the error message.
+        var bidi = run.Raw("--colour\u202e");
+        Equal(2, bidi.ExitCode);
+        Equal(false, bidi.Error.Contains('\u202e', StringComparison.Ordinal));
+    }
+
+    // A recorded entry read from files, with the given data value for key x.
+    private static string DataEntry(string job, int attempt, string value) =>
+        "{\"schema\":\"https://diffra.net/schemas/record-entry-v1.schema.json\",\"project\":\"main\",\"dataset\":\"warnings\",\"commit\":\"" + Commit
+        + "\",\"job\":{\"name\":\"" + job + "\",\"attempt\":" + attempt.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        + "},\"status\":\"recorded\",\"sources\":[{\"path\":\"a.json\",\"format\":\"payload\",\"sha256\":\"2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881\"}],\"data\":{\"x\":" + value + "}}";
 
     private static void ReadsEntriesFilesAsUntrustedData()
     {

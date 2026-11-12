@@ -24,6 +24,7 @@ public static class RecordEntryTests
         NamesEntriesFiles();
         AppendsAndReadsEntriesFiles();
         RefusesToAppendAnInvalidEntry();
+        AppendsUnlessConflicting();
         ReportsAnEntryForAnotherCommit();
         KeepsOnlyTheLatestAttempt();
         AppliesReplaceWithinAJob();
@@ -196,6 +197,56 @@ public static class RecordEntryTests
             EntriesFile.Append(path, Entry("pack", 1, value: "1"));
             var before = File.ReadAllText(path);
             Throws<JsonException>(() => EntriesFile.Append(path, Entry("pack", 1, value: "1.50")));
+            Equal(before, File.ReadAllText(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    private static void AppendsUnlessConflicting()
+    {
+        var path = TempFile();
+        try
+        {
+            var asked = new List<string>();
+            string Rejection(RecordEntry held)
+            {
+                asked.Add(held.Value!.Value);
+                var rejected = System.Text.Json.Nodes.JsonNode.Parse(Entry("pack", 1, status: "rejected"))!.AsObject();
+                rejected["input"] = new System.Text.Json.Nodes.JsonObject { ["value"] = "2" };
+                rejected["problems"] = new System.Text.Json.Nodes.JsonArray("Already recorded.");
+                return rejected.ToJsonString();
+            }
+
+            Equal(true, EntriesFile.AppendUnlessConflicting(path, Entry("pack", 1, value: "1"), Rejection));
+            Equal(true, EntriesFile.AppendUnlessConflicting(path, Entry("pack", 1, value: "1"), Rejection));
+            Equal(false, EntriesFile.AppendUnlessConflicting(path, Entry("pack", 1, value: "2"), Rejection));
+            Equal(true, EntriesFile.AppendUnlessConflicting(path, Entry("pack", 1, value: "2", replaces: true), Rejection));
+            Equal(true, EntriesFile.AppendUnlessConflicting(path, Entry("pack", 1, value: "2"), Rejection));
+            Equal(false, EntriesFile.AppendUnlessConflicting(path, Entry("pack", 1, value: "1"), Rejection));
+            Equal("1,2", string.Join(",", asked));
+
+            // Only the same job, attempt, commit and identity conflict.
+            Equal(true, EntriesFile.AppendUnlessConflicting(path, Entry("pack", 2, value: "3"), Rejection));
+            Equal(true, EntriesFile.AppendUnlessConflicting(path, Entry("test", 1, value: "3"), Rejection));
+            Equal(true, EntriesFile.AppendUnlessConflicting(path, Entry("pack", 1, value: "3", dimension: "linux"), Rejection));
+            Equal(true, EntriesFile.AppendUnlessConflicting(path, Entry("pack", 1, value: "3", commit: new string('b', 40)), Rejection));
+            Equal(true, EntriesFile.AppendUnlessConflicting(path, Entry("pack", 1, value: "3", dataset: "warnings"), Rejection));
+            Equal(false, EntriesFile.AppendUnlessConflicting(path, Entry("pack", 1, value: "3", unit: "KiB"), Rejection));
+            Equal("1,2,2", string.Join(",", asked));
+
+            var content = EntriesFile.Read(path);
+            Equal(0, content.Problems.Count);
+            Equal(
+                "recorded,recorded,rejected,recorded,recorded,rejected,recorded,recorded,recorded,recorded,recorded,rejected",
+                string.Join(",", content.Entries.Select(entry => entry.Status.ToString().ToLowerInvariant())));
+
+            // A skipped entry is never checked, and an invalid entry leaves the file as it was.
+            Equal(true, EntriesFile.AppendUnlessConflicting(path, Entry("pack", 1, status: "skipped"), Rejection));
+            var before = File.ReadAllText(path);
+            Throws<JsonException>(() => EntriesFile.AppendUnlessConflicting(path, Entry("pack", 1, value: "1.50"), Rejection));
             Equal(before, File.ReadAllText(path));
         }
         finally

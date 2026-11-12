@@ -2,7 +2,7 @@
   <!--
     Loads the root file (docs/adr/0002-project-file-and-datasets.md). Kept outside the protocol
     library because it needs a YAML parser (docs/adr/0009-dependencies-and-extensions.md).
-    Nothing ships it yet.
+    The CLI references it for `diffra record`; it is not packed on its own.
   -->
   <PropertyGroup>
     <AssemblyName>Diffra.RootFile</AssemblyName>

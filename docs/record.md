@@ -1,9 +1,11 @@
 # Recording a run
 
 This page specifies `diffra record`, the one command each job that produces data runs, and the
-entries file it writes. It is a specification: the command does not exist yet. The protocol
-library's `Recording.cs` validates entries, writes and reads entries files, and merges them by the
-rules below.
+entries file it writes. The command is built for `--value`, `--skipped` and `--failed`. No
+converter exists yet, so it cannot read the files a dataset's `from` names: `--from`, or giving no
+source, is saved as a rejected entry that says so. The protocol library's `Recording.cs` validates
+entries, writes and reads entries files, and merges them by the rules below; no collecting job
+runs the merge yet.
 
 ## What is decided
 
@@ -26,7 +28,7 @@ These points are decided in the decision records; everything else on this page i
 ```sh
 diffra record --name <dataset> [source] [--project <name>] [--key <key>]
   [--commit <id>] [--job <name>] [--attempt <n>] [--dimension <name>=<value>]...
-  [--replace] [--run-dir <dir>] [--json]
+  [--replace] [--root-file <file>] [--run-dir <dir>] [--json]
 ```
 
 `--name` names a dataset declared in the root file. At most one source is given:
@@ -56,12 +58,14 @@ match than the schema's safety limit. Giving two sources at once is also rejecte
 | Job | `--job`, then `DIFFRA_JOB`; attempt from `--attempt`, then `DIFFRA_JOB_ATTEMPT`, then 1. |
 | Dimensions | `--dimension <name>=<value>`, repeatable, then `DIFFRA_DIMENSION_<NAME>`. |
 | Run folder | `--run-dir`, then `DIFFRA_RUN_DIR`, then `diffra/run` under the repository's Git directory, which is never tracked. |
+| Root file | `--root-file`, then `DIFFRA_ROOT_FILE`. The root file's name in a repository is not decided, so there is no default; without one the entry is rejected. |
 
 The CLI does not ask the CI host for any of these, and it does not read the commit from the
 checkout: a pull request build often checks out a merge commit that CI made, not the commit being
 recorded. A CI integration, such as Diffra's Action, sets the environment variables; the CLI
 itself stays independent of the CI vendor. Mapping a dimension name to an upper-case variable name
-loses case, so two dimension names that differ only in case cannot both be set this way.
+loses case, so two dimension names that differ only in case cannot both be set this way. A
+dimension variable is read only for the dimensions the dataset is stratified by.
 
 ### Behaviour
 

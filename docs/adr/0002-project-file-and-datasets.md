@@ -71,14 +71,18 @@ reference and bundle manifest schemas still allow a `previous-release` role (dec
 `src/RootFile/` loads the root file. It checks what the schema cannot: that each dataset a
 project selects is declared, that each rule set a project applies is defined on that dataset,
 that a custom dataset type is declared under `types`, and that each `stratify` entry is declared
-under `dimensions`. It reads datasets, rule-set names, projects and settings, and accepts a small
+under `dimensions`. It reads datasets, rule-set names, units, sources, whether a dataset is keyed,
+the dimensions each is stratified by, the planned values of each dimension, projects and settings, and accepts a small
 part of YAML (one document, no anchors, aliases or tags, no duplicate keys). It does not validate
-the file against the schema, so rule bodies are checked only by the schema. Nothing calls the
-loader yet, and `diffra record` does not exist. [Recording a run](../record.md) specifies the
-command and `schemas/record-entry-v1.schema.json` the entries it writes. Both cover a `--value`
-and the dataset's `from` source, with `from` preferred. `src/Protocol/Recording.cs` validates an
-entry against the schema's rules, appends entries to and reads an entries file, and merges the
-entries of every job by the proposed rules; nothing calls it yet.
+the file against the schema, so rule bodies are checked only by the schema. [Recording a run](../record.md) specifies `diffra record` (decision 8) and
+`schemas/record-entry-v1.schema.json` the entries it writes. Both cover a `--value` and the
+dataset's `from` source, with `from` preferred. `src/Cli/RecordCommand.cs` is the command: it
+loads the root file and records a `--value`, a skipped or a failed dataset, and saves every
+problem as a rejected entry. No converter exists, so `from` cannot be read yet, and the schema
+still requires `from` on every dataset. `src/Protocol/Recording.cs` validates an entry against the
+schema's rules, appends entries to and reads an entries file, refuses a different value for the
+same job and attempt unless it replaces, and merges the entries of every job by the proposed
+rules; no collecting job calls the merge yet.
 
 `schemas/project-v1.schema.json`, `schemas/collection-v1.schema.json` and
 `examples/project-file/` describe the earlier single-project, metric-based design. The root

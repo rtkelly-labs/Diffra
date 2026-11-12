@@ -829,6 +829,39 @@ public static partial class EntriesFile
         stream.Flush(flushToDisk: true);
     }
 
+    /// <summary>
+    /// Appends a recorded entry unless the file already holds a different value for the same
+    /// project, dataset, key and dimensions from the same job and attempt, and the entry does not
+    /// replace it. On such a conflict, the entry that <paramref name="rejection"/> builds from the
+    /// value already held is appended instead, and the result is <see langword="false"/>. The check
+    /// and the write happen while the file is held for this process alone, so two steps that record
+    /// at once cannot both pass the check. Throws <see cref="JsonException"/> when an entry to be
+    /// written is not valid; the file is then left as it was.
+    /// </summary>
+    public static bool AppendUnlessConflicting(string path, string entryJson, Func<RecordEntry, string> rejection)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        ArgumentNullException.ThrowIfNull(rejection);
+        var entry = RecordEntries.Parse(entryJson);
+        using var stream = OpenAlone(path);
+        var existing = new byte[stream.Length];
+        stream.ReadExactly(existing);
+        var held = entry is { Status: EntryStatus.Recorded, Replaces: false }
+            ? ReadLines(existing).Entries.LastOrDefault(other =>
+                other.Status == EntryStatus.Recorded
+                && other.Attempt == entry.Attempt
+                && string.Equals(other.JobName, entry.JobName, StringComparison.Ordinal)
+                && string.Equals(other.Commit, entry.Commit, StringComparison.Ordinal)
+                && string.Equals(other.Identity, entry.Identity, StringComparison.Ordinal))
+            : null;
+        var conflicting = held is not null && !RecordEntries.AreIdentical(held, entry);
+        var written = conflicting ? RecordEntries.Parse(rejection(held!)) : entry;
+        stream.Seek(0, SeekOrigin.End);
+        stream.Write(Encoding.UTF8.GetBytes(written.Json + "\n"));
+        stream.Flush(flushToDisk: true);
+        return !conflicting;
+    }
+
     private static FileStream OpenAlone(string path)
     {
         const int attempts = 200;
@@ -836,7 +869,7 @@ public static partial class EntriesFile
         {
             try
             {
-                return new FileStream(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.None);
+                return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
             }
             catch (IOException) when (attempt < attempts && File.Exists(path))
             {
@@ -853,10 +886,14 @@ public static partial class EntriesFile
     public static EntriesFileContent Read(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
+        return ReadLines(File.ReadAllBytes(path));
+    }
+
+    private static EntriesFileContent ReadLines(byte[] bytes)
+    {
         var entries = new List<RecordEntry>();
         var problems = new List<string>();
         var strict = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
-        var bytes = File.ReadAllBytes(path);
         var number = 0;
         // A byte-order mark written by another tool is skipped, as File.ReadLines would.
         var start = bytes.AsSpan().StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF]) ? 3 : 0;

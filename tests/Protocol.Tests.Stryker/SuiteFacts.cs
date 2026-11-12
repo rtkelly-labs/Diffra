@@ -24,4 +24,5 @@ public sealed class SuiteFacts
     [Fact] public void PackageReferences() => PackageReferenceTests.RunAll();
     [Fact] public void BaselineTrust() => BaselineTrustTests.RunAll();
     [Fact] public void DogfoodPipeline() => DogfoodPipelineTests.RunAll();
+    [Fact] public void RecordCommand() => RecordCommandTests.RunAll();
 }

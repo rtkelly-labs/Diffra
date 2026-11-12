@@ -68,7 +68,8 @@ Each step is a set of small pull requests, each with tests. Smaller changes go f
 
 - The root YAML file: projects, datasets, named rule sets on each dataset, and settings.
 - `diffra record`: one command per job that produces data, built from the existing operations.
-  Invalid input is reported, not fatal.
+  Invalid input is reported, not fatal. Built for `--value`, `--skipped` and `--failed`; reading
+  `from` waits for the converters, and the collecting job that merges every job's entries is next.
 - Built-in converters for every standard dataset type before the first installation, each tested
   from the tool's validator and synthetic values.
 - CI timing and the job graph, with wait, queue and execution time recorded. Rules apply to

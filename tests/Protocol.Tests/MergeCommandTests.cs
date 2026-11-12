@@ -48,6 +48,7 @@ public static class MergeCommandTests
         SurvivesHostileEntriesFiles();
         KeepsOneCopyOfAJobAttempt();
         MergesFilesThatAreNotCopies();
+        ReportsRejectedEntries();
         RefusesOutputsThatReplaceInputs();
         Console.WriteLine("PASS diffra merge");
     }
@@ -331,6 +332,27 @@ public static class MergeCommandTests
         Equal(0, root.GetProperty("unreadable").GetArrayLength());
         Equal(2, File.ReadAllLines(run.Output).Count(line => line.Contains("\"packageSize\"", StringComparison.Ordinal)));
         Equal(1, root.GetProperty("findings").EnumerateArray().Count(finding => finding.GetProperty("kind").GetString() == "conflict"));
+    }
+
+    // A value that record could not record is kept in the merged file and reported with the
+    // problems record found.
+    private static void ReportsRejectedEntries()
+    {
+        using var run = new Folder();
+        run.Record("lint", 1, "--name", "ratio", "--value", "not a number");
+        var result = run.Merge("--json");
+        Equal(0, result.ExitCode);
+        using var document = JsonDocument.Parse(result.Output);
+        var rejected = document.RootElement.GetProperty("findings").EnumerateArray()
+            .Where(finding => finding.GetProperty("kind").GetString() == "rejected")
+            .Select(finding => finding.GetProperty("message").GetString()!)
+            .ToList();
+        Equal(1, rejected.Count);
+        Equal(true, rejected[0].StartsWith("main/ratio was rejected in job 'lint' attempt 1: ", StringComparison.Ordinal));
+        Equal(true, File.ReadAllLines(run.Output).Any(line => line.Contains("\"rejected\"", StringComparison.Ordinal)));
+
+        var plain = run.Merge();
+        Equal(true, plain.Output.Contains("rejected: main/ratio was rejected", StringComparison.Ordinal));
     }
 
     private static void RefusesOutputsThatReplaceInputs()

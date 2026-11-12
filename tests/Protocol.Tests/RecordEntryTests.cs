@@ -522,7 +522,9 @@ public static class RecordEntryTests
         Equal(2, result.Entries.Count);
         Equal(EntryStatus.Recorded, result.Entries[0].Status);
         Equal(EntryStatus.Rejected, result.Entries[1].Status);
-        Equal(0, result.Findings.Count);
+
+        // The rejection is reported once, and no conflict is.
+        Equal(MergeFindingKind.Rejected, Single(result.Findings).Kind);
     }
 
     private static MergeResult Merge(params string[] entries) =>

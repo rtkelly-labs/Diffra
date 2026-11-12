@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Unicode;
 using Diffra.Protocol;
 using Diffra.RootFile;
 
@@ -99,7 +100,7 @@ internal static class MergeCommand
                 return Fail($"The output '{Shown(output)}' is inside an entries folder; write it elsewhere.");
             }
 
-            var rootPath = given.TryGetValue("root-file", out var roots) ? roots[0] : System.Environment.GetEnvironmentVariable("DIFFRA_ROOT_FILE");
+            var rootPath = given.TryGetValue("root-file", out var roots) ? roots[0] : Environment.GetEnvironmentVariable("DIFFRA_ROOT_FILE");
             if (!string.IsNullOrEmpty(rootPath)
                 && string.Equals(RealPath(output), RealPath(rootPath), PathComparison))
             {
@@ -130,7 +131,7 @@ internal static class MergeCommand
     // What the root file plans for: every required dataset of every project, once for each
     // combination of the listed values of the dimensions it is stratified by. An observed dimension
     // lists no values, so a plan leaves it out and an entry with any value for it matches.
-    internal static List<ExpectedEntry> Expected(RootFileDocument rootFile)
+    private static List<ExpectedEntry> Expected(RootFileDocument rootFile)
     {
         var expected = new List<ExpectedEntry>();
         foreach (var project in rootFile.Projects.Values.OrderBy(project => project.Name, StringComparer.Ordinal))
@@ -207,7 +208,7 @@ internal static class MergeCommand
     private static bool TryCommit(Dictionary<string, List<string>> given, out string commit, out string failure)
     {
         failure = string.Empty;
-        commit = given.TryGetValue("commit", out var values) ? values[0] : System.Environment.GetEnvironmentVariable("DIFFRA_COMMIT") ?? string.Empty;
+        commit = given.TryGetValue("commit", out var values) ? values[0] : Environment.GetEnvironmentVariable("DIFFRA_COMMIT") ?? string.Empty;
         if (commit.Length == 0)
         {
             failure = "merge needs a commit: give --commit or set DIFFRA_COMMIT. It is not read from the checkout.";
@@ -241,17 +242,34 @@ internal static class MergeCommand
                 continue;
             }
 
-            var candidates = new DirectoryInfo(folder).EnumerateFiles()
-                .Where(file => file.Name.EndsWith(".jsonl", StringComparison.Ordinal))
-                .OrderBy(file => file.Name, StringComparer.Ordinal)
-                .ToList();
-            foreach (var file in candidates)
+            // Only the first names, in order, that are still within the file limit are kept while
+            // the folder is listed, so a folder of very many files costs no more than the limit.
+            var room = MaximumFiles - seen;
+            var candidates = new SortedSet<string>(StringComparer.Ordinal);
+            var extra = 0;
+            foreach (var name in Directory.EnumerateFiles(folder, "*.jsonl").Select(Path.GetFileName))
             {
-                if (++seen > MaximumFiles)
+                if (name is null || !name.EndsWith(".jsonl", StringComparison.Ordinal))
                 {
-                    problems.Add(file.FullName, $"More than {MaximumFiles.ToString(CultureInfo.InvariantCulture)} entries files were found; this one and the rest were not read.");
-                    return (Distinct(contents, problems), read.Count);
+                    continue;
                 }
+
+                candidates.Add(name);
+                if (candidates.Count > room)
+                {
+                    candidates.Remove(candidates.Max!);
+                    extra++;
+                }
+            }
+
+            if (extra > 0)
+            {
+                problems.Add(folder, $"More than {MaximumFiles.ToString(CultureInfo.InvariantCulture)} entries files were found; {extra.ToString(CultureInfo.InvariantCulture)} were not read.");
+            }
+
+            seen += candidates.Count;
+            foreach (var file in candidates.Select(name => new FileInfo(Path.Combine(folder, name))))
+            {
 
                 if (file.Attributes.HasFlag(FileAttributes.ReparsePoint))
                 {
@@ -377,8 +395,8 @@ internal static class MergeCommand
     // encoder escapes, such as quotes and angle brackets.
     private static JavaScriptEncoder ReportEncoder()
     {
-        var settings = new System.Text.Encodings.Web.TextEncoderSettings(System.Text.Unicode.UnicodeRanges.All);
-        settings.ForbidCharacters(['\u061c', '\u200e', '\u200f', '\u2028', '\u2029', '\u202a', '\u202b', '\u202c', '\u202d', '\u202e', '\u2066', '\u2067', '\u2068', '\u2069']);
+        var settings = new TextEncoderSettings(UnicodeRanges.All);
+        settings.ForbidCharacters('\u061c', '\u200e', '\u200f', '\u2028', '\u2029', '\u202a', '\u202b', '\u202c', '\u202d', '\u202e', '\u2066', '\u2067', '\u2068', '\u2069');
         return JavaScriptEncoder.Create(settings);
     }
 
@@ -584,6 +602,7 @@ internal static class MergeCommand
         MergeFindingKind.StatusConflict => "status-conflict",
         MergeFindingKind.ValueAndData => "value-and-data",
         MergeFindingKind.NotCollected => "not-collected",
+        MergeFindingKind.Rejected => "rejected",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 

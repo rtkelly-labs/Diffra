@@ -923,13 +923,6 @@ public static partial class EntriesFile
         return ReadLines(File.ReadAllBytes(path), int.MaxValue);
     }
 
-    /// <summary>Reads every entry in the bytes of an entries file, as <see cref="Read"/> does.</summary>
-    public static EntriesFileContent Read(byte[] bytes)
-    {
-        ArgumentNullException.ThrowIfNull(bytes);
-        return ReadLines(bytes, int.MaxValue);
-    }
-
     /// <summary>
     /// Reads the entries in the bytes of an entries file from another job, which may be hostile:
     /// reading stops after <paramref name="maximumProblems"/> lines that are not valid entries, and
@@ -1029,6 +1022,9 @@ public enum MergeFindingKind
 
     /// <summary>A required dataset has no entry for a dimension value the root file plans for.</summary>
     NotCollected,
+
+    /// <summary>A job gave something for a dataset that could not be recorded.</summary>
+    Rejected,
 }
 
 /// <summary>One problem a merge found.</summary>
@@ -1202,6 +1198,15 @@ public static class EntryMerge
             }
         }
 
+        // A rejected entry is kept in the merged file and reported with the problems record found,
+        // so that a value that could not be recorded is not lost without a word.
+        foreach (var entry in rejected)
+        {
+            findings.Add(new MergeFinding(
+                MergeFindingKind.Rejected,
+                $"{Describe(entry)} was rejected in job '{entry.JobName}' attempt {entry.Attempt.ToString(CultureInfo.InvariantCulture)}: {RejectionProblems(entry)}"));
+        }
+
         var merged = chosen.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => pair.Value).ToList();
         merged.AddRange(rejected);
         var orderedFindings = findings
@@ -1289,11 +1294,11 @@ public static class EntryMerge
     // the rest are counted rather than named.
     private static string Jobs(IEnumerable<RecordEntry> entries)
     {
-        const int Named = 10;
+        const int named = 10;
         var names = entries.Select(entry => $"'{entry.JobName}'").Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
-        if (names.Count > Named)
+        if (names.Count > named)
         {
-            return $"jobs {string.Join(", ", names.Take(Named))} and {(names.Count - Named).ToString(CultureInfo.InvariantCulture)} more";
+            return $"jobs {string.Join(", ", names.Take(named))} and {(names.Count - named).ToString(CultureInfo.InvariantCulture)} more";
         }
 
         return names.Count == 1
@@ -1349,6 +1354,20 @@ public static class EntryMerge
         }
 
         return result;
+    }
+
+    // The first problems a rejected entry lists, then how many more there are.
+    private static string RejectionProblems(RecordEntry entry)
+    {
+        const int shown = 3;
+        using var document = JsonDocument.Parse(entry.Json);
+        var problems = document.RootElement.TryGetProperty("problems", out var list) && list.ValueKind == JsonValueKind.Array
+            ? list.EnumerateArray().Select(problem => problem.ToString()).ToList()
+            : [];
+        var text = string.Join(" ", problems.Take(shown));
+        return problems.Count > shown
+            ? $"{text} ({(problems.Count - shown).ToString(CultureInfo.InvariantCulture)} more problems.)"
+            : text;
     }
 
     private static string Describe(RecordEntry entry) =>

@@ -170,10 +170,11 @@ diffra merge [--commit <id>] [--root-file <file>] [--run-dir <dir>] [--entries <
   commit and the root file are found as for `record`. An option given with an empty value is an
   error.
 - Every file whose name ends in `.jsonl` directly in each folder is read, in name order. Entries
-  files come from other jobs and are read as untrusted data: links are not followed, folders are
-  not searched, and more than 1,000 such files, a file over 16 MiB or more than 256 MiB in all are
-  reported and not read. A file with the same bytes as one already read is reported and not read
-  again. A file that cannot be read is reported, and the merge goes on without it.
+  files come from other jobs and are read as untrusted data: links are not followed and folders
+  are not searched. Only the first 1,000 such files in all are read, and how many more there were
+  is reported. A file over 16 MiB, or one that would take the total past 256 MiB, is reported and
+  not read. A file with the same bytes as one already read is reported and not read again. A file
+  that cannot be read is reported, and the merge goes on without it.
 - A file whose entries are the first entries of another file, in the same order, is an earlier
   copy of that file, such as an artifact uploaded twice. It is reported and not merged. Every other
   file is merged, even two that hold the same job and attempt, so that where they disagree the
@@ -223,6 +224,7 @@ A finding's `kind` is one of:
 | `status-conflict` | Entries for one dataset and dimensions have different statuses. |
 | `value-and-data` | A dataset was given with `--value` in one job and read from files in another. |
 | `not-collected` | The root file plans for a dataset and dimensions that no job recorded. |
+| `rejected` | A job gave something `record` could not record. The rejected entry is kept in the merged file, and the finding names the job and shows the first three of its problems. |
 
 Decided and not built yet:
 

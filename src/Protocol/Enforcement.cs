@@ -2,7 +2,7 @@ namespace Diffra.Protocol;
 
 /// <summary>
 /// The lowest finding status that fails Diffra's step. Diffra surfaces findings and does not fail a
-/// build unless the adopter turns this on in the CI wiring.
+/// build unless the adopter turns this on with an input of Diffra's CI step.
 /// </summary>
 public enum FailOn
 {
@@ -12,14 +12,17 @@ public enum FailOn
     /// <summary>The step fails when any finding has the status <c>fail</c>.</summary>
     Fail,
 
-    /// <summary>The step fails when any finding has the status <c>fail</c> or <c>warn</c>.</summary>
+    /// <summary>
+    /// The step fails when any finding has the status <c>fail</c> or <c>warn</c>, or a status that
+    /// ranks above <c>warn</c>: <c>needs-review</c> or <c>inconclusive</c>.
+    /// </summary>
     Warn,
 }
 
 /// <summary>Reads the <c>fail-on</c> setting and decides whether a result fails the step.</summary>
 public static class Enforcement
 {
-    /// <summary>The setting's name in the CI wiring.</summary>
+    /// <summary>The name of the input of Diffra's CI step.</summary>
     public const string SettingName = "fail-on";
 
     /// <summary>The value used when the adopter sets nothing.</summary>
@@ -62,10 +65,10 @@ public static class Enforcement
     }
 
     /// <summary>
-    /// Whether the findings fail the step under the setting. Only the statuses <c>fail</c> and
-    /// <c>warn</c> are compared with the threshold. Other statuses, such as <c>needs-review</c>,
-    /// <c>inconclusive</c> and <c>changed</c>, never fail the step: they are still shown at their
-    /// attention level, but the setting names a finding level, not an attention level.
+    /// Whether the findings fail the step under the setting. <c>fail</c> trips on the status
+    /// <c>fail</c>. <c>warn</c> also trips on <c>warn</c>, <c>needs-review</c> and
+    /// <c>inconclusive</c>, which the assessment ranks above <c>warn</c>. <c>changed</c> (a change no
+    /// rule judged) and <c>pass</c> never fail the step.
     /// </summary>
     public static bool FailsStep(FailOn setting, IEnumerable<RankedFinding> findings)
     {
@@ -74,7 +77,7 @@ public static class Enforcement
         {
             FailOn.Never => false,
             FailOn.Fail => findings.Any(f => f.Status == "fail"),
-            FailOn.Warn => findings.Any(f => f.Status is "fail" or "warn"),
+            FailOn.Warn => findings.Any(f => f.Status is "fail" or "warn" or "needs-review" or "inconclusive"),
             _ => throw new ArgumentOutOfRangeException(nameof(setting), setting, "Unknown fail-on value."),
         };
     }

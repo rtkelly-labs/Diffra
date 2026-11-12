@@ -19,8 +19,8 @@ The words used here are defined in the [glossary](glossary.md). The
 
 The point of Diffra is to surface problems. It is not a tool for managing workflow. Whether a
 pull request can merge is CI's business, and the adopter decides it. By default Diffra's step
-never fails a build; an adopter who wants that turns it on in a setting, and uses CI's own
-settings to decide which jobs block a merge. Diffra has no approval step, no promotion of
+never fails a build; an adopter who wants that sets the `fail-on` input of Diffra's step, and
+uses CI's own settings to decide which jobs block a merge. Diffra has no approval step, no promotion of
 baselines and no trusted reference: a pull request is compared with the record stored for the
 commit it branched from on the target branch. When that commit has no record, Diffra uses the
 nearest earlier one in its history window and says how far back it is; when none has a record,

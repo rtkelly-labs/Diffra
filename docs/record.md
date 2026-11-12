@@ -112,9 +112,9 @@ The `sarif` converter reads SARIF 2.1.0 logs, as CodeQL and Ruff write them:
   rule rejects the entry.
 - The level is the result's `level` when given. Otherwise, when `kind` is absent or `fail`, it is
   the level of the invocation's `ruleConfigurationOverrides` entry for the rule, the invocation
-  being the one the result's `provenance.invocationIndex` names, else the rule's
-  `defaultConfiguration.level`, else `warning`; any other `kind` gives `none`. The first override
-  for a rule is used.
+  being the one the result's `provenance.invocationIndex` names, or the run's only invocation
+  when it names none, else the rule's `defaultConfiguration.level`, else `warning`; any other
+  `kind` gives `none`. The first override for a rule is used.
 - The message is `message.text`, or else the `messageStrings` entry its `message.id` names in the
   rule, or else in the tool component's `globalMessageStrings`, with `{0}`, `{1}` and so on
   filled from `message.arguments`; `message.text` with no `arguments` is kept as written. A

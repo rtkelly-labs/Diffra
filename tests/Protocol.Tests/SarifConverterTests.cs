@@ -144,6 +144,19 @@ public static class SarifConverterTests
         Equal("level given=warning,no invocation=note,other invocation=note,overridden by id=none,overridden=error", string.Join(",", Findings(Data(Log(overridden)))
             .Select(finding => $"{finding.GetProperty("message").GetString()}={finding.GetProperty("level").GetString()}")
             .Order(StringComparer.Ordinal)));
+
+        // A run with a single invocation applies its overrides to results that name none.
+        var single = """
+            {"tool":{"driver":{"name":"Tool","rules":[{"id":"R1","defaultConfiguration":{"level":"note"}}]}},
+             "invocations":[{"executionSuccessful":true,"ruleConfigurationOverrides":[
+               {"descriptor":{"index":0},"configuration":{"level":"error"}}]}],
+             "results":[
+              {"ruleId":"R1","message":{"text":"no provenance"}},
+              {"ruleId":"R1","provenance":{},"message":{"text":"no index"}}]}
+            """;
+        Equal("no index=error,no provenance=error", string.Join(",", Findings(Data(Log(single)))
+            .Select(finding => $"{finding.GetProperty("message").GetString()}={finding.GetProperty("level").GetString()}")
+            .Order(StringComparer.Ordinal)));
     }
 
     // A rule descriptor is found by rule.index or ruleIndex, in the extension rule.toolComponent
@@ -512,6 +525,18 @@ public static class SarifConverterTests
         var problem = over.Problems.Single();
         Equal(true, problem.StartsWith("'k.sarif' run 0 result ", StringComparison.Ordinal)
             && problem.EndsWith(": the findings would keep more than 50,000 characters of keys and messages, the most one entry may.", StringComparison.Ordinal));
+
+        // A finding that replaces the one kept under its key is charged for its longer message, so
+        // the outcome does not depend on the order the results arrive in.
+        var note = """{"ruleId":"R","level":"note","message":{"text":"m"},"fingerprints":{"f":"1"}}""";
+        var error = $$$"""{"ruleId":"R","level":"error","message":{"text":"{{{new string('e', 10_000)}}}"},"fingerprints":{"f":"1"}}""";
+        folder.Write("first.sarif", Log(Run("T", note, error)));
+        folder.Write("second.sarif", Log(Run("T", error, note)));
+        foreach (var name in new[] { "first.sarif", "second.sarif" })
+        {
+            Equal(1, SarifConverter.Read(folder.Root, name, null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, keptLimit: 5_000).Problems.Count);
+            Equal(0, SarifConverter.Read(folder.Root, name, null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, keptLimit: 20_000).Problems.Count);
+        }
     }
 
     // A placeholder is read only as far as its few digits, so a long text of '{' with no '}' is

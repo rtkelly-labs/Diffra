@@ -219,8 +219,12 @@ public static class SarifConverter
         {
             var rule = $"{finding.Tool}/{finding.Rule}";
             var key = finding.Key;
+            var exists = results.TryGetValue(key, out var held);
+            var chosen = exists && Precedence.Instance.Compare(finding, held.Kept) >= 0 ? held.Kept : finding;
             var more = (byRule.ContainsKey(rule) ? 0L : rule.Length)
-                + (results.ContainsKey(key) ? 0L : key.Length + finding.Path.Length + finding.Fingerprint.Length + finding.Message.Length);
+                + (exists
+                    ? chosen.Message.Length - held.Kept.Message.Length
+                    : key.Length + finding.Path.Length + finding.Fingerprint.Length + finding.Message.Length);
             if (kept + more > keptLimit)
             {
                 Exceeded = true;
@@ -243,7 +247,7 @@ public static class SarifConverter
                 byRule[rule] = (finding.Tool, finding.Rule, 1);
             }
 
-            if (!results.TryGetValue(key, out var held))
+            if (!exists)
             {
                 results[key] = (finding, 1);
                 return;
@@ -254,7 +258,6 @@ public static class SarifConverter
                 collisions.Add(key);
             }
 
-            var chosen = Precedence.Instance.Compare(finding, held.Kept) < 0 ? finding : held.Kept;
             results[key] = (chosen, held.Occurrences + 1);
         }
 
@@ -461,15 +464,22 @@ public static class SarifConverter
 
         private readonly Dictionary<RuleDescriptor, string>?[] overrides;
 
-        public Component? Driver { get; }
+        private Component? Driver { get; }
 
-        public Component?[] Extensions { get; }
+        private Component?[] Extensions { get; }
 
         public JsonElement[] Artifacts { get; }
 
         public Dictionary<string, JsonElement> Bases { get; }
 
-        public JsonElement[] Invocations { get; }
+        private JsonElement[] Invocations { get; }
+
+        // The invocation a result's provenance names. Without one, SARIF takes the run's only
+        // invocation when it has exactly one, and otherwise none.
+        public long? InvocationFor(JsonElement result) =>
+            Object(result, "provenance") is { } provenance && Integer(provenance, "invocationIndex") is { } given
+                ? given
+                : Invocations.Length == 1 ? 0 : null;
 
         // The tool component a toolComponent reference names: by index among the extensions, else
         // by guid among the driver and the extensions, else the driver. A reference that names
@@ -770,8 +780,7 @@ public static class SarifConverter
             }
 
             if (descriptor is { } overridden
-                && Object(result, "provenance") is { } provenance
-                && Integer(provenance, "invocationIndex") is { } invocation
+                && tables.InvocationFor(result) is { } invocation
                 && tables.OverrideLevel(invocation, overridden) is { } configured)
             {
                 return Array.IndexOf(Levels, configured) >= 0

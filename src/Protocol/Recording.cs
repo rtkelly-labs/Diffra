@@ -1227,17 +1227,66 @@ public static class EntryMerge
             case JsonValueKind.String:
                 return StringComparer.Ordinal.GetHashCode(element.GetString()!);
             case JsonValueKind.Number:
-                // Equal numbers, such as 1 and 1.0, give the same double; zero is hashed once.
-                return element.TryGetDouble(out var number) && number != 0 && double.IsFinite(number) ? number.GetHashCode() : 0;
+                return NumberHash(element.GetRawText());
             default:
                 return (int)element.ValueKind;
         }
     }
 
-    // The jobs, in name order and each once: "job 'a'" or "jobs 'a', 'b' and 'c'".
+    // A hash of a JSON number's exact value, so that numbers DeepEquals finds equal, such as 1, 1.0,
+    // 10e-1 and 1e400 against 10e399, hash alike and different values rarely share a bucket: the
+    // sign, the significant digits and the exponent, with leading and trailing zeros removed.
+    private static int NumberHash(string raw)
+    {
+        var text = raw.AsSpan();
+        var negative = text[0] == '-';
+        if (negative)
+        {
+            text = text[1..];
+        }
+
+        var exponent = 0L;
+        var e = text.IndexOfAny('e', 'E');
+        if (e >= 0)
+        {
+            if (!long.TryParse(text[(e + 1)..], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out exponent))
+            {
+                // An exponent too long for a long: rare enough to share one bucket per sign.
+                return HashCode.Combine(negative, "exponent");
+            }
+
+            text = text[..e];
+        }
+
+        var point = text.IndexOf('.');
+        var digits = point < 0 ? text.ToString() : string.Concat(text[..point], text[(point + 1)..]);
+        if (point >= 0)
+        {
+            exponent -= text.Length - point - 1;
+        }
+
+        digits = digits.TrimStart('0');
+        if (digits.Length == 0)
+        {
+            return 0;
+        }
+
+        var trimmed = digits.TrimEnd('0');
+        exponent += digits.Length - trimmed.Length;
+        return HashCode.Combine(negative, StringComparer.Ordinal.GetHashCode(trimmed), exponent);
+    }
+
+    // The jobs, in name order and each once: "job 'a'" or "jobs 'a', 'b' and 'c'". After ten names,
+    // the rest are counted rather than named.
     private static string Jobs(IEnumerable<RecordEntry> entries)
     {
+        const int Named = 10;
         var names = entries.Select(entry => $"'{entry.JobName}'").Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        if (names.Count > Named)
+        {
+            return $"jobs {string.Join(", ", names.Take(Named))} and {(names.Count - Named).ToString(CultureInfo.InvariantCulture)} more";
+        }
+
         return names.Count == 1
             ? $"job {names[0]}"
             : $"jobs {string.Join(", ", names.Take(names.Count - 1))} and {names[^1]}";

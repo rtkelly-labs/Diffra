@@ -174,9 +174,10 @@ diffra merge [--commit <id>] [--root-file <file>] [--run-dir <dir>] [--entries <
   not searched, and more than 1,000 such files, a file over 16 MiB or more than 256 MiB in all are
   reported and not read. A file with the same bytes as one already read is reported and not read
   again. A file that cannot be read is reported, and the merge goes on without it.
-- Each job attempt writes one entries file, so two files holding the same job and attempt are
-  copies of one file. The one with the most entries is kept, or the first by name when they have
-  as many, and the others are reported and not merged.
+- A file whose entries are the first entries of another file, in the same order, is an earlier
+  copy of that file, such as an artifact uploaded twice. It is reported and not merged. Every other
+  file is merged, even two that hold the same job and attempt, so that where they disagree the
+  merge reports it as a finding.
 - Each line that is not a valid entry is reported and left out, up to 20 lines for each file and
   then one line saying how many more there were. Reading a file stops after 100 such lines. After
   1,000 problems in all, one line says that there were more.

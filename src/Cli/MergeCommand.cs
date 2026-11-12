@@ -29,7 +29,7 @@ internal static class MergeCommand
 
     private static readonly string[] Valued = ["commit", "root-file", "run-dir", "entries", "o"];
     private static readonly string[] Once = ["commit", "root-file", "run-dir", "o"];
-    private static readonly JsonWriterOptions WriterOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping, Indented = true };
+    private static readonly JsonWriterOptions WriterOptions = new() { Encoder = ReportEncoder(), Indented = true };
 
     private static StringComparison PathComparison =>
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -101,7 +101,7 @@ internal static class MergeCommand
 
             var rootPath = given.TryGetValue("root-file", out var roots) ? roots[0] : System.Environment.GetEnvironmentVariable("DIFFRA_ROOT_FILE");
             if (!string.IsNullOrEmpty(rootPath)
-                && string.Equals(Path.Combine(realOutputFolder, Path.GetFileName(output)), RealPath(rootPath), PathComparison))
+                && string.Equals(RealPath(output), RealPath(rootPath), PathComparison))
             {
                 return Fail($"The output '{Shown(output)}' is the root file; write it elsewhere.");
             }
@@ -319,33 +319,66 @@ internal static class MergeCommand
         return (Distinct(contents, problems), read.Count);
     }
 
-    // Each job attempt writes one entries file, so two files that hold the same job and attempt are
-    // copies of one file, one perhaps written further than the other. The file with the most entries
-    // is kept, and the first by name when they have as many; the others are reported and left out.
+    // Each job attempt writes one entries file, so a file whose entries are the first entries of
+    // another file, in the same order, is a copy of it written less far, such as an artifact
+    // uploaded twice. It is reported and left out, so that the fuller copy does not conflict with
+    // it. Any other files, even for the same job attempt, are all merged, and the merge reports
+    // where they disagree.
     private static List<RecordEntry> Distinct(List<(string File, IReadOnlyList<RecordEntry> Entries)> contents, Problems problems)
     {
-        static string Attempt(RecordEntry entry) => entry.JobName + "\n" + entry.Attempt.ToString(CultureInfo.InvariantCulture);
-
-        var owners = new Dictionary<string, string>(StringComparer.Ordinal);
-        var kept = new HashSet<string>(StringComparer.Ordinal);
+        var kept = new List<(string File, IReadOnlyList<RecordEntry> Entries)>();
+        var byFirst = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+        var dropped = new HashSet<string>(StringComparer.Ordinal);
         foreach (var (file, entries) in contents.OrderByDescending(content => content.Entries.Count))
         {
-            var attempts = entries.Select(Attempt).Distinct(StringComparer.Ordinal).ToList();
-            if (attempts.Select(attempt => owners.GetValueOrDefault(attempt)).FirstOrDefault(owner => owner is not null) is { } owner)
+            if (entries.Count > 0 && byFirst.TryGetValue(entries[0].Json, out var candidates)
+                && candidates.Select(index => kept[index]).FirstOrDefault(fuller => IsPrefix(entries, fuller.Entries)) is { File: { } owner })
             {
-                problems.Add(file, $"The file holds a job attempt that '{owner}' also holds, with more entries or an earlier name; it was not merged.");
+                problems.Add(file, $"The file's entries are the first entries of '{owner}', so it is an earlier copy of that file and was not merged.");
+                dropped.Add(file);
                 continue;
             }
 
-            foreach (var attempt in attempts)
+            if (entries.Count > 0)
             {
-                owners[attempt] = file;
+                if (!byFirst.TryGetValue(entries[0].Json, out var list))
+                {
+                    byFirst[entries[0].Json] = list = [];
+                }
+
+                list.Add(kept.Count);
             }
 
-            kept.Add(file);
+            kept.Add((file, entries));
         }
 
-        return [.. contents.Where(content => kept.Contains(content.File)).SelectMany(content => content.Entries)];
+        return [.. contents.Where(content => !dropped.Contains(content.File)).SelectMany(content => content.Entries)];
+    }
+
+    private static bool IsPrefix(IReadOnlyList<RecordEntry> shorter, IReadOnlyList<RecordEntry> longer)
+    {
+        if (shorter.Count > longer.Count)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < shorter.Count; index++)
+        {
+            if (!string.Equals(shorter[index].Json, longer[index].Json, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // The JSON report keeps text as it is, except for the characters the plain report escapes.
+    private static JavaScriptEncoder ReportEncoder()
+    {
+        var settings = new System.Text.Encodings.Web.TextEncoderSettings(System.Text.Unicode.UnicodeRanges.All);
+        settings.ForbidCharacters(['\u061c', '\u200e', '\u200f', '\u2028', '\u2029', '\u202a', '\u202b', '\u202c', '\u202d', '\u202e', '\u2066', '\u2067', '\u2068', '\u2069']);
+        return JavaScriptEncoder.Create(settings);
     }
 
     // The full path with every link in it resolved, without a trailing separator. A link loop or

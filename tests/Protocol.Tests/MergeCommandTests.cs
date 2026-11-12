@@ -47,6 +47,7 @@ public static class MergeCommandTests
         MergesManyJobsQuickly();
         SurvivesHostileEntriesFiles();
         KeepsOneCopyOfAJobAttempt();
+        MergesFilesThatAreNotCopies();
         RefusesOutputsThatReplaceInputs();
         Console.WriteLine("PASS diffra merge");
     }
@@ -178,6 +179,16 @@ public static class MergeCommandTests
         Equal(false, result.Output.Split('\n').Any(line => line.StartsWith("conflict: forged", StringComparison.Ordinal)));
         Equal(false, result.Output.Contains('\u2028', StringComparison.Ordinal));
         Equal(true, result.Output.Contains("a\\u000aconflict: forged\\u2028.jsonl", StringComparison.Ordinal));
+
+        // The JSON report escapes bidirectional controls too.
+        File.WriteAllText(Path.Combine(run.Entries, "b\u202e.jsonl"), "not json\n");
+        var json = run.Merge("--json");
+        Equal(0, json.ExitCode);
+        Equal(false, json.Output.Contains('\u202e', StringComparison.Ordinal));
+        Equal(false, json.Output.Contains('\u2028', StringComparison.Ordinal));
+        using var document = JsonDocument.Parse(json.Output);
+        Equal(true, document.RootElement.GetProperty("unreadable").EnumerateArray()
+            .Any(problem => Path.GetFileName(problem.GetProperty("file").GetString()) == "b\u202e.jsonl"));
     }
 
     // Many jobs that agree on one value, and one job with many rejected entries, merge in a few
@@ -206,6 +217,24 @@ public static class MergeCommandTests
         watch.Restart();
         var differing = numbers.Merge("--json");
         Equal(0, differing.ExitCode);
+        Equal(true, watch.Elapsed < TimeSpan.FromSeconds(60));
+
+        // Numbers too large for a double, and numbers that round to the same double, are told apart.
+        using var large = new Folder();
+        File.WriteAllLines(
+            Path.Combine(large.Entries, "data.jsonl"),
+            Enumerable.Range(0, 4000).SelectMany(index =>
+            {
+                var text = index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                return new[]
+                {
+                    DataEntry($"big{text}", 1, "1" + new string('0', 400) + text),
+                    DataEntry($"near{text}", 1, "1.0000000000000000000000" + text),
+                };
+            }));
+        watch.Restart();
+        var close = large.Merge("--json");
+        Equal(0, close.ExitCode);
         Equal(true, watch.Elapsed < TimeSpan.FromSeconds(60));
     }
 
@@ -261,6 +290,31 @@ public static class MergeCommandTests
             .Any(problem => Path.GetFileName(problem.GetProperty("file").GetString()) == "a-copy.jsonl"));
     }
 
+    // Files for one job attempt that are not copies of each other, such as the legs of a matrix
+    // that share a job name, or a copy whose value changed, are all merged.
+    private static void MergesFilesThatAreNotCopies()
+    {
+        using var run = new Folder();
+        run.Record("build", 1, "--name", "packageSize", "--value", "10", "--dimension", "os=linux", "--dimension", "runner=a");
+        var linux = Directory.GetFiles(run.Entries).Single();
+        File.Move(linux, Path.Combine(run.Entries, "linux.jsonl"));
+        run.Record("build", 1, "--name", "packageSize", "--value", "20", "--dimension", "os=windows", "--dimension", "runner=b");
+        run.Record("build", 1, "--name", "warnings", "--value", "3");
+        File.WriteAllText(
+            Path.Combine(run.Entries, "changed.jsonl"),
+            File.ReadAllLines(Directory.GetFiles(run.Entries).Single(file => Path.GetFileName(file) != "linux.jsonl"))
+                .Single(line => line.Contains("\"warnings\"", StringComparison.Ordinal))
+                .Replace("\"value\":\"3\"", "\"value\":\"4\"", StringComparison.Ordinal) + "\n");
+
+        var result = run.Merge("--json");
+        Equal(0, result.ExitCode);
+        using var document = JsonDocument.Parse(result.Output);
+        var root = document.RootElement;
+        Equal(0, root.GetProperty("unreadable").GetArrayLength());
+        Equal(2, File.ReadAllLines(run.Output).Count(line => line.Contains("\"packageSize\"", StringComparison.Ordinal)));
+        Equal(1, root.GetProperty("findings").EnumerateArray().Count(finding => finding.GetProperty("kind").GetString() == "conflict"));
+    }
+
     private static void RefusesOutputsThatReplaceInputs()
     {
         using var run = new Folder();
@@ -269,6 +323,12 @@ public static class MergeCommandTests
 
         if (!OperatingSystem.IsWindows())
         {
+            // A link to the root file is the root file.
+            var rootLink = Path.Combine(run.Directory, "root-link.yml");
+            File.CreateSymbolicLink(rootLink, run.RootFilePath);
+            Equal(2, run.Raw("--entries", run.Entries, "-o", rootLink).ExitCode);
+            Equal(RootFile, File.ReadAllText(run.RootFilePath));
+
             var link = Path.Combine(run.Directory, "link");
             Directory.CreateSymbolicLink(link, Path.Combine(run.Directory, "run"));
             Equal(2, run.Raw("--entries", run.Entries, "-o", Path.Combine(link, "entries", "merged.jsonl")).ExitCode);

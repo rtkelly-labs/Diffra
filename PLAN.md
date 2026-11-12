@@ -80,7 +80,8 @@ Each step is a set of small pull requests, each with tests. Smaller changes go f
   the merge base. Fall back to the nearest recorded ancestor inside the history window and state
   the distance. Say "cannot attribute" when nothing in the window has a record.
 - The history window as a setting, read and written through a pluggable storage strategy, with
-  CI artifacts first. Records carry a format version; unreadable ones are skipped and counted.
+  a branch in the repository as the default store. Records carry a format version; unreadable
+  ones are skipped and counted.
 - Noise: fixed thresholds for deterministic measures; the history window for noisy ones.
 - Remove the Baseline reference document, approval and promotion. Records are named by commit,
   project and dataset; the hash becomes an integrity check and storage key, computed only by the
@@ -91,7 +92,8 @@ Each step is a set of small pull requests, each with tests. Smaller changes go f
 - The Action's metadata at the root of this repository; the collecting job for each workflow
   file.
 - One comment per pull request, rebuilt from every record; nothing on a quiet pull request; the
-  summary page on read-only runs; one checks-list line and a fixed artifact name on every run.
+  summary page on read-only runs; one checks-list line and the `diffra-result` artifact on every
+  run.
 - Two builds: a CI build without the web server, and a local build with it.
 
 ### 6. Diffra on itself
@@ -111,5 +113,5 @@ Adopt the three repositories in order, applying the review triggers to each.
 - The frozen regression corpus under `tests/regression/` is not edited. A change that breaks it is
   a release decision for the owner.
 - Keep record formats, schemas and comparison generic, tied to no adopter or CI vendor.
-- Update the feature status table in [docs/README.md](docs/README.md) and the matching decision
-  record when a change lands.
+- Update the feature status table in [docs/README.md](docs/README.md), the matching decision
+  record and [docs/vision.md](docs/vision.md) when a change lands.

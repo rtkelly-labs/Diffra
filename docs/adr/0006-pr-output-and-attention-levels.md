@@ -24,9 +24,9 @@ request.
    shows which datasets are still running.
 3. **Nothing is posted on a quiet pull request.** Runs with a read-only token write to the run's
    summary page instead.
-4. **Every run leaves the same traces.** It uploads the result under a fixed artifact name, and
-   adds one line to the pull request's checks list stating the attention level and the number of
-   datasets compared, linking to the summary page. That line is neutral or successful unless the
+4. **Every run leaves the same traces.** It uploads the result as the artifact `diffra-result`,
+   and adds one line to the pull request's checks list stating the attention level and the number
+   of datasets compared, linking to the summary page. That line is neutral or successful unless the
    adopter has turned on enforcement ([0005](0005-surface-do-not-enforce.md)).
 5. **Only findings caused by the pull request** appear in the comment. Repository state goes to
    the full report.
@@ -47,7 +47,6 @@ request.
 ## Not yet decided
 
 - Whether a missing required dataset or a rejected record gives `act`. Neither exists yet.
-- The fixed artifact name (proposed: `diffra-result`).
 - The first lines of the comment.
 - What happens to an existing comment when a pull request becomes quiet.
 

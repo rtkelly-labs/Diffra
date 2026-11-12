@@ -42,15 +42,20 @@ emitter's error never reached the pull request.
    shown in the output, not hidden until after merge.
 10. **Storage is the only strategy at first.** It is set once per repository and shared by all
     projects. A strategy is a swappable backend and never changes a result.
+11. **Tables declare their columns.** A table dataset declares each column's type, unit and
+    better direction, and a converter supplies defaults for the formats it reads. Size data stays
+    a separate dataset type.
+12. **An absent optional dataset is quiet.** When an optional dataset has no record in the whole
+    history window, the full report says so in one line and the comment says nothing. A dataset
+    collected only occasionally is compared with its most recent record on the target branch, and
+    the output names that commit and how far back it is.
+13. **There is no comparison with the previous release for now.** A pull request is compared with
+    the commit it branched from and with recent history only.
 
 ## Not yet decided
 
 - Whether each supported tool version also needs one real output file as a test fixture
   (proposed).
-- Whether size data folds into the generic keyed table type.
-- How a comparison against the previous release is expressed.
-- What the output says when an optional dataset is absent for the whole history window, and what
-  an occasionally collected dataset is compared with.
 - The name of the collecting workflow, given that `collect` is already a CLI operation.
 
 ## Current code
@@ -58,8 +63,10 @@ emitter's error never reached the pull request.
 `schemas/root-file-v1.schema.json` and `examples/root-file/` describe the root file in this
 record: settings, datasets with named rule sets, `required: false`, and projects that map each
 dataset to a rule set, or to `null` to record it without rules. The file's name in a repository
-is not decided. The standard dataset types are those of the earlier project file; CI timing and
-the job graph (decision 6) have no type yet.
+is not decided. The standard dataset types are those of the earlier project file
+(`diffra/benchmark@1`, `diffra/size@1` and others); there is no table type with declared columns
+(decision 11), and CI timing and the job graph (decision 6) have no type yet. The Baseline
+reference and bundle manifest schemas still allow a `previous-release` role (decision 13).
 
 `src/RootFile/` loads the root file. It checks what the schema cannot: that each dataset a
 project selects is declared, that each rule set a project applies is defined on that dataset,

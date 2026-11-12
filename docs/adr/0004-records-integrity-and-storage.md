@@ -23,9 +23,9 @@ the open tool can reach.
 3. **Every record carries a format version.** A newer CLI skips records it cannot read and says
    so in one line with the count. History then rebuilds itself. There are no migration readers
    during alpha.
-4. **History is stored through a pluggable strategy.** CI artifacts are the first
-   implementation. A branch in the repository is a legitimate alternative. Per-commit records are
-   the source of truth; a cumulative window may be carried forward for speed, is checked against
+4. **History is stored through a pluggable strategy.** A branch in the repository is the default
+   store; the adopter can choose another, such as CI artifacts. Per-commit records are the source
+   of truth; a cumulative window may be carried forward for speed, is checked against
    git's commit list, and its gaps are repaired by re-reading per-commit records.
 5. **Binary files are stored once per hash.** A record refers to a file by hash, size and media
    type. The bytes are kept once per distinct hash, with an index from hash to the run and
@@ -57,8 +57,9 @@ the open tool can reach.
 Document identity follows the earlier rule set out in [trust and identity](../trust-and-identity.md):
 domain-separated SHA-256 over canonical JSON, environment included, decimals as strings.
 `diffra bundle export|import` moves results between machines through a content-addressed store and
-includes a Baseline reference. The self-evaluation workflow stores one file per commit on an
-orphan branch.
+includes a Baseline reference. There is no storage setting in the root file and no storage
+strategy in the CLI. The self-evaluation workflow stores one file per commit on an orphan
+branch.
 
 `schemas/root-file-v1.schema.json` uses a `diffra.net` identifier. The other schemas and the
 documents that cite them still use the earlier `diffra.dev` identifiers; changing them changes

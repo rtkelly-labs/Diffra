@@ -36,7 +36,7 @@ internal static partial class RecordCommand
 
     private static readonly string[] ContextOptions = ["name", "project", "commit", "job", "attempt", "run-dir"];
     private static readonly string[] Once = ["value", "unit", "from", "reason", "key", "skipped", "failed", "replace", "json"];
-    private static readonly string[] Sources = ["value", "from", "skipped", "failed"];
+    private static readonly string[] SourceOptions = ["value", "from", "skipped", "failed"];
     private static readonly string[] ValueOnly = ["unit", "key"];
 
     private static readonly string[] Numeric = ["count", "integer", "decimal", "bytes", "duration", "ratio"];
@@ -95,7 +95,7 @@ internal static partial class RecordCommand
             if (problems.Count == 0 && source.Status == EntryStatus.Recorded)
             {
                 string? rejection = null;
-                if (!EntriesFile.AppendUnlessConflicting(path, entry, held => rejection = Conflicting(context, dimensions, given, held)))
+                if (!EntriesFile.AppendUnlessConflicting(path, entry, held => rejection = Conflicting(context, dimensions, given, held, source.Sources)))
                 {
                     entry = rejection!;
                 }
@@ -415,7 +415,7 @@ internal static partial class RecordCommand
             }
         }
 
-        var sources = Sources.Where(given.ContainsKey).ToList();
+        var sources = SourceOptions.Where(given.ContainsKey).ToList();
         var value = First(given, "value");
         var unit = First(given, "unit");
         var key = First(given, "key");
@@ -727,13 +727,14 @@ internal static partial class RecordCommand
         Context context,
         SortedDictionary<string, string> dimensions,
         Dictionary<string, List<string>> given,
-        RecordEntry held)
+        RecordEntry held,
+        IReadOnlyList<ConverterSource> sources)
     {
         var earlier = held.Value is { } value ? value.Value + (value.Unit is null ? string.Empty : " " + value.Unit) : "a different value";
         return Rejected(context, dimensions, given,
         [
             $"Job '{context.Job}' attempt {context.Attempt.ToString(CultureInfo.InvariantCulture)} already recorded {earlier} for this dataset; give --replace to replace it.",
-        ]);
+        ], sources);
     }
 
     // A rejected entry keeps every option as given, cut to the schema's limits, with each cut stated.

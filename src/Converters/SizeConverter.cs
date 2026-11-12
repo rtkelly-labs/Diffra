@@ -101,7 +101,7 @@ public static partial class SizeConverter
         {
             try
             {
-                var (length, digest) = Measure(System.IO.Path.Combine(root, path));
+                var (length, digest) = Measure(Path.Combine(root, path));
                 sources.Add(new ConverterSource(path, Name, digest));
                 lengths.Add(length);
             }
@@ -222,7 +222,7 @@ public static partial class SizeConverter
         && path.EnumerateRunes().Count() <= 1000
         && !path.Contains('\\', StringComparison.Ordinal)
         && !path.StartsWith('~')
-        && !path.EnumerateRunes().Any(rune => Rune.IsControl(rune));
+        && !path.EnumerateRunes().Any(Rune.IsControl);
 
     private static bool HasLoneSurrogate(string text)
     {

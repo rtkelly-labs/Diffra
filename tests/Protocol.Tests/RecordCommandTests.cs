@@ -403,6 +403,14 @@ public static class RecordCommandTests
         Equal(0, run.Record("--name", "packages").ExitCode);
         run.Write("artifacts/a.nupkg", "123456");
         Equal(true, run.Record("--name", "packages").Output.Contains("already recorded a different value", StringComparison.Ordinal));
+        using (var conflict = JsonDocument.Parse(File.ReadAllLines(run.EntriesFile)[^1]))
+        {
+            // The rejected entry keeps the files it read, with their digests.
+            var kept = conflict.RootElement.GetProperty("sources").EnumerateArray().ToList();
+            Equal("artifacts/a.nupkg,artifacts/b.nupkg", string.Join(",", kept.Select(item => item.GetProperty("path").GetString())));
+            Equal(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData("123456"u8)), kept[0].GetProperty("sha256").GetString());
+        }
+
         Equal(0, run.Record("--name", "packages", "--replace").ExitCode);
         Equal("recorded,recorded,rejected,recorded replaces", string.Join(",", run.Entries().Select(item =>
             RecordEntries.Token(item.Status) + (item.Replaces ? " replaces" : string.Empty))));

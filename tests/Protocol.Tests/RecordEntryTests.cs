@@ -32,6 +32,9 @@ public static class RecordEntryTests
         ReportsRecordedAgainstSkipped();
         ReportsValueAgainstData();
         ReportsValueAgainstDataPastAConflict();
+        ReportsDatasetConflictsPastAConflictWithinAJob();
+        ReportsEveryStatusAndEveryJob();
+        GivesTheSameResultInAnyOrder();
         ReportsWhatWasNotCollected();
         KeepsRejectedEntriesOutOfConflicts();
         Console.WriteLine("PASS record entries, entries files and the merge");
@@ -261,7 +264,7 @@ public static class RecordEntryTests
         Equal(0, result.Entries.Count);
         var finding = Single(result.Findings);
         Equal(MergeFindingKind.Conflict, finding.Kind);
-        Equal(true, finding.Message.Contains("'pack-a' and 'pack-b'", StringComparison.Ordinal));
+        Equal("main/packageSize has 2 different values across jobs 'pack-a', 'pack-b' and 'pack-c'.", finding.Message);
 
         var dimensions = Merge(
             Entry("test-linux", 1, value: "1", dimension: "linux"),
@@ -319,6 +322,7 @@ public static class RecordEntryTests
             DataEntry("a", "{\"a\":1}"),
             Entry("b", 1, value: "1", dataset: "tests"),
             Entry("c", 1, value: "2", dataset: "tests"));
+        Equal(0, twoValues.Entries.Count);
         Equal("Conflict,ValueAndData", string.Join(",", twoValues.Findings.Select(finding => finding.Kind)));
 
         var conflicted = Merge(
@@ -327,6 +331,87 @@ public static class RecordEntryTests
             DataEntry("test-c", "{\"a\":1}"));
         Equal(0, conflicted.Entries.Count);
         Equal("Conflict,ValueAndData", string.Join(",", conflicted.Findings.Select(finding => finding.Kind)));
+    }
+
+    private static void ReportsDatasetConflictsPastAConflictWithinAJob()
+    {
+        // Two differing lines in one job (a hand-edited file) must not hide the dataset's other conflicts.
+        string[] lines =
+        [
+            Entry("a", 1, value: "1", dataset: "tests"),
+            Entry("a", 1, dataset: "tests", status: "failed"),
+            Entry("b", 1, value: "2", dataset: "tests", key: "K"),
+        ];
+        foreach (var order in new[] { lines, lines.Reverse().ToArray() })
+        {
+            var result = Merge(order);
+            Equal(0, result.Entries.Count);
+            Equal("Conflict,StatusConflict", string.Join(",", result.Findings.Select(finding => finding.Kind)));
+        }
+
+        var valueAndData = Merge(
+            Entry("a", 1, value: "1", dataset: "tests"),
+            DataEntry("a", "{\"a\":1}"),
+            Entry("b", 1, value: "2", dataset: "tests", key: "K"));
+        Equal(0, valueAndData.Entries.Count);
+        Equal(true, valueAndData.Findings.Any(finding => finding.Kind == MergeFindingKind.ValueAndData));
+
+        // A conflict within job 'a' still lets the disagreement between 'b' and 'c' be reported.
+        var across = Merge(
+            Entry("a", 1, value: "1", dataset: "tests", key: "K"),
+            Entry("a", 1, value: "2", dataset: "tests", key: "K"),
+            Entry("b", 1, value: "3", dataset: "tests", key: "K"),
+            Entry("c", 1, value: "4", dataset: "tests", key: "K"));
+        Equal(0, across.Entries.Count);
+        Equal("Conflict,Conflict", string.Join(",", across.Findings.Select(finding => finding.Kind)));
+    }
+
+    private static void ReportsEveryStatusAndEveryJob()
+    {
+        var skippedAndFailed = Merge(Entry("a", 1, status: "skipped"), Entry("b", 1, status: "failed"));
+        Equal(0, skippedAndFailed.Entries.Count);
+        Equal(MergeFindingKind.StatusConflict, Single(skippedAndFailed.Findings).Kind);
+
+        var sameJob = Merge(Entry("a", 1, value: "1", dataset: "tests", key: "K"), Entry("a", 1, dataset: "tests", status: "skipped"));
+        Equal(0, sameJob.Entries.Count);
+        Equal(MergeFindingKind.StatusConflict, Single(sameJob.Findings).Kind);
+
+        var three = Merge(Entry("a", 1, value: "1"), Entry("b", 1, status: "skipped"), Entry("c", 1, status: "failed"), Entry("d", 1, status: "failed"));
+        Equal("main/packageSize is recorded in job 'a'; skipped in job 'b'; failed in jobs 'c' and 'd'.", Single(three.Findings).Message);
+
+        var values = Merge(Entry("a", 1, value: "1"), Entry("b", 1, value: "2"), Entry("c", 1, value: "3"), Entry("d", 1, value: "1"));
+        Equal("main/packageSize has 3 different values across jobs 'a', 'b', 'c' and 'd'.", Single(values.Findings).Message);
+
+        // Different statuses under different dimension values are not a conflict.
+        var dimensions = Merge(Entry("a", 1, value: "1", dimension: "linux"), Entry("b", 1, status: "skipped", dimension: "windows"));
+        Equal(2, dimensions.Entries.Count);
+        Equal(0, dimensions.Findings.Count);
+    }
+
+    private static void GivesTheSameResultInAnyOrder()
+    {
+        string[] lines =
+        [
+            Entry("a", 1, value: "1", dataset: "tests"),
+            Entry("a", 1, dataset: "tests", status: "failed"),
+            Entry("b", 1, value: "2", dataset: "tests", key: "K"),
+            Entry("c", 1, value: "5"),
+            Entry("d", 1, value: "5"),
+            Entry("d", 2, value: "6"),
+            Entry("e", 1, status: "skipped", dimension: "linux"),
+            DataEntry("f", "{\"a\":1}"),
+        ];
+        var expected = Describe(Merge(lines));
+        var random = new Random(7);
+        for (var round = 0; round < 20; round++)
+        {
+            Equal(expected, Describe(Merge([.. lines.OrderBy(_ => random.Next())])));
+        }
+
+        static string Describe(MergeResult result) =>
+            string.Join("|", result.Entries.Select(entry => entry.Json))
+            + "#" + string.Join("|", result.Findings.Select(finding => finding.Message))
+            + "#" + string.Join("|", result.SupersededAttempts);
     }
 
     private static void ReportsWhatWasNotCollected()

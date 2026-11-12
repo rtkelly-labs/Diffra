@@ -34,10 +34,13 @@ is an agent asked to make CI pass, and branch protection already decides what bl
 ## Not yet decided
 
 - Whether a first run with no history, a comparison that cannot be attributed, and the merge's
-  other findings (conflicts and rejected entries for optional datasets) count towards `fail-on`.
-  Until this is ruled, they fail the step only through the finding status they are reported with. Today a comparison with
-  no usable reference is reported as `inconclusive`, so `fail-on: warn` fails the step on it and
-  `fail-on: fail` does not.
+  other findings (conflicts, and rejected entries for optional datasets) count towards `fail-on`.
+  Until this is ruled, a comparison fails the step only through the status it is reported with,
+  and the merge's other findings never do. Today a comparison with no usable reference is
+  reported as `inconclusive`, so `fail-on: warn` fails the step on it and `fail-on: fail` does
+  not.
+- Whether a required dataset recorded only as `failed` or `skipped` counts as missing. Today it
+  counts as collected, so it does not fail the step.
 - Whether a change to the scripts that collect the data is also surfaced, and how it is detected.
 - The fate of the promotion code and of the Baseline reference's trust fields.
 

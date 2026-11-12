@@ -434,15 +434,21 @@ public static class MergeCommandTests
             Equal("warn", document.RootElement.GetProperty("failOn").GetString());
             Equal(true, document.RootElement.GetProperty("failsStep").GetBoolean());
             var findings = document.RootElement.GetProperty("findings").EnumerateArray().ToList();
-            Equal(true, findings.Where(finding => finding.GetProperty("kind").GetString() == "not-collected")
-                .All(finding => finding.GetProperty("countsAs").GetString() == "warn"));
-            Equal(true, findings.Where(finding => finding.GetProperty("kind").GetString() == "rejected")
-                .All(finding => !finding.TryGetProperty("countsAs", out _)));
+            var missing = findings.Where(finding => finding.GetProperty("kind").GetString() == "not-collected").ToList();
+            Equal(true, missing.Count > 0);
+            Equal(true, missing.All(finding => finding.GetProperty("countsAs").GetString() == "warn"));
+            var rejected = findings.Where(finding => finding.GetProperty("kind").GetString() == "rejected").ToList();
+            Equal(1, rejected.Count);
+            Equal(false, rejected[0].TryGetProperty("countsAs", out _));
         }
 
-        // The setting is read from DIFFRA_FAIL_ON too, and a misspelt value is an error.
-        var environment = new Dictionary<string, string> { ["DIFFRA_FAIL_ON"] = "warn" };
-        Equal(3, RecordCommandTests.RunCli(run.Directory, environment, ["merge", "--root-file", run.RootFilePath, "--commit", Commit, "--entries", run.Entries, "-o", run.Output]).ExitCode);
+        // The setting is read from DIFFRA_FAIL_ON when the option is not given; the option wins,
+        // an empty value means never, and a misspelt value is an error.
+        Equal(3, MergeWithEnvironment(run, "warn").ExitCode);
+        Equal(0, MergeWithEnvironment(run, "warn", "--fail-on", "never").ExitCode);
+        Equal(3, MergeWithEnvironment(run, "never", "--fail-on", "warn").ExitCode);
+        Equal(0, MergeWithEnvironment(run, string.Empty).ExitCode);
+        Equal(2, MergeWithEnvironment(run, "warning").ExitCode);
         Equal(2, run.Merge("--fail-on", "warning").ExitCode);
         Equal(2, run.Merge("--fail-on", "warn", "--fail-on", "fail").ExitCode);
 
@@ -457,6 +463,29 @@ public static class MergeCommandTests
         using var conflicts = JsonDocument.Parse(conflicted.Output);
         Equal(false, conflicts.RootElement.GetProperty("failsStep").GetBoolean());
         Equal(1, conflicts.RootElement.GetProperty("findings").GetArrayLength());
+
+        // Every planned packageSize was collected and warnings has only a rejected entry: the
+        // rejected-only dataset alone fails the step under warn.
+        using var rejectedOnly = new Folder();
+        rejectedOnly.Record("a", 1, "--name", "packageSize", "--value", "10", "--dimension", "os=linux", "--dimension", "runner=a");
+        rejectedOnly.Record("a", 1, "--name", "packageSize", "--value", "10", "--dimension", "os=windows", "--dimension", "runner=a");
+        rejectedOnly.Record("a", 1, "--name", "warnings", "--value", "not a number");
+        Equal(0, rejectedOnly.Merge("--fail-on", "fail").ExitCode);
+        var onlyRejected = rejectedOnly.Merge("--fail-on", "warn", "--json");
+        Equal(3, onlyRejected.ExitCode);
+        using var onlyRejectedDocument = JsonDocument.Parse(onlyRejected.Output);
+        var notCollected = onlyRejectedDocument.RootElement.GetProperty("findings").EnumerateArray()
+            .Where(finding => finding.GetProperty("kind").GetString() == "not-collected").ToList();
+        Equal(1, notCollected.Count);
+        Equal(true, notCollected[0].GetProperty("message").GetString()!.StartsWith("main/warnings", StringComparison.Ordinal));
+        Equal("warn", notCollected[0].GetProperty("countsAs").GetString());
+    }
+
+    private static (int ExitCode, string Output, string Error) MergeWithEnvironment(Folder run, string failOn, params string[] arguments)
+    {
+        var environment = new Dictionary<string, string> { ["DIFFRA_FAIL_ON"] = failOn };
+        return RecordCommandTests.RunCli(run.Directory, environment,
+            ["merge", "--root-file", run.RootFilePath, "--commit", Commit, "--entries", run.Entries, "-o", run.Output, .. arguments]);
     }
 
     private static void WritesUnderTheRunFolderByDefault()

@@ -161,7 +161,7 @@ that produce data, whether they succeeded or not.
 
 ```sh
 diffra merge [--commit <id>] [--root-file <file>] [--run-dir <dir>] [--entries <dir>]...
-  [-o <file>] [--json]
+  [-o <file>] [--fail-on never|fail|warn] [--json]
 ```
 
 - `--entries` names a folder holding the jobs' entries files, and may be repeated; a folder named
@@ -197,9 +197,9 @@ diffra merge [--commit <id>] [--root-file <file>] [--run-dir <dir>] [--entries <
   more there were. Text that comes from the entries files, file names or the command line is
   printed with control characters, the Unicode line and paragraph separators and the
   bidirectional controls written as `\uXXXX`, so that no line can pass for another.
-- What it finds never changes the exit code: it exits 0, 1 when it cannot read the entries
-  folders or write its output, and 2 when there is no usable commit, root file, run folder,
-  entries folder or output path, or an option is wrong.
+- It exits 0, or 3 when what it finds fails the step under `fail-on` (see "Failing the step"
+  below); 1 when it cannot read the entries folders or write its output; and 2 when there is no
+  usable commit, root file, run folder, entries folder or output path, or an option is wrong.
 
 With `--json`, `merge` prints one JSON object instead:
 

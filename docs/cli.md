@@ -1,7 +1,7 @@
 # CLI reference
 
-The `diffra` CLI has six commands. Each reads files, validates them, and writes one output
-atomically. `collect`, `diff`, `eval` and `report` refuse an output path that names one of their
+The `diffra` CLI has seven commands. `record` appends one entry to its job's entries file; each
+of the others reads files, validates them, and writes one output atomically. `collect`, `diff`, `eval` and `report` refuse an output path that names one of their
 inputs. `bundle export` replaces its output file, and `present bundle` replaces its output
 directory, so keep those outputs apart from their inputs. This page describes the commands and the
 two hand-written input files, the metrics payload and the rules file. The document shapes the
@@ -20,8 +20,31 @@ accept `--help`.
 | 2 | Invalid input: an unknown or repeated option, a malformed document, or a digest mismatch. |
 | 3 | `eval` only: the Assessment outcome is `fail`, `needs-review` or `inconclusive`. The Assessment is still written. |
 
+`record` is the exception: it saves invalid input as a rejected entry and exits 0, and exits 1 or
+2 only when it cannot save an entry. See below.
+
 `diff` does not use the exit code to report change. A changed and an unchanged comparison both exit
 0; the Delta's `status` records which.
+
+## `record`
+
+Records one dataset for the job it runs in, by appending one entry to the job's entries file.
+[Recording a run](record.md) specifies the command, the entries file and how the collecting job
+merges the entries of every job.
+
+```sh
+diffra record --name <dataset> [--value <number> [--unit <unit>] [--key <key>] [--replace]
+  | --from <path-or-glob> | --skipped --reason <text> | --failed --reason <text>]
+  [--project <name>] [--commit <id>] [--job <name>] [--attempt <n>] [--dimension <name>=<value>]... [--root-file <file>]
+  [--run-dir <dir>] [--json]
+```
+
+No converter is built yet, so `record` cannot read the files a dataset's `from` names: a number
+is given with `--value`, and `--from`, or giving no source, is saved as a rejected entry. `record`
+reads the root file from `--root-file`, then `DIFFRA_ROOT_FILE`, and checks the value against it.
+Every problem is saved in a rejected entry and `record` exits 0. It exits 2 when there is no
+usable dataset name, project, commit or job, or a repeated `--run-dir`, and 1 when no run folder
+can be found or the entries file cannot be written.
 
 ## `collect`
 

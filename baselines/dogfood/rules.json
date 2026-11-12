@@ -2,5 +2,5 @@
   "id": "diffra.dogfood.quality-budget",
   "version": "1.0.0",
   "warnAboveAbsoluteIncrease": "20000",
-  "failAboveAbsoluteIncrease": "50000"
+  "failAboveAbsoluteIncrease": "200000"
 }

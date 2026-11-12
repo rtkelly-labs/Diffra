@@ -95,11 +95,11 @@ public static partial class RootFileLoader
         }
 
         var settings = ReadSettings(file.Get("settings"), problems);
-        var dimensions = ReadNames(file.Get("dimensions"), "dimensions", problems);
+        var dimensions = ReadDimensions(file.Get("dimensions"), problems);
         var types = ReadNames(file.Get("types"), "types", problems);
         var datasets = ReadDatasets(file, dimensions, types, problems);
         var projects = ReadProjects(file, datasets, problems);
-        return new RootFileDocument(settings, datasets, projects);
+        return new RootFileDocument(settings, dimensions, datasets, projects);
     }
 
     private static HashSet<string> ReadNames(YamlNode? node, string section, List<RootFileProblem> problems)
@@ -125,9 +125,55 @@ public static partial class RootFileLoader
         return names;
     }
 
+    private static Dictionary<string, RootDimension> ReadDimensions(YamlNode? node, List<RootFileProblem> problems)
+    {
+        var dimensions = new Dictionary<string, RootDimension>(StringComparer.Ordinal);
+        if (node is null)
+        {
+            return dimensions;
+        }
+
+        if (node is not YamlMapping mapping)
+        {
+            problems.Add(At(node, "'dimensions' must be a mapping of names."));
+            return dimensions;
+        }
+
+        foreach (var (key, value) in mapping.Entries)
+        {
+            CheckName(key, problems);
+            var name = key.Value;
+            if (value is YamlMapping { Entries.Count: 1 } shape
+                && shape.Get("observed") is YamlScalar { Plain: true, Value: "true" })
+            {
+                dimensions[name] = new RootDimension(name, null);
+                continue;
+            }
+
+            if (value is YamlMapping { Entries.Count: 1 } listed
+                && listed.Get("values") is YamlSequence { Items.Count: > 0 } sequence
+                && sequence.Items.All(item => item is YamlScalar { IsNull: false }))
+            {
+                var values = sequence.Items.Cast<YamlScalar>().Select(item => item.Value).ToList();
+                if (values.Distinct(StringComparer.Ordinal).Count() != values.Count)
+                {
+                    problems.Add(At(value, $"Dimension '{name}' lists a value more than once."));
+                }
+
+                dimensions[name] = new RootDimension(name, values);
+                continue;
+            }
+
+            problems.Add(At(value, $"Dimension '{name}' must be '{{ values: [...] }}' or '{{ observed: true }}'."));
+            dimensions[name] = new RootDimension(name, null);
+        }
+
+        return dimensions;
+    }
+
     private static Dictionary<string, RootDataset> ReadDatasets(
         YamlMapping file,
-        HashSet<string> dimensions,
+        Dictionary<string, RootDimension> dimensions,
         HashSet<string> types,
         List<RootFileProblem> problems)
     {
@@ -152,19 +198,24 @@ public static partial class RootFileLoader
             var typeName = ReadType(name, dataset, types, problems);
             var required = ReadRequired(name, dataset, problems);
             var ruleSets = ReadRuleSetNames(name, dataset, problems);
-            CheckStratify(name, dataset.Get("stratify"), dimensions, problems);
+            var stratify = new List<string>();
+            ReadStratify(name, dataset.Get("stratify"), dimensions, stratify, problems);
             if (dataset.Get("fields") is YamlMapping fields)
             {
                 foreach (var (_, field) in fields.Entries)
                 {
                     if (field is YamlMapping fieldMapping)
                     {
-                        CheckStratify(name, fieldMapping.Get("stratify"), dimensions, problems);
+                        ReadStratify(name, fieldMapping.Get("stratify"), dimensions, stratify, problems);
                     }
                 }
             }
 
-            datasets[name] = new RootDataset(name, typeName, required, ruleSets);
+            var unit = ReadUnit(name, dataset, problems);
+            var from = ReadFrom(name, dataset, problems);
+            var keyed = dataset.Get("collection") is YamlMapping collection
+                && collection.Get("kind") is YamlScalar { Value: "map" };
+            datasets[name] = new RootDataset(name, typeName, required, ruleSets, unit, from, keyed, stratify);
         }
 
         return datasets;
@@ -244,7 +295,60 @@ public static partial class RootFileLoader
         return names;
     }
 
-    private static void CheckStratify(string name, YamlNode? node, HashSet<string> dimensions, List<RootFileProblem> problems)
+    private static string? ReadUnit(string name, YamlMapping dataset, List<RootFileProblem> problems)
+    {
+        var node = dataset.Get("unit");
+        if (node is null)
+        {
+            return null;
+        }
+
+        if (node is YamlScalar { IsNull: false, Value.Length: > 0 } unit && unit.Value.Trim().Length == unit.Value.Length)
+        {
+            return unit.Value;
+        }
+
+        problems.Add(At(node, $"Dataset '{name}' has a 'unit' that is not text without surrounding whitespace."));
+        return null;
+    }
+
+    private static Dictionary<string, string> ReadFrom(string name, YamlMapping dataset, List<RootFileProblem> problems)
+    {
+        var from = new Dictionary<string, string>(StringComparer.Ordinal);
+        var node = dataset.Get("from");
+        if (node is null)
+        {
+            problems.Add(At(dataset, $"Dataset '{name}' must name where it is read from under 'from'."));
+            return from;
+        }
+
+        if (node is not YamlMapping { Entries.Count: > 0 } mapping)
+        {
+            problems.Add(At(node, $"Dataset '{name}' has 'from' that is not a mapping of converters to globs."));
+            return from;
+        }
+
+        foreach (var (converter, glob) in mapping.Entries)
+        {
+            if (glob is YamlScalar { IsNull: false, Value.Length: > 0 } text)
+            {
+                from[converter.Value] = text.Value;
+            }
+            else
+            {
+                problems.Add(At(glob, $"Dataset '{name}' reads '{converter.Value}' from something that is not a glob."));
+            }
+        }
+
+        return from;
+    }
+
+    private static void ReadStratify(
+        string name,
+        YamlNode? node,
+        Dictionary<string, RootDimension> dimensions,
+        List<string> stratify,
+        List<RootFileProblem> problems)
     {
         if (node is null)
         {
@@ -263,9 +367,13 @@ public static partial class RootFileLoader
             {
                 problems.Add(At(item, $"Dataset '{name}' has a 'stratify' entry that is not a dimension name."));
             }
-            else if (!dimensions.Contains(dimension.Value))
+            else if (!dimensions.ContainsKey(dimension.Value))
             {
                 problems.Add(At(item, $"Dataset '{name}' is stratified by '{dimension.Value}', which is not declared under 'dimensions'."));
+            }
+            else if (!stratify.Contains(dimension.Value, StringComparer.Ordinal))
+            {
+                stratify.Add(dimension.Value);
             }
         }
     }

@@ -1,9 +1,11 @@
 # Recording a run
 
 This page specifies `diffra record`, the one command each job that produces data runs, and the
-entries file it writes. It is a specification: the command does not exist yet. The protocol
-library's `Recording.cs` validates entries, writes and reads entries files, and merges them by the
-rules below.
+entries file it writes. The command is built for `--value`, `--skipped` and `--failed`. No
+converter exists yet, so it cannot read the files a dataset's `from` names: `--from`, or giving no
+source, is saved as a rejected entry that says so. The protocol library's `Recording.cs` validates
+entries, writes and reads entries files, and merges them by the rules below; no collecting job
+runs the merge yet.
 
 ## What is decided
 
@@ -26,7 +28,7 @@ These points are decided in the decision records; everything else on this page i
 ```sh
 diffra record --name <dataset> [source] [--project <name>] [--key <key>]
   [--commit <id>] [--job <name>] [--attempt <n>] [--dimension <name>=<value>]...
-  [--replace] [--run-dir <dir>] [--json]
+  [--replace] [--root-file <file>] [--run-dir <dir>] [--json]
 ```
 
 `--name` names a dataset declared in the root file. At most one source is given:
@@ -35,7 +37,7 @@ diffra record --name <dataset> [source] [--project <name>] [--key <key>]
 | --- | --- |
 | *(none)* | Read the files the dataset's `from` names, with the converter it names. |
 | `--from <path-or-glob>` | Read these files instead of the paths in `from`, still with the converter `from` names. |
-| `--value <number> [--unit <unit>]` | One number. Numbers are typed normally; the CLI writes the canonical form. Without `--unit`, the dataset's declared unit applies and none is written. |
+| `--value <number> [--unit <unit>]` | One number. Numbers are typed normally; the CLI writes the canonical form. Without `--unit`, the dataset's declared unit applies and none is written; giving the declared unit is the same as leaving it out. A `bytes` dataset is measured in `B`; a `duration` takes one of `ns`, `us`, `ms`, `s`, `m`, `h` or `d`; a `ratio` takes no unit. |
 | `--skipped --reason <text>` | The dataset was deliberately not collected in this job. |
 | `--failed --reason <text>` | The collector broke. |
 
@@ -56,12 +58,16 @@ match than the schema's safety limit. Giving two sources at once is also rejecte
 | Job | `--job`, then `DIFFRA_JOB`; attempt from `--attempt`, then `DIFFRA_JOB_ATTEMPT`, then 1. |
 | Dimensions | `--dimension <name>=<value>`, repeatable, then `DIFFRA_DIMENSION_<NAME>`. |
 | Run folder | `--run-dir`, then `DIFFRA_RUN_DIR`, then `diffra/run` under the repository's Git directory, which is never tracked. |
+| Root file | `--root-file`, then `DIFFRA_ROOT_FILE`. The root file's name in a repository is not decided, so there is no default; without one the entry is rejected. |
+
+An environment variable that is set but empty counts as not set, as does an empty `--run-dir`.
 
 The CLI does not ask the CI host for any of these, and it does not read the commit from the
 checkout: a pull request build often checks out a merge commit that CI made, not the commit being
 recorded. A CI integration, such as Diffra's Action, sets the environment variables; the CLI
 itself stays independent of the CI vendor. Mapping a dimension name to an upper-case variable name
-loses case, so two dimension names that differ only in case cannot both be set this way.
+loses case, so two dimension names that differ only in case cannot both be set this way. A
+dimension variable is read only for the dimensions the dataset is stratified by.
 
 ### Behaviour
 
@@ -80,9 +86,9 @@ loses case, so two dimension names that differ only in case cannot both be set t
 One line for a person, or one JSON object with `--json` for an agent.
 
 A rejected entry keeps what was given, by option name, and the problems found. `record` exits
-non-zero only when it cannot save an entry, because the problem would otherwise be lost: 1 when the
-entries file cannot be written, and 2 when there is no usable dataset name, project, commit or job
-to write the entry under. A commit that is not a full ID, an attempt that is not a positive whole
+non-zero only when it cannot save an entry, because the problem would otherwise be lost: 1 when no
+run folder can be found or the entries file cannot be written, and 2 when there is no usable
+dataset name, project, commit or job to write the entry under, or `--run-dir` is given twice. A commit that is not a full ID, an attempt that is not a positive whole
 number, and a job name with surrounding whitespace or control characters are unusable and exit 2.
 
 ## The entries file (proposed)

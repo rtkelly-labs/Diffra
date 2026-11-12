@@ -35,6 +35,8 @@ public static class RootFileTests
         TreatsOnlyAPlainNullAsNoRules();
         RejectsAnUndeclaredCustomType();
         RejectsAnUndeclaredDimension();
+        ReadsWhatRecordingNeeds();
+        RejectsBadDimensionsAndSources();
         RejectsTheWrongSchema();
         RejectsUnsupportedYaml();
         RejectsBadSettings();
@@ -182,6 +184,67 @@ public static class RootFileTests
 
         const string dimensions = "dimensions:\n  os: { values: [linux, windows] }\n  runner: { observed: true }\n";
         LoadsCleanly(RootFileLoader.Load(Header + dimensions + text), "declared dimensions");
+    }
+
+    private static void ReadsWhatRecordingNeeds()
+    {
+        const string text = """
+            dimensions:
+              os: { values: [linux, windows] }
+              runner: { observed: true }
+            datasets:
+              tests:
+                type: diffra/test-results@1
+                from: { junit: "tests/*.xml" }
+                fields:
+                  results: { stratify: [os, runner] }
+                  duration: { stratify: [os] }
+              suites:
+                type: duration
+                unit: s
+                collection: { kind: map, keys: { normalization: none } }
+                stratify: [runner]
+                from: { payload: "metrics.json" }
+            projects:
+              main: { datasets: { tests: null, suites: null } }
+            """;
+        var document = LoadsCleanly(RootFileLoader.Load(Header + text), "recording example");
+        Equal("linux,windows", string.Join(",", document.Dimensions["os"].Values!));
+        Equal(true, document.Dimensions["runner"].Values is null);
+        var tests = document.Datasets["tests"];
+        Equal("os,runner", string.Join(",", tests.Stratify));
+        Equal("tests/*.xml", tests.From["junit"]);
+        Equal(false, tests.Keyed);
+        Equal(true, tests.Unit is null);
+        var suites = document.Datasets["suites"];
+        Equal(true, suites.Keyed);
+        Equal("s", suites.Unit);
+        Equal("runner", string.Join(",", suites.Stratify));
+        Equal("metrics.json", suites.From["payload"]);
+    }
+
+    private static void RejectsBadDimensionsAndSources()
+    {
+        const string text = """
+            dimensions:
+              os: { values: [linux, linux] }
+              arch: [x64]
+            datasets:
+              size:
+                type: bytes
+                unit: " B"
+              time:
+                type: duration
+                from: { payload: }
+            projects:
+              main: { datasets: { size: null, time: null } }
+            """;
+        var result = RootFileLoader.Load(Header + text);
+        Fails(result, "Dimension 'os' lists a value more than once.");
+        Fails(result, "Dimension 'arch' must be");
+        Fails(result, "Dataset 'size' must name where it is read from under 'from'.");
+        Fails(result, "Dataset 'size' has a 'unit' that is not text");
+        Fails(result, "Dataset 'time' reads 'payload' from something that is not a glob.");
     }
 
     private static void RejectsTheWrongSchema()

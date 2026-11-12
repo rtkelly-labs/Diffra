@@ -175,6 +175,9 @@ another commit is a finding.
 3. Entries with the same identity and status and an equal canonical `value` or equal `data` are
    identical and are kept once, whether they came from one job or several; the first job in name
    order is kept.
+   Equal `data` is the same JSON with object members in any order and numbers compared by value,
+   however they are written. Data that holds a number whose exponent is near or beyond the range
+   of a 32-bit integer is equal only when it is written the same way.
 4. Two different values with the same identity are a finding; neither value is chosen. Within one
    job and attempt this arises only from a hand-edited file, since `record` refuses it; the
    identity is still compared across jobs, so a disagreement between other jobs is reported too.

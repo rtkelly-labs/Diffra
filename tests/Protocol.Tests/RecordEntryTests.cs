@@ -651,10 +651,10 @@ public static class RecordEntryTests
             Equal(false, Identical(second, first));
 
             // Across jobs and within one job: reported, and no value chosen.
-            var across = Merge([DataEntry("a", first), DataEntry("b", second)]);
+            var across = Merge(DataEntry("a", first), DataEntry("b", second));
             Equal(1, across.Findings.Count(finding => finding.Kind == MergeFindingKind.Conflict));
             Equal(0, across.Entries.Count);
-            var within = Merge([DataEntry("a", first), DataEntry("a", second)]);
+            var within = Merge(DataEntry("a", first), DataEntry("a", second));
             Equal(1, within.Findings.Count(finding => finding.Kind == MergeFindingKind.Conflict));
             Equal(0, within.Entries.Count);
         }
@@ -671,7 +671,7 @@ public static class RecordEntryTests
         {
             Equal(true, Identical(first, second));
             Equal(true, Identical(second, first));
-            Equal(0, Merge([DataEntry("a", first), DataEntry("b", second), DataEntry("b", first)]).Findings.Count);
+            Equal(0, Merge(DataEntry("a", first), DataEntry("b", second), DataEntry("b", first)).Findings.Count);
         }
 
         // A source that holds such a number is reported as a problem, not thrown on.

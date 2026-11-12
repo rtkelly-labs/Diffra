@@ -32,6 +32,9 @@ public static class SarifConverter
     // How deep a SARIF file may nest.
     private const int MaximumDepth = 256;
 
+    // The most digits a message placeholder such as {0} may have; an int has at most ten.
+    private const int MaximumPlaceholderDigits = 10;
+
     // The path of a result that has no location.
     private const string NoPath = "<none>";
 
@@ -119,6 +122,11 @@ public static class SarifConverter
             var fileProblems = new FileProblems();
             new LogReader(path, root, maximumTextLength, findings, fill, fileProblems).ReadFile(bytes);
             fileProblems.CopyTo(problems, path);
+            if (fill.Exceeded)
+            {
+                // The entry is rejected; reading on would only report the same limit again.
+                break;
+            }
         }
 
         if (problems.Count == 0)
@@ -329,6 +337,9 @@ public static class SarifConverter
         public long Limit { get; } = limit;
 
         public long Remaining { get; set; } = limit;
+
+        // Whether a message has been found that would pass the limit; reading then stops.
+        public bool Exceeded { get; set; }
     }
 
     // A rule descriptor, with its message strings by id once one is asked for.
@@ -489,6 +500,10 @@ public static class SarifConverter
             foreach (var run in runs.EnumerateArray())
             {
                 ReadRun(run, number++);
+                if (fill.Exceeded)
+                {
+                    return;
+                }
             }
         }
 
@@ -546,6 +561,10 @@ public static class SarifConverter
                 catch (SarifException exception)
                 {
                     problems.Add($"'{file}' {where} result {index.ToString(CultureInfo.InvariantCulture)}: {exception.Message}");
+                    if (fill.Exceeded)
+                    {
+                        return;
+                    }
                 }
 
                 index++;
@@ -658,49 +677,62 @@ public static class SarifConverter
         }
 
         // SARIF's message format: {n} is the nth argument, and {{ and }} are literal braces. The
-        // filled message counts against the entry's fill budget, checked before each argument is
-        // added, so that repeating a long argument cannot build a message past it.
+        // filled message counts against the entry's fill budget, checked before each character or
+        // argument is added, so that repeating a long argument cannot build a message past it.
         private string Format(string format, List<string> arguments)
         {
-            var builder = new StringBuilder(format.Length);
+            var builder = new StringBuilder((int)Math.Min(format.Length, fill.Remaining));
             for (var index = 0; index < format.Length; index++)
             {
                 var character = format[index];
                 if ((character == '{' || character == '}') && index + 1 < format.Length && format[index + 1] == character)
                 {
+                    Reserve(builder, 1);
                     builder.Append(character);
                     index++;
                     continue;
                 }
 
+                // A placeholder is '{', a few digits and '}'. Only that far is looked at, so a text
+                // of many '{' with no '}' is read once; anything else is kept as written.
                 if (character == '{')
                 {
-                    var close = format.IndexOf('}', index + 1);
+                    var close = index + 1;
+                    while (close < format.Length && close - index <= MaximumPlaceholderDigits && char.IsAsciiDigit(format[close]))
+                    {
+                        close++;
+                    }
+
                     if (close > index + 1
+                        && close < format.Length
+                        && format[close] == '}'
                         && int.TryParse(format.AsSpan(index + 1, close - index - 1), NumberStyles.None, CultureInfo.InvariantCulture, out var number)
                         && number < arguments.Count)
                     {
-                        if (builder.Length + (long)arguments[number].Length > fill.Remaining)
-                        {
-                            throw new SarifException(FillProblem());
-                        }
-
+                        Reserve(builder, arguments[number].Length);
                         builder.Append(arguments[number]);
                         index = close;
                         continue;
                     }
                 }
 
+                Reserve(builder, 1);
                 builder.Append(character);
-            }
-
-            if (builder.Length > fill.Remaining)
-            {
-                throw new SarifException(FillProblem());
             }
 
             fill.Remaining -= builder.Length;
             return builder.ToString();
+        }
+
+        // Checks, before characters are added, that the filled message stays within what the
+        // entry may still fill.
+        private void Reserve(StringBuilder builder, long more)
+        {
+            if (builder.Length + more > fill.Remaining)
+            {
+                fill.Exceeded = true;
+                throw new SarifException(FillProblem());
+            }
         }
 
         // The value of the ordinally first name in fingerprints or partialFingerprints.

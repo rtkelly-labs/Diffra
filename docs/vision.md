@@ -93,7 +93,9 @@ Nothing posts the comment yet. `bundle` moves evidence through a content-address
 its cross-references, which `diffra record` uses; `diffra merge` reads the `fail-on`
 setting and fails the step on a required dataset not collected when it is `warn`, and on one
 recorded as failed when it is `fail` or `warn`; and `diffra record` records a number given with `--value`, or a skipped or failed dataset,
-checked against the root file, and `diffra merge` merges the entries files of every job,
+checked against the root file, keeping the job's entries file within the size `diffra merge`
+reads by saving an entry that would cross it as a rejected entry instead, and `diffra merge`
+merges the entries files of every job,
 reporting every disagreement in values or statuses, naming each job involved, and listing the
 planned datasets no job collected. Nothing yet carries the jobs' files to a collecting job or
 writes the merged entries to history. Two converters exist: `files`, with which `record` reads

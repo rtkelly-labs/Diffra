@@ -30,6 +30,7 @@ public static class SarifConverterTests
         RejectsMalformedInput();
         RejectsUndecodablePropertyNames();
         RejectsMessagesFilledPastTheLimit();
+        ReadsBracesWithoutPlaceholdersOnce();
         RejectsWhatItCannotTellApart();
         RejectsExternalizedResults();
         ListsTheFirstProblemsOfAFile();
@@ -428,6 +429,33 @@ public static class SarifConverterTests
         folder.Write("m.sarif", Log(RunWithRules("T", rules, [Filled("one"), Filled("two")])));
         var together = SarifConverter.Read(folder.Root, "m.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, fillLimit: 7_999_999);
         Equal("'m.sarif' run 0 result 1: the messages filled from their arguments would hold more than 7,999,999 characters, the most one entry may.", together.Problems.Single());
+
+        // Literal text counts as it is copied. Once the limit is passed, the file's other results
+        // and the files after it are not read, so the limit is reported once.
+        var literal = $$$$"""[{"id":"R","messageStrings":{"m":{"text":"{{{{new string('y', 1000)}}}}"}}}]""";
+        var many = Enumerable.Range(0, 50).Select(index => $$$$"""{"ruleId":"R","message":{"id":"m"},"fingerprints":{"f":"{{{{index}}}}"}}""").ToArray();
+        folder.Write("m.sarif", Log(RunWithRules("T", literal, many), RunWithRules("U", literal, many)));
+        folder.Write("n.sarif", Log(RunWithRules("V", literal, many)));
+        var once = SarifConverter.Read(folder.Root, "*.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, fillLimit: 10_500);
+        Equal(null, once.Data);
+        Equal("'m.sarif' run 0 result 10: the messages filled from their arguments would hold more than 10,500 characters, the most one entry may.", once.Problems.Single());
+    }
+
+    // A placeholder is read only as far as its few digits, so a long text of '{' with no '}' is
+    // read once rather than searched again from each '{'.
+    private static void ReadsBracesWithoutPlaceholdersOnce()
+    {
+        var text = string.Concat(Enumerable.Repeat("{a", 2_000_000));
+        using var folder = new Folder();
+        folder.Write("b.sarif", Log(Run("T", $$$$"""{"ruleId":"R","message":{"text":"{{{{text}}}}{0}","arguments":["z"]}}""")));
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var result = SarifConverter.Read(folder.Root, "b.sarif", maximumKeys: null, maximumTextLength: null);
+        Equal(0, result.Problems.Count);
+        Equal(text + "z", Findings(result.Data!).Single().GetProperty("message").GetString());
+        if (clock.Elapsed > TimeSpan.FromSeconds(30))
+        {
+            throw new InvalidOperationException($"Reading 4,000,000 characters of braces took {clock.Elapsed}.");
+        }
     }
 
     // Two findings whose parts join to the same key, or two tool and rule pairs that join to the

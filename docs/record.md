@@ -107,23 +107,25 @@ The `sarif` converter reads SARIF 2.1.0 logs, as CodeQL and Ruff write them:
   names. A result with no rule rejects the entry.
 - The level is the result's `level` when given. Otherwise, when `kind` is absent or `fail`, it is
   the rule's `defaultConfiguration.level`, or `warning`; any other `kind` gives `none`.
-- The message is `message.text`, or else the rule's `messageStrings` entry its `message.id` names,
-  with `{0}`, `{1}` and so on filled from `message.arguments`; `message.text` with no `arguments`
-  is kept as written. The messages filled this way hold
-  at most 64 Mi characters together in one entry, a safety limit; filling past it rejects the
-  entry. Control characters become spaces, and a message longer than the root file's
-  `maxTextLength` is cut and ends with `…`.
+- The message is `message.text`, or else the rule's `messageStrings` entry its `message.id`
+  names, with `{0}`, `{1}` and so on filled from `message.arguments`; `message.text` with no
+  `arguments` is kept as written. A placeholder is `{`, at most ten digits and `}`; any other
+  brace is kept as written. The messages filled this way hold at most 64 Mi characters together
+  in one entry, a safety limit counted as each character is copied; filling past it rejects the
+  entry, and the rest of the logs are not read. Control characters become spaces, and a message
+  longer than the root file's `maxTextLength` is cut and ends with `…`.
 - The path is the first location's `physicalLocation.artifactLocation`. Its `uri` is resolved
   through `uriBaseId` and the run's `originalUriBaseIds`, following at most ten bases so that a
   cycle ends; a base the run does not define leaves the URI relative to the repository root. A
   `file:` URI, or an absolute path, under the repository root is recorded relative to it; any
   other absolute path, a URI of another scheme, or a relative path that leaves the top is
-  recorded as `<outside>/<digest>/<file name>`, where the digest is the first 12 hexadecimal characters of the SHA-256 of the URI with its
-  `uriBaseId` bases applied, query and fragment included; a URI with no file name, such as one
-  ending in `/`, is recorded as `<outside>/<digest>`. Each segment is percent-decoded before
-  `.` and `..` are applied, so `%2e%2e` is `..`. A backslash in a URI, or a segment that decodes
-  to `/` or `\`, rejects the entry. A result with no physical location has the path `<none>`.
-  The path is worked out from the text alone; no file it names is opened.
+  recorded as `<outside>/<digest>/<file name>`. The digest is the first 12 hexadecimal
+  characters of the SHA-256 of the URI with its `uriBaseId` bases applied, query and fragment
+  included. A URI with no file name, such as one ending in `/`, is recorded as
+  `<outside>/<digest>`. Each segment is percent-decoded before `.` and `..` are applied, so
+  `%2e%2e` is `..`. A backslash in a URI, or a segment that decodes to `/` or `\`, rejects the
+  entry. A result with no physical location has the path `<none>`. The path is worked out from
+  the text alone; no file it names is opened.
 - The line is `region.startLine`, a whole number of at least 1, or absent.
 - A finding is keyed `<tool>/<rule>/<path>/<fingerprint>`, with the fingerprint chosen as
   [Dataset types](datasets.md#identity-1) says. Findings with the same key are kept once: the

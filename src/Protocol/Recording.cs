@@ -232,15 +232,61 @@ public static partial class RecordEntries
             return first.Value == second.Value;
         }
 
-        try
+        return SameJson(first.Data!.Value, second.Data!.Value);
+    }
+
+    /// <summary>
+    /// Whether two JSON values are equal: object members in any order, and numbers by value
+    /// however they are written. A value holding a number whose exponent is too large to compare
+    /// is equal only to a value written the same way.
+    /// </summary>
+    private static bool SameJson(JsonElement first, JsonElement second) =>
+        ComparesExactly(first) && ComparesExactly(second)
+            ? JsonElement.DeepEquals(first, second)
+            : string.Equals(Compact(first), Compact(second), StringComparison.Ordinal);
+
+    // JsonElement.DeepEquals moves a number's exponent by its count of digits in an int. When the
+    // result leaves the range of an int it either throws or wraps round, and then finds numbers
+    // equal that are not, such as 1e2147483647 and 0.1e-2147483648. A token has more characters
+    // than digits, so an exponent that stays in range when moved by the token's length is safe.
+    private static bool ComparesExactly(JsonElement element)
+    {
+        switch (element.ValueKind)
         {
-            return JsonElement.DeepEquals(first.Data!.Value, second.Data!.Value);
-        }
-        catch (ArgumentOutOfRangeException)
-        {
-            // A number whose exponent is too large to compare: the data is the same only when it is
-            // written the same way.
-            return string.Equals(Compact(first.Data!.Value), Compact(second.Data!.Value), StringComparison.Ordinal);
+            case JsonValueKind.Object:
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (!ComparesExactly(property.Value))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray())
+                {
+                    if (!ComparesExactly(item))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            case JsonValueKind.Number:
+                var raw = element.GetRawText().AsSpan();
+                var e = raw.IndexOfAny('e', 'E');
+                if (e < 0)
+                {
+                    return true;
+                }
+
+                long limit = int.MaxValue - raw.Length;
+                return long.TryParse(raw[(e + 1)..], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var exponent)
+                    && exponent >= -limit
+                    && exponent <= limit;
+            default:
+                return true;
         }
     }
 
@@ -600,7 +646,7 @@ public static partial class RecordEntries
         {
             var path = $"sources[{index.ToString(CultureInfo.InvariantCulture)}]";
             index++;
-            if (seen.Any(earlier => JsonElement.DeepEquals(earlier, source)))
+            if (seen.Exists(earlier => SameJson(earlier, source)))
             {
                 problems.Add($"'{path}' repeats an earlier source.");
             }
@@ -1230,8 +1276,8 @@ public static class EntryMerge
         return new MergeResult(merged, orderedFindings, superseded);
     }
 
-    // A hash that agrees with JsonElement.DeepEquals: object members in any order give the same
-    // hash, and every number hashes alike, since equal numbers can be written differently.
+    // A hash that agrees with RecordEntries.AreIdentical: object members in any order give the same
+    // hash, and equal numbers hash alike, since equal numbers can be written differently.
     private static int StructuralHash(JsonElement element)
     {
         switch (element.ValueKind)

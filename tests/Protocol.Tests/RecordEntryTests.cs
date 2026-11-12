@@ -40,6 +40,7 @@ public static class RecordEntryTests
         ReportsRequiredDatasetsWhoseCollectionFailed();
         MatchesAPlanOnTheListedDimensions();
         KeepsRejectedEntriesOutOfConflicts();
+        ComparesNumbersAtTheEdgeOfTheExponentRange();
         Console.WriteLine("PASS record entries, entries files and the merge");
     }
 
@@ -628,6 +629,58 @@ public static class RecordEntryTests
         }
 
         return JsonSerializer.Serialize(fields);
+    }
+
+    // The runtime's comparison wraps an exponent round at the edge of an int and then finds
+    // 1e2147483647 equal to 0.1e-2147483648. Data that near the edge, or past it, is identical only
+    // as written; everywhere else numbers are compared by value. Found by review of the property
+    // tests in tests/Protocol.Properties.
+    private static void ComparesNumbersAtTheEdgeOfTheExponentRange()
+    {
+        (string First, string Second)[] different =
+        [
+            ("[1e2147483647]", "[0.1e-2147483648]"),
+            ("[10e2147483647]", "[1e-2147483648]"),
+            ("[1,{\"a\":0.01e-2147483647}]", "[1,{\"a\":1e2147483647}]"),
+            ("[1e2147483647]", "[1e-2147483647]"),
+            ("[1e99999999999]", "[1e99999999998]"),
+        ];
+        foreach (var (first, second) in different)
+        {
+            Equal(false, Identical(first, second));
+            Equal(false, Identical(second, first));
+
+            // Across jobs and within one job: reported, and no value chosen.
+            var across = Merge([DataEntry("a", first), DataEntry("b", second)]);
+            Equal(1, across.Findings.Count(finding => finding.Kind == MergeFindingKind.Conflict));
+            Equal(0, across.Entries.Count);
+            var within = Merge([DataEntry("a", first), DataEntry("a", second)]);
+            Equal(1, within.Findings.Count(finding => finding.Kind == MergeFindingKind.Conflict));
+            Equal(0, within.Entries.Count);
+        }
+
+        (string First, string Second)[] same =
+        [
+            ("[1e2147483647]", "[1e2147483647]"),
+            ("{\"a\":1e99999999999,\"b\":2}", "{\"a\":1e99999999999,\"b\":2}"),
+            ("[1e2147480000]", "[10.0E+2147479999]"),
+            ("[1e-2147480000]", "[0.1e-2147479999]"),
+            ("{\"a\":1e400,\"b\":2}", "{\"b\":2.0,\"a\":10e399}"),
+        ];
+        foreach (var (first, second) in same)
+        {
+            Equal(true, Identical(first, second));
+            Equal(true, Identical(second, first));
+            Equal(0, Merge([DataEntry("a", first), DataEntry("b", second), DataEntry("b", first)]).Findings.Count);
+        }
+
+        // A source that holds such a number is reported as a problem, not thrown on.
+        var sources = DataEntry("a", "[1]").Replace("\"format\":\"junit\"", "\"format\":\"junit\",\"size\":1e99999999999", StringComparison.Ordinal);
+        var twice = sources.Replace("\"sources\":[", "\"sources\":[{\"path\":\"b\",\"format\":\"junit\",\"sha256\":\"" + new string('a', 64) + "\",\"size\":1e99999999999},", StringComparison.Ordinal);
+        Equal(true, RecordEntries.Validate(twice).Count > 0);
+
+        static bool Identical(string first, string second) =>
+            RecordEntries.AreIdentical(RecordEntries.Parse(DataEntry("a", first)), RecordEntries.Parse(DataEntry("a", second)));
     }
 
     private static string DataEntry(string job, string data) =>

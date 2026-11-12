@@ -47,8 +47,11 @@ One root file in the repository defines the datasets, the rule sets on each data
 projects that select them. Each CI job that produces data runs one command, `diffra record`,
 which reads the tool's output through the converter the root file declares, or takes a single
 number with `--value`. A value that does not fit the root file is saved as rejected and reported
-at the end rather than failing the job. A collecting job in each workflow file gathers the
-records for the commit.
+at the end rather than failing the job. One collecting job in each workflow file gathers the
+records for the commit; the root file is to say which workflow file is responsible for which
+datasets, so that a workflow does not report another's datasets as missing. A required dataset
+that is missing or only rejected counts as a warning, so it fails the step under `fail-on: warn`
+and not under `fail-on: fail`.
 
 Diffra is to read the formats tools already write: test results, coverage, lint findings, sizes,
 tables such as benchmark results and OpenMetrics, with declared columns, and flame graphs as

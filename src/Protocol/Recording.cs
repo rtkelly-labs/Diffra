@@ -907,6 +907,13 @@ public static partial class EntriesFile
         return ReadLines(File.ReadAllBytes(path));
     }
 
+    /// <summary>Reads every entry in the bytes of an entries file, as <see cref="Read"/> does.</summary>
+    public static EntriesFileContent Read(byte[] bytes)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        return ReadLines(bytes);
+    }
+
     private static EntriesFileContent ReadLines(byte[] bytes)
     {
         var entries = new List<RecordEntry>();
@@ -1097,11 +1104,21 @@ public static class EntryMerge
                 list.FindAll(entry => entry is { Status: EntryStatus.Recorded, Data: not null }),
             })
             {
+                // Entries are bucketed by a hash of what they say, so that a file of many jobs takes
+                // linear time rather than comparing every pair.
                 var distinct = new List<RecordEntry>();
+                var buckets = new Dictionary<int, List<RecordEntry>>();
                 foreach (var entry in form)
                 {
-                    if (!distinct.Exists(other => RecordEntries.AreIdentical(other, entry)))
+                    var hash = entry.Value is { } value ? value.GetHashCode() : StructuralHash(entry.Data!.Value);
+                    if (!buckets.TryGetValue(hash, out var bucket))
                     {
+                        buckets[hash] = bucket = [];
+                    }
+
+                    if (!bucket.Exists(other => RecordEntries.AreIdentical(other, entry)))
+                    {
+                        bucket.Add(entry);
                         distinct.Add(entry);
                     }
                 }
@@ -1157,6 +1174,35 @@ public static class EntryMerge
         return new MergeResult(merged, orderedFindings, superseded);
     }
 
+    // A hash that agrees with JsonElement.DeepEquals: object members in any order give the same
+    // hash, and every number hashes alike, since equal numbers can be written differently.
+    private static int StructuralHash(JsonElement element)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                var sum = 17;
+                foreach (var property in element.EnumerateObject())
+                {
+                    sum = unchecked(sum + HashCode.Combine(StringComparer.Ordinal.GetHashCode(property.Name), StructuralHash(property.Value)));
+                }
+
+                return sum;
+            case JsonValueKind.Array:
+                var combined = new HashCode();
+                foreach (var item in element.EnumerateArray())
+                {
+                    combined.Add(StructuralHash(item));
+                }
+
+                return combined.ToHashCode();
+            case JsonValueKind.String:
+                return StringComparer.Ordinal.GetHashCode(element.GetString()!);
+            default:
+                return (int)element.ValueKind;
+        }
+    }
+
     // The jobs, in name order and each once: "job 'a'" or "jobs 'a', 'b' and 'c'".
     private static string Jobs(IEnumerable<RecordEntry> entries)
     {
@@ -1179,11 +1225,13 @@ public static class EntryMerge
     {
         var result = new List<RecordEntry>();
         var byIdentity = new Dictionary<string, int>(StringComparer.Ordinal);
+        var rejectedSeen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var entry in entries)
         {
             if (entry.Status == EntryStatus.Rejected)
             {
-                if (!result.Any(earlier => RecordEntries.AreIdentical(earlier, entry)))
+                // Two rejected entries are identical exactly when their JSON is.
+                if (rejectedSeen.Add(entry.Json))
                 {
                     result.Add(entry);
                 }

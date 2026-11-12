@@ -9,6 +9,7 @@ namespace Diffra.Protocol.Tests;
 public static class MergeCommandTests
 {
     private const string Commit = RecordCommandTests.Commit;
+    private const string Other = "--other-commit";
 
     // A smaller root file than the record tests use, so that every required dataset is listed.
     private const string RootFile = """
@@ -39,6 +40,11 @@ public static class MergeCommandTests
         ExitsTwoWithoutAUsableContext();
         ReadsEntriesFilesAsUntrustedData();
         WritesUnderTheRunFolderByDefault();
+        ReportsEveryKindOfFinding();
+        ReadsEachFolderAndEachContentOnce();
+        LimitsWhatItReports();
+        EscapesControlCharactersInTheReport();
+        MergesManyJobsQuickly();
         Console.WriteLine("PASS diffra merge");
     }
 
@@ -94,7 +100,100 @@ public static class MergeCommandTests
         Equal(2, run.Merge("--colour", "red").ExitCode);
         Equal(2, run.Merge("stray").ExitCode);
         Equal(2, run.Merge("-o").ExitCode);
+        Equal(2, run.Merge("--entries", string.Empty).ExitCode);
+        Equal(2, run.Merge(withCommit: false, "--commit", string.Empty).ExitCode);
+        Equal(2, run.Merge("--o", run.Output).ExitCode);
         Equal(false, File.Exists(run.Output));
+
+        // The output may not be written where a later merge would read it as an entries file, nor
+        // be a folder.
+        Equal(2, run.Raw("--entries", run.Entries, "-o", Path.Combine(run.Entries, "merged.jsonl")).ExitCode);
+        Equal(2, run.Raw("--entries", run.Entries + Path.DirectorySeparatorChar, "-o", Path.Combine(run.Entries, "merged.jsonl")).ExitCode);
+        Equal(2, run.Raw("--entries", run.Entries, "-o", run.Directory).ExitCode);
+        Equal(2, run.Raw("--entries", run.Entries, "-o", run.Directory + Path.DirectorySeparatorChar).ExitCode);
+        Equal(0, Directory.GetFiles(run.Entries).Length);
+    }
+
+    private static void ReportsEveryKindOfFinding()
+    {
+        using var run = new Folder();
+        run.Record("linux", 1, "--name", "packageSize", "--value", "10", "--dimension", "os=linux", "--dimension", "runner=a");
+        run.Record("windows", 1, "--name", "packageSize", "--skipped", "--reason", "not built", "--dimension", "os=windows");
+        run.Record("lint", 1, "--name", "warnings", "--value", "3");
+        run.Record("pack", 1, "--name", "warnings", "--failed", "--reason", "broke");
+        run.Record("old", 1, Other, "--name", "ratio", "--value", "1");
+
+        var result = run.Merge("--json");
+        Equal(0, result.ExitCode);
+        using var document = JsonDocument.Parse(result.Output);
+        var kinds = document.RootElement.GetProperty("findings").EnumerateArray()
+            .Select(finding => finding.GetProperty("kind").GetString())
+            .ToHashSet(StringComparer.Ordinal);
+        Equal(true, kinds.Contains("other-commit"));
+        Equal(true, kinds.Contains("status-conflict"));
+    }
+
+    private static void ReadsEachFolderAndEachContentOnce()
+    {
+        using var run = new Folder();
+        run.Record("linux", 1, "--name", "warnings", "--value", "3");
+        var file = Directory.GetFiles(run.Entries).Single();
+        File.Copy(file, Path.Combine(run.Entries, "zz-copy.jsonl"));
+
+        var result = run.Merge("--json", "--entries", run.Entries, "--entries", run.Entries + Path.DirectorySeparatorChar);
+        Equal(0, result.ExitCode);
+        using var document = JsonDocument.Parse(result.Output);
+        Equal(1, document.RootElement.GetProperty("entriesFiles").GetInt32());
+        Equal(0, document.RootElement.GetProperty("findings").EnumerateArray().Count(finding => finding.GetProperty("kind").GetString() == "conflict"));
+        var unreadable = document.RootElement.GetProperty("unreadable").EnumerateArray().Single();
+        Equal(true, unreadable.GetProperty("message").GetString()!.StartsWith("The file has the same content as ", StringComparison.Ordinal));
+    }
+
+    private static void LimitsWhatItReports()
+    {
+        using var run = new Folder();
+        File.WriteAllText(Path.Combine(run.Entries, "bad.jsonl"), string.Concat(Enumerable.Repeat("not json\n", 25)));
+        var result = run.Merge("--json");
+        Equal(0, result.ExitCode);
+        using var document = JsonDocument.Parse(result.Output);
+        var messages = document.RootElement.GetProperty("unreadable").EnumerateArray().Select(problem => problem.GetProperty("message").GetString()).ToList();
+        Equal(21, messages.Count);
+        Equal("5 more lines were not valid entries.", messages[^1]);
+    }
+
+    private static void EscapesControlCharactersInTheReport()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var run = new Folder();
+        File.WriteAllText(Path.Combine(run.Entries, "a\nconflict: forged\u2028.jsonl"), "not json\n");
+        var result = run.Merge();
+        Equal(0, result.ExitCode);
+        Equal(false, result.Output.Split('\n').Any(line => line.StartsWith("conflict: forged", StringComparison.Ordinal)));
+        Equal(false, result.Output.Contains('\u2028', StringComparison.Ordinal));
+        Equal(true, result.Output.Contains("a\\u000aconflict: forged\\u2028.jsonl", StringComparison.Ordinal));
+    }
+
+    // Many jobs that agree on one value, and one job with many rejected entries, merge in a few
+    // seconds rather than in time that grows with the square of the entries.
+    private static void MergesManyJobsQuickly()
+    {
+        using var run = new Folder();
+        run.Record("quick", 1, "--name", "warnings", "--value", "3");
+        var line = File.ReadAllLines(Directory.GetFiles(run.Entries).Single()).Single();
+        File.WriteAllLines(
+            Path.Combine(run.Entries, "many.jsonl"),
+            Enumerable.Range(0, 4000).Select(index => line.Replace("\"name\":\"quick\"", $"\"name\":\"quick{index.ToString(System.Globalization.CultureInfo.InvariantCulture)}\"", StringComparison.Ordinal)));
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var result = run.Merge("--json");
+        Equal(0, result.ExitCode);
+        Equal(true, watch.Elapsed < TimeSpan.FromSeconds(60));
+        using var document = JsonDocument.Parse(result.Output);
+        Equal(1, document.RootElement.GetProperty("entries").GetInt32());
+        Equal(0, document.RootElement.GetProperty("unreadable").GetArrayLength());
     }
 
     private static void ReadsEntriesFilesAsUntrustedData()
@@ -172,10 +271,12 @@ public static class MergeCommandTests
 
         public void Record(string job, int attempt, params string[] arguments)
         {
+            var commit = arguments is [Other, ..] ? new string('b', 40) : Commit;
+            arguments = arguments is [Other, .. var rest] ? rest : arguments;
             var result = RecordCommandTests.RunCli(
                 Directory,
                 new Dictionary<string, string>(),
-                ["record", .. arguments, "--project", "main", "--commit", Commit, "--job", job, "--attempt", attempt.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["record", .. arguments, "--project", "main", "--commit", commit, "--job", job, "--attempt", attempt.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     "--root-file", RootFilePath, "--run-dir", Path.Combine(Directory, "run")]);
             Equal(0, result.ExitCode);
         }
@@ -198,6 +299,10 @@ public static class MergeCommandTests
             all.AddRange(arguments);
             return RecordCommandTests.RunCli(Directory, new Dictionary<string, string>(), [.. all]);
         }
+
+        // merge with only the root file and commit added.
+        public (int ExitCode, string Output, string Error) Raw(params string[] arguments) =>
+            RecordCommandTests.RunCli(Directory, new Dictionary<string, string>(), ["merge", "--root-file", RootFilePath, "--commit", Commit, .. arguments]);
 
         public void Dispose()
         {

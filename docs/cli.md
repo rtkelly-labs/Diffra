@@ -8,8 +8,8 @@ two hand-written input files, the metrics payload and the rules file. The docume
 commands write are in the [protocol](protocol.md).
 
 Run the CLI from a build with `dotnet run --project src/Cli/Diffra.Cli.csproj -c Release --no-build -- <command>`.
-`diffra --help` prints the usage line for every command; `collect`, `bundle` and `present` also
-accept `--help`.
+`diffra --help` prints the usage line for every command; `record`, `merge`, `collect`, `bundle` and
+`present` also accept `--help`.
 
 ## Exit codes
 
@@ -57,8 +57,10 @@ diffra merge [--commit <id>] [--root-file <file>] [--run-dir <dir>] [--entries <
   [-o <file>] [--json]
 ```
 
-What the merge finds never fails the command. [Recording a run](record.md#the-collecting-step-proposed)
-gives the rules and limits.
+What the merge finds never fails the command. It exits 1 when it cannot read the entries folders
+or write its output, and 2 when there is no usable commit, root file, run folder, entries folder
+or output path, or an option is wrong. [Recording a run](record.md#the-collecting-step) gives the
+rules, the limits and the `--json` shape.
 
 ## `collect`
 

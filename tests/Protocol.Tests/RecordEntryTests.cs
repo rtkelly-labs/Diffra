@@ -674,10 +674,12 @@ public static class RecordEntryTests
             Equal(0, Merge(DataEntry("a", first), DataEntry("b", second), DataEntry("b", first)).Findings.Count);
         }
 
-        // A source that holds such a number is reported as a problem, not thrown on.
-        var sources = DataEntry("a", "[1]").Replace("\"format\":\"junit\"", "\"format\":\"junit\",\"size\":1e99999999999", StringComparison.Ordinal);
-        var twice = sources.Replace("\"sources\":[", "\"sources\":[{\"path\":\"b\",\"format\":\"junit\",\"sha256\":\"" + new string('a', 64) + "\",\"size\":1e99999999999},", StringComparison.Ordinal);
-        Equal(true, RecordEntries.Validate(twice).Count > 0);
+        // A repeated source that holds such a number is reported as a repeat, with the entry's other
+        // problems, where it used to hide them all behind a message about text that is not Unicode.
+        const string odd = "{\"path\":\"b\",\"format\":\"junit\",\"size\":1e99999999999}";
+        var repeated = RecordEntries.Validate(DataEntry("a", "[1]").Replace("\"sources\":[", $"\"sources\":[{odd},{odd},", StringComparison.Ordinal));
+        Equal(true, repeated.Contains("'sources[1]' repeats an earlier source."));
+        Equal(false, repeated.Contains("The entry holds text that is not valid Unicode."));
 
         static bool Identical(string first, string second) =>
             RecordEntries.AreIdentical(RecordEntries.Parse(DataEntry("a", first)), RecordEntries.Parse(DataEntry("a", second)));

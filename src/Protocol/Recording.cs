@@ -1307,7 +1307,7 @@ public static class EntryMerge
         }
     }
 
-    // A hash of a JSON number's exact value, so that numbers DeepEquals finds equal, such as 1, 1.0,
+    // A hash of a JSON number's exact value, so that numbers equal by value, such as 1, 1.0,
     // 10e-1 and 1e400 against 10e399, hash alike and different values rarely share a bucket: the
     // sign, the significant digits and the exponent, with leading and trailing zeros removed.
     private static int NumberHash(string raw)

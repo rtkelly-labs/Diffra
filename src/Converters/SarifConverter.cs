@@ -35,6 +35,12 @@ public static class SarifConverter
     /// <summary>The path of a result that has no location.</summary>
     public const string NoPath = "<none>";
 
+    /// <summary>
+    /// The most characters the messages filled from their arguments may hold together in one
+    /// entry, so that a short message string repeating a long argument cannot fill memory.
+    /// </summary>
+    public const long MaximumFilledCharacters = 64L * 1024 * 1024;
+
     // The most problems one file adds, so that one broken file cannot hide the others' problems.
     private const int MaximumProblemsPerFile = 10;
 
@@ -66,7 +72,7 @@ public static class SarifConverter
     public static ConverterResult Read(string root, string glob, int? maximumKeys, int? maximumTextLength) =>
         Read(root, glob, maximumKeys, maximumTextLength, MaximumFileBytes, MaximumEntryBytes);
 
-    internal static ConverterResult Read(string root, string glob, int? maximumKeys, int? maximumTextLength, long fileLimit, long entryLimit)
+    internal static ConverterResult Read(string root, string glob, int? maximumKeys, int? maximumTextLength, long fileLimit, long entryLimit, long fillLimit = MaximumFilledCharacters)
     {
         ArgumentNullException.ThrowIfNull(root);
         ArgumentNullException.ThrowIfNull(glob);
@@ -79,6 +85,7 @@ public static class SarifConverter
 
         var sources = new List<ConverterSource>(match.Files.Count);
         var findings = new Findings();
+        var fill = new FillBudget(fillLimit);
         long total = 0;
         foreach (var path in match.Files)
         {
@@ -110,7 +117,7 @@ public static class SarifConverter
 
             sources.Add(new ConverterSource(path, Name, Convert.ToHexStringLower(SHA256.HashData(bytes))));
             var fileProblems = new List<string>();
-            new LogReader(path, root, maximumTextLength, findings, fileProblems).ReadFile(bytes);
+            new LogReader(path, root, maximumTextLength, findings, fill, fileProblems).ReadFile(bytes);
             if (fileProblems.Count > MaximumProblemsPerFile)
             {
                 var more = fileProblems.Count - MaximumProblemsPerFile;
@@ -273,8 +280,88 @@ public static class SarifConverter
     // A SARIF value that cannot be read as the converter needs it; the message is the problem.
     private sealed class SarifException(string message) : Exception(message);
 
+    // The characters one entry's filled messages may still hold.
+    private sealed class FillBudget(long limit)
+    {
+        public long Limit { get; } = limit;
+
+        public long Remaining { get; set; } = limit;
+    }
+
+    // A rule descriptor, with its message strings by id once one is asked for.
+    private sealed class RuleDescriptor(JsonElement element)
+    {
+        private Dictionary<string, JsonElement>? messages;
+
+        public JsonElement Element => element;
+
+        public string? MessageString(string id) =>
+            (messages ??= Table(Object(element, "messageStrings"))).TryGetValue(id, out var entry) ? OptionalString(entry, "text") : null;
+    }
+
+    // A tool component, the driver or an extension, with its rules by index and by id once one is
+    // asked for, so that each result's lookup does not walk the whole array.
+    private sealed class Component(JsonElement element)
+    {
+        private RuleDescriptor?[]? rules;
+        private Dictionary<string, RuleDescriptor>? byId;
+
+        public RuleDescriptor?[] Rules => rules ??= element.TryGetProperty("rules", out var list) && list.ValueKind == JsonValueKind.Array
+            ? [.. list.EnumerateArray().Select(item => item.ValueKind == JsonValueKind.Object ? new RuleDescriptor(item) : null)]
+            : [];
+
+        // The first rule with the id, as a walk of the array would find it. A rule whose id
+        // cannot be read cannot match one that can, so it is passed over.
+        public RuleDescriptor? ById(string id)
+        {
+            if (byId is null)
+            {
+                byId = new Dictionary<string, RuleDescriptor>(StringComparer.Ordinal);
+                foreach (var rule in Rules.OfType<RuleDescriptor>())
+                {
+                    try
+                    {
+                        if (OptionalString(rule.Element, "id") is { } key)
+                        {
+                            byId.TryAdd(key, rule);
+                        }
+                    }
+                    catch (SarifException)
+                    {
+                        // An id that is not valid UTF-8 is never the id a result names.
+                    }
+                }
+            }
+
+            return byId.GetValueOrDefault(id);
+        }
+    }
+
+    // What a run's results look things up in, each read once per run.
+    private sealed class RunTables
+    {
+        public RunTables(JsonElement run)
+        {
+            var tool = Object(run, "tool");
+            Driver = Object(tool, "driver") is { } driver ? new Component(driver) : null;
+            Extensions = tool is { } owner && owner.TryGetProperty("extensions", out var list) && list.ValueKind == JsonValueKind.Array
+                ? [.. list.EnumerateArray().Select(item => item.ValueKind == JsonValueKind.Object ? new Component(item) : null)]
+                : [];
+            Artifacts = run.TryGetProperty("artifacts", out var artifacts) && artifacts.ValueKind == JsonValueKind.Array ? [.. artifacts.EnumerateArray()] : [];
+            Bases = Table(Object(run, "originalUriBaseIds"));
+        }
+
+        public Component? Driver { get; }
+
+        public Component?[] Extensions { get; }
+
+        public JsonElement[] Artifacts { get; }
+
+        public Dictionary<string, JsonElement> Bases { get; }
+    }
+
     // Reads one SARIF file into the findings, adding a problem for anything it cannot read.
-    private sealed class LogReader(string file, string root, int? maximumTextLength, Findings findings, List<string> problems)
+    private sealed class LogReader(string file, string root, int? maximumTextLength, Findings findings, FillBudget fill, List<string> problems)
     {
         public void ReadFile(byte[] bytes)
         {
@@ -301,6 +388,12 @@ public static class SarifConverter
             catch (SarifException exception)
             {
                 problems.Add($"'{file}': {exception.Message}");
+            }
+            catch (InvalidOperationException)
+            {
+                // System.Text.Json throws this for a property name it cannot decode, such as one
+                // that is not valid UTF-8 or that escapes a lone surrogate.
+                problems.Add($"'{file}' holds a property name that is not valid UTF-8 or valid Unicode; it was not read.");
             }
         }
 
@@ -391,12 +484,13 @@ public static class SarifConverter
                 return;
             }
 
+            var tables = new RunTables(run);
             var index = 0;
             foreach (var result in results.EnumerateArray())
             {
                 try
                 {
-                    findings.Add(ReadResult(run, name, result));
+                    findings.Add(ReadResult(tables, name, result));
                 }
                 catch (SarifException exception)
                 {
@@ -407,17 +501,17 @@ public static class SarifConverter
             }
         }
 
-        private Finding ReadResult(JsonElement run, string tool, JsonElement result)
+        private Finding ReadResult(RunTables tables, string tool, JsonElement result)
         {
             if (result.ValueKind != JsonValueKind.Object)
             {
                 throw new SarifException("a result must be an object.");
             }
 
-            var descriptor = Descriptor(run, result, out var reference);
+            var descriptor = Descriptor(tables, result, out var reference);
             var rule = OptionalString(result, "ruleId")
                 ?? (reference is { } given ? OptionalString(given, "id") : null)
-                ?? (descriptor is { } found ? OptionalString(found, "id") : null);
+                ?? (descriptor is { } found ? OptionalString(found.Element, "id") : null);
             if (string.IsNullOrEmpty(rule))
             {
                 throw new SarifException("the result names no rule: it has no ruleId, rule.id or rule descriptor with an id.");
@@ -430,56 +524,39 @@ public static class SarifConverter
 
             var message = Message(result, descriptor);
             var fingerprint = Fingerprint(result, "fingerprints") ?? Fingerprint(result, "partialFingerprints") ?? MessageDigest(message);
-            var (path, line) = Location(run, result);
+            var (path, line) = Location(tables, result);
             return new Finding(tool, rule, path, fingerprint, Level(result, descriptor), line, Clean(message));
         }
 
         // The rule descriptor a result refers to: in the extension rule.toolComponent.index names,
         // or else in the driver; by rule.index or ruleIndex, or else by id.
-        private static JsonElement? Descriptor(JsonElement run, JsonElement result, out JsonElement? reference)
+        private static RuleDescriptor? Descriptor(RunTables tables, JsonElement result, out JsonElement? reference)
         {
             reference = Object(result, "rule");
-            var tool = Object(run, "tool");
-            JsonElement? component = Object(tool, "driver");
+            var component = tables.Driver;
             if (reference is { } given && Object(given, "toolComponent") is { } named && Integer(named, "index") is { } extension)
             {
-                component = tool is { } owner && owner.TryGetProperty("extensions", out var list) && list.ValueKind == JsonValueKind.Array
-                    && extension < list.GetArrayLength() && list[(int)extension] is { ValueKind: JsonValueKind.Object } item
-                    ? item
-                    : null;
+                component = extension < tables.Extensions.Length ? tables.Extensions[(int)extension] : null;
             }
 
-            if (component is not { } source || !source.TryGetProperty("rules", out var rules) || rules.ValueKind != JsonValueKind.Array)
+            if (component is null)
             {
                 return null;
             }
 
             var index = (reference is { } r ? Integer(r, "index") : null) ?? Integer(result, "ruleIndex");
-            if (index is { } at && at < rules.GetArrayLength())
+            if (index is { } at && at < component.Rules.Length)
             {
-                return rules[(int)at] is { ValueKind: JsonValueKind.Object } indexed ? indexed : null;
+                return component.Rules[(int)at];
             }
 
             var id = OptionalString(result, "ruleId") ?? (reference is { } byId ? OptionalString(byId, "id") : null);
-            if (id is null)
-            {
-                return null;
-            }
-
-            foreach (var candidate in rules.EnumerateArray())
-            {
-                if (candidate.ValueKind == JsonValueKind.Object && OptionalString(candidate, "id") == id)
-                {
-                    return candidate;
-                }
-            }
-
-            return null;
+            return id is null ? null : component.ById(id);
         }
 
         // The result's level when given. Otherwise, as SARIF specifies, the rule's default level or
         // warning when the kind is absent or fail, and none for any other kind.
-        private static string Level(JsonElement result, JsonElement? descriptor)
+        private static string Level(JsonElement result, RuleDescriptor? descriptor)
         {
             if (OptionalString(result, "level") is { } level)
             {
@@ -494,7 +571,7 @@ public static class SarifConverter
                 return "none";
             }
 
-            if (descriptor is { } rule && OptionalString(Object(rule, "defaultConfiguration"), "level") is { } fallback)
+            if (descriptor is { } rule && OptionalString(Object(rule.Element, "defaultConfiguration"), "level") is { } fallback)
             {
                 return Array.IndexOf(Levels, fallback) >= 0
                     ? fallback
@@ -506,7 +583,7 @@ public static class SarifConverter
 
         // The message text, or the rule's message string the message id names, with its {n}
         // placeholders replaced by the message's arguments.
-        private static string Message(JsonElement result, JsonElement? descriptor)
+        private string Message(JsonElement result, RuleDescriptor? descriptor)
         {
             var message = Object(result, "message") ?? throw new SarifException("the result has no message.");
             if (OptionalString(message, "text") is { } text)
@@ -516,7 +593,7 @@ public static class SarifConverter
 
             if (OptionalString(message, "id") is { } id
                 && descriptor is { } rule
-                && OptionalString(Object(Object(rule, "messageStrings"), id), "text") is { } format)
+                && rule.MessageString(id) is { } format)
             {
                 var arguments = message.TryGetProperty("arguments", out var given) && given.ValueKind == JsonValueKind.Array
                     ? given.EnumerateArray().Select(argument => argument.ValueKind == JsonValueKind.String ? Text(argument) : argument.GetRawText()).ToList()
@@ -527,8 +604,10 @@ public static class SarifConverter
             throw new SarifException("the result's message has no text, and no message string of its rule that its id names.");
         }
 
-        // SARIF's message format: {n} is the nth argument, and {{ and }} are literal braces.
-        private static string Format(string format, List<string> arguments)
+        // SARIF's message format: {n} is the nth argument, and {{ and }} are literal braces. The
+        // filled message counts against the entry's fill budget, checked before each argument is
+        // added, so that repeating a long argument cannot build a message past it.
+        private string Format(string format, List<string> arguments)
         {
             var builder = new StringBuilder(format.Length);
             for (var index = 0; index < format.Length; index++)
@@ -548,6 +627,11 @@ public static class SarifConverter
                         && int.TryParse(format.AsSpan(index + 1, close - index - 1), NumberStyles.None, CultureInfo.InvariantCulture, out var number)
                         && number < arguments.Count)
                     {
+                        if (builder.Length + (long)arguments[number].Length > fill.Remaining)
+                        {
+                            throw new SarifException(FillProblem());
+                        }
+
                         builder.Append(arguments[number]);
                         index = close;
                         continue;
@@ -557,6 +641,12 @@ public static class SarifConverter
                 builder.Append(character);
             }
 
+            if (builder.Length > fill.Remaining)
+            {
+                throw new SarifException(FillProblem());
+            }
+
+            fill.Remaining -= builder.Length;
             return builder.ToString();
         }
 
@@ -568,7 +658,7 @@ public static class SarifConverter
                 return null;
             }
 
-            var first = values.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal).FirstOrDefault();
+            var first = values.EnumerateObject().Select(property => Name(property, field)).Order(StringComparer.Ordinal).FirstOrDefault();
             if (first is null)
             {
                 return null;
@@ -581,6 +671,22 @@ public static class SarifConverter
                 : throw new SarifException($"the {field} value '{Cut(first, 100)}' must be non-empty, valid Unicode with no control characters.");
         }
 
+        private string FillProblem() =>
+            $"the messages filled from their arguments would hold more than {fill.Limit.ToString("N0", CultureInfo.InvariantCulture)} characters, the most one entry may.";
+
+        // A property's name. A name that is not valid UTF-8 cannot be read, and is a problem.
+        private static string Name(JsonProperty property, string field)
+        {
+            try
+            {
+                return property.Name;
+            }
+            catch (InvalidOperationException)
+            {
+                throw new SarifException($"a {field} name is not valid UTF-8.");
+            }
+        }
+
         // The SHA-256 of the message text with its digits removed, so that a number in the
         // message, such as a count or a line, does not change the finding.
         private static string MessageDigest(string message)
@@ -590,7 +696,7 @@ public static class SarifConverter
         }
 
         // The repository-relative path and start line of the result's first location.
-        private (string Path, long? Line) Location(JsonElement run, JsonElement result)
+        private (string Path, long? Line) Location(RunTables tables, JsonElement result)
         {
             if (!result.TryGetProperty("locations", out var locations) || locations.ValueKind != JsonValueKind.Array || locations.GetArrayLength() == 0)
             {
@@ -607,10 +713,9 @@ public static class SarifConverter
             }
 
             var artifact = Object(physical, "artifactLocation");
-            if (artifact is { } location && OptionalString(location, "uri") is null && Integer(location, "index") is { } index
-                && run.TryGetProperty("artifacts", out var artifacts) && artifacts.ValueKind == JsonValueKind.Array && index < artifacts.GetArrayLength())
+            if (artifact is { } location && OptionalString(location, "uri") is null && Integer(location, "index") is { } index && index < tables.Artifacts.Length)
             {
-                artifact = Object(artifacts[(int)index], "location");
+                artifact = Object(tables.Artifacts[(int)index], "location");
             }
 
             if (artifact is not { } found || OptionalString(found, "uri") is not { } uri)
@@ -620,7 +725,7 @@ public static class SarifConverter
 
             try
             {
-                return (SarifPath.Resolve(uri, OptionalString(found, "uriBaseId"), Object(run, "originalUriBaseIds"), root), line);
+                return (SarifPath.Resolve(uri, OptionalString(found, "uriBaseId"), tables.Bases, root), line);
             }
             catch (Exception exception) when (exception is FormatException or InvalidOperationException)
             {
@@ -650,6 +755,31 @@ public static class SarifConverter
 
     // Text that may be part of a key: valid Unicode with no control character.
     private static bool IsKeyText(string text) => !SourceFiles.HasLoneSurrogate(text) && !text.EnumerateRunes().Any(Rune.IsControl);
+
+    // An object's members by name, for lookups repeated once per result. A name that is not valid
+    // UTF-8 cannot be named by any string read, so it is passed over.
+    private static Dictionary<string, JsonElement> Table(JsonElement? parent)
+    {
+        var table = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+        if (parent is not { ValueKind: JsonValueKind.Object } element)
+        {
+            return table;
+        }
+
+        foreach (var property in element.EnumerateObject())
+        {
+            try
+            {
+                table.TryAdd(property.Name, property.Value);
+            }
+            catch (InvalidOperationException)
+            {
+                // Passed over, as above.
+            }
+        }
+
+        return table;
+    }
 
     private static JsonElement? Object(JsonElement? parent, string name) =>
         parent is { ValueKind: JsonValueKind.Object } element && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Object

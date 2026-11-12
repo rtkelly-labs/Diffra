@@ -28,6 +28,8 @@ public static class SarifConverterTests
         ReadsMessageStrings();
         CleansAndCutsMessages();
         RejectsMalformedInput();
+        RejectsUndecodablePropertyNames();
+        RejectsMessagesFilledPastTheLimit();
         RejectsNestingPastTheLimit();
         RejectsFilesPastTheByteLimits();
         RejectsMoreFindingsThanTheBudget();
@@ -134,6 +136,15 @@ public static class SarifConverterTests
             .Select(finding => $"{finding.GetProperty("message").GetString()}={finding.GetProperty("level").GetString()} {finding.GetProperty("rule").GetString()}")
             .Order(StringComparer.Ordinal)));
 
+        // A ruleIndex past the end of the rules falls back to the ruleId; the first rule with an id
+        // is the one found. With no ruleId, the result names no rule.
+        const string rules = """[{"id":"dup","defaultConfiguration":{"level":"note"}},{"id":"dup","defaultConfiguration":{"level":"error"}}]""";
+        folder.Write("index.sarif", Log(RunWithRules("Tool", rules, ["""{"ruleId":"dup","ruleIndex":7,"message":{"text":"m"}}"""])));
+        Equal("note", Findings(SarifConverter.Read(folder.Root, "index.sarif", maximumKeys: null, maximumTextLength: null).Data!).Single().GetProperty("level").GetString());
+        folder.Write("index.sarif", Log(RunWithRules("Tool", rules, ["""{"ruleIndex":7,"message":{"text":"m"}}"""])));
+        Equal("'index.sarif' run 0 result 0: the result names no rule: it has no ruleId, rule.id or rule descriptor with an id.",
+            SarifConverter.Read(folder.Root, "index.sarif", maximumKeys: null, maximumTextLength: null).Problems.Single());
+
         folder.Write("norule.sarif", Log(Run("Tool", """{"message":{"text":"m"}}""")));
         Equal("'norule.sarif' run 0 result 0: the result names no rule: it has no ruleId, rule.id or rule descriptor with an id.",
             SarifConverter.Read(folder.Root, "norule.sarif", maximumKeys: null, maximumTextLength: null).Problems.Single());
@@ -234,6 +245,17 @@ public static class SarifConverterTests
             ("""{"uri":"https://example.com/g.py"}""", $"<outside>/{Short("https://example.com/g.py")}/g.py"),
             ("""{"uri":"file://server/share/h.py"}""", $"<outside>/{Short("file://server/share/h.py")}/h.py"),
             ("""{"index":0}""", "from/artifacts.py"),
+            ("""{"uri":"src/%2e%2e/x.py"}""", "x.py"),
+            ("""{"uri":"%2e%2e/x.py"}""", $"<outside>/{Short("%2e%2e/x.py")}/x.py"),
+            ($$$"""{"uri":"{{{rootUri}}}/../x.py"}""", $"<outside>/{Short(rootUri + "/../x.py")}/x.py"),
+
+            // The digest is of the URI with its bases applied, query and fragment included.
+            ("""{"uri":"https://example.com/q/g.py?v=1#top"}""", $"<outside>/{Short("https://example.com/q/g.py?v=1#top")}/g.py"),
+            ("""{"uri":"z.py","uriBaseId":"ELSEWHERE"}""", $"<outside>/{Short("file:///elsewhere/z.py")}/z.py"),
+            ("""{"uri":"https://example.com/"}""", $"<outside>/{Short("https://example.com/")}"),
+
+            // A cycle of bases ends after ten of them.
+            ("""{"uri":"x.py","uriBaseId":"A"}""", "b/a/b/a/b/a/b/a/b/a/x.py"),
         };
         var results = cases.Select((item, index) =>
             $$$"""{"ruleId":"R","message":{"text":"{{{index}}}"},"fingerprints":{"f":"{{{index}}}"},"locations":[{"physicalLocation":{"artifactLocation":{{{item.Location}}}}}]}""").ToList();
@@ -241,7 +263,8 @@ public static class SarifConverterTests
         results.Add("""{"ruleId":"R","message":{"text":"logical"},"fingerprints":{"f":"logical"},"locations":[{"logicalLocations":[{"name":"Main"}]}]}""");
         var run = $$$"""
             {"tool":{"driver":{"name":"T"}},
-             "originalUriBaseIds":{"ROOT":{"uri":"{{{rootUri}}}/"},"SRC":{"uri":"src/","uriBaseId":"ROOT"},"NESTED":{"uri":"inner","uriBaseId":"SRC"}},
+             "originalUriBaseIds":{"ROOT":{"uri":"{{{rootUri}}}/"},"SRC":{"uri":"src/","uriBaseId":"ROOT"},"NESTED":{"uri":"inner","uriBaseId":"SRC"},
+               "ELSEWHERE":{"uri":"file:///elsewhere/"},"A":{"uri":"a/","uriBaseId":"B"},"B":{"uri":"b/","uriBaseId":"A"}},
              "artifacts":[{"location":{"uri":"from/artifacts.py"}}],
              "results":[{{{string.Join(",", results)}}}]}
             """;
@@ -259,6 +282,11 @@ public static class SarifConverterTests
 
         folder.Write("slash.sarif", Log(Run("T", """{"ruleId":"R","message":{"text":"m"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"src\\a.py"}}}]}""")));
         Equal("'slash.sarif' run 0 result 0: the URI 'src\\a.py' has a backslash; a SARIF URI separates folders with '/'.",
+            SarifConverter.Read(folder.Root, "slash.sarif", maximumKeys: null, maximumTextLength: null).Problems.Single());
+
+        // An escaped '/' would change the folders, so it rejects the entry.
+        folder.Write("slash.sarif", Log(Run("T", """{"ruleId":"R","message":{"text":"m"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"src/a%2Fb.py"}}}]}""")));
+        Equal("'slash.sarif' run 0 result 0: the URI segment 'a%2Fb.py' decodes to a folder separator.",
             SarifConverter.Read(folder.Root, "slash.sarif", maximumKeys: null, maximumTextLength: null).Problems.Single());
     }
 
@@ -343,6 +371,49 @@ public static class SarifConverterTests
         Equal(null, mixed.Data);
         Equal("bom.sarif,zz.sarif", string.Join(",", mixed.Sources.Select(source => source.Path)));
         Equal(true, mixed.Problems.Single().StartsWith("'zz.sarif' is not valid JSON:", StringComparison.Ordinal));
+    }
+
+    // A property name System.Text.Json cannot decode rejects the entry with a problem rather than
+    // ending the command: an escaped lone surrogate anywhere, or bytes that are not UTF-8 in a
+    // fingerprint's name.
+    private static void RejectsUndecodablePropertyNames()
+    {
+        using var folder = new Folder();
+        folder.Write("bad.sarif", """{"version":"2.1.0","runs":[],"properties":{"a\ud800":1}}""");
+        var surrogate = SarifConverter.Read(folder.Root, "bad.sarif", maximumKeys: null, maximumTextLength: null);
+        Equal(null, surrogate.Data);
+        Equal(1, surrogate.Sources.Count);
+        Equal("'bad.sarif' holds a property name that is not valid UTF-8 or valid Unicode; it was not read.", surrogate.Problems.Single());
+
+        var bytes = Encoding.UTF8.GetBytes(Log(Run("T", """{"ruleId":"R","message":{"text":"m"},"fingerprints":{"a#b":"v"}}""")));
+        bytes[Array.IndexOf(bytes, (byte)'#')] = 0xFF;
+        File.WriteAllBytes(Path.Combine(folder.Root, "bad.sarif"), bytes);
+        var invalid = SarifConverter.Read(folder.Root, "bad.sarif", maximumKeys: null, maximumTextLength: null);
+        Equal(null, invalid.Data);
+        Equal("'bad.sarif' run 0 result 0: a fingerprints name is not valid UTF-8.", invalid.Problems.Single());
+    }
+
+    // A short message string that repeats a long argument cannot build messages past the limit on
+    // filled characters in one entry; the limit counts every filled message together.
+    private static void RejectsMessagesFilledPastTheLimit()
+    {
+        Equal(64L * 1024 * 1024, SarifConverter.MaximumFilledCharacters);
+        var rules = $$$$"""[{"id":"R","messageStrings":{"m":{"text":"{{{{string.Concat(Enumerable.Repeat("{0}", 4000))}}}}"}}}]""";
+        var argument = new string('x', 1000);
+        string Filled(string fingerprint) => $$$$"""{"ruleId":"R","message":{"id":"m","arguments":["{{{{argument}}}}"]},"fingerprints":{"f":"{{{{fingerprint}}}}"}}""";
+        using var folder = new Folder();
+        folder.Write("m.sarif", Log(RunWithRules("T", rules, [Filled("one")])));
+        var within = SarifConverter.Read(folder.Root, "m.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, fillLimit: 4_000_000);
+        Equal(0, within.Problems.Count);
+        Equal(4_000_000, Findings(within.Data!).Single().GetProperty("message").GetString()!.Length);
+
+        var over = SarifConverter.Read(folder.Root, "m.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, fillLimit: 3_999_999);
+        Equal(null, over.Data);
+        Equal("'m.sarif' run 0 result 0: the messages filled from their arguments would hold more than 3,999,999 characters, the most one entry may.", over.Problems.Single());
+
+        folder.Write("m.sarif", Log(RunWithRules("T", rules, [Filled("one"), Filled("two")])));
+        var together = SarifConverter.Read(folder.Root, "m.sarif", null, null, SarifConverter.MaximumFileBytes, SarifConverter.MaximumEntryBytes, fillLimit: 7_999_999);
+        Equal("'m.sarif' run 0 result 1: the messages filled from their arguments would hold more than 7,999,999 characters, the most one entry may.", together.Problems.Single());
     }
 
     private static void RejectsNestingPastTheLimit()

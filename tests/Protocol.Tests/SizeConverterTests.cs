@@ -332,6 +332,22 @@ public static class SizeConverterTests
         var over = SizeConverter.Read(folder.Root, "*.bin", maximumKeys: 1);
         Equal(null, over.Data);
         Equal(true, over.Problems.Single().StartsWith("2 files match '*.bin', more than the root file's maxKeys budget of 1.", StringComparison.Ordinal));
+
+        // The budget is stated with the other problems: after a link, before a name that cannot
+        // be recorded.
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        folder.Write("c\u0001.bin", 3);
+        File.CreateSymbolicLink(Path.Combine(folder.Root, "d.bin"), Path.Combine(folder.Root, "a.bin"));
+        var all = SizeConverter.Read(folder.Root, "*.bin", maximumKeys: 1);
+        Equal(null, all.Data);
+        Equal(3, all.Problems.Count);
+        Equal(true, all.Problems[0].StartsWith("'d.bin' is a link.", StringComparison.Ordinal));
+        Equal(true, all.Problems[1].StartsWith("3 files match '*.bin', more than the root file's maxKeys budget of 1.", StringComparison.Ordinal));
+        Equal(true, all.Problems[2].StartsWith("The file name 'c\u0001.bin' cannot be recorded", StringComparison.Ordinal));
     }
 
     private static string Paths(Folder folder, string glob)

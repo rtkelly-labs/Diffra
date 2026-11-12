@@ -22,10 +22,10 @@ internal static partial class SarifPath
 
     /// <summary>
     /// The recorded path of <paramref name="uri"/>, resolved against <paramref name="uriBaseId"/>
-    /// in <paramref name="bases"/>, the run's <c>originalUriBaseIds</c>. A relative URI whose base
-    /// the run does not define is relative to the repository root.
+    /// in <paramref name="bases"/>, the run's <c>originalUriBaseIds</c> by name. A relative URI
+    /// whose base the run does not define is relative to the repository root.
     /// </summary>
-    public static string Resolve(string uri, string? uriBaseId, JsonElement? bases, string root)
+    public static string Resolve(string uri, string? uriBaseId, IReadOnlyDictionary<string, JsonElement> bases, string root)
     {
         if (uri.Contains('\\', StringComparison.Ordinal))
         {
@@ -36,8 +36,7 @@ internal static partial class SarifPath
         var baseId = uriBaseId;
         for (var step = 0; step < MaximumBases && baseId is not null && !HasScheme(written) && !written.StartsWith('/') && !IsDrive(written); step++)
         {
-            if (bases is not { ValueKind: JsonValueKind.Object } table
-                || !table.TryGetProperty(baseId, out var entry)
+            if (!bases.TryGetValue(baseId, out var entry)
                 || entry.ValueKind != JsonValueKind.Object
                 || !entry.TryGetProperty("uri", out var baseUri)
                 || baseUri.ValueKind != JsonValueKind.String)
@@ -151,7 +150,8 @@ internal static partial class SarifPath
             : throw new FormatException($"the path '{Shown(path)}' cannot be recorded: a path must be at most 1000 characters of valid Unicode, with no control character and not starting with '~'.");
     }
 
-    // <outside>/<the first 12 hexadecimal characters of the SHA-256 of the path as written>/<file name>.
+    // <outside>/<the first 12 hexadecimal characters of the SHA-256 of the URI with its bases
+    // applied, query and fragment included>/<file name>.
     private static string OutsideKey(string written, string? name)
     {
         var digest = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(SourceFiles.Display(written))))[..12];

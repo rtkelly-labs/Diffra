@@ -43,13 +43,10 @@ public static class SizeConverter
         ArgumentNullException.ThrowIfNull(root);
         ArgumentNullException.ThrowIfNull(glob);
         var problems = new List<string>();
-        var match = SourceFiles.Find(root, glob, problems);
-        if (match is not null && problems.Count == 0 && maximumKeys is { } budget && match.Files.Count > budget)
-        {
-            problems.Add($"{match.Files.Count.ToString(CultureInfo.InvariantCulture)} files match '{glob}', more than the root file's maxKeys budget of {budget.ToString(CultureInfo.InvariantCulture)}. "
-                + "Keeping only the largest needs the entry to state what was dropped, which the entry schema cannot do yet; narrow the glob or raise maxKeys.");
-        }
-
+        var match = SourceFiles.Find(root, glob, problems, count => maximumKeys is { } budget && count > budget
+            ? $"{count.ToString(CultureInfo.InvariantCulture)} files match '{glob}', more than the root file's maxKeys budget of {budget.ToString(CultureInfo.InvariantCulture)}. "
+                + "Keeping only the largest needs the entry to state what was dropped, which the entry schema cannot do yet; narrow the glob or raise maxKeys."
+            : null);
         return problems.Count > 0 || match is null ? Rejected([], [.. problems]) : Convert(root, match.Files);
     }
 

@@ -19,10 +19,11 @@ internal static partial class SourceFiles
     /// The files <paramref name="glob"/> matches under <paramref name="root"/>, in ordinal order.
     /// Every reason they cannot all be read is added to <paramref name="problems"/>: a glob that
     /// leaves the repository, a matched link, a folder that cannot be listed, more files than the
-    /// safety limit, no file at all, or a file name an entry cannot hold. Returns
-    /// <see langword="null"/> when the glob itself is refused.
+    /// safety limit, no file at all, a count <paramref name="tooMany"/> refuses, or a file name
+    /// an entry cannot hold, in that order. Returns <see langword="null"/> when the glob itself is
+    /// refused.
     /// </summary>
-    public static FileGlobMatch? Find(string root, string glob, List<string> problems)
+    public static FileGlobMatch? Find(string root, string glob, List<string> problems, Func<int, string?>? tooMany = null)
     {
         var segments = FileGlob.Parse(glob, out var problem);
         if (segments is null)
@@ -52,6 +53,10 @@ internal static partial class SourceFiles
                 ? string.Empty
                 : $" {match.LinkedFolders.ToString(CultureInfo.InvariantCulture)} linked {(match.LinkedFolders == 1 ? "folder was" : "folders were")} not searched.";
             problems.Add($"No file matches '{glob}'.{folders}");
+        }
+        else if (tooMany?.Invoke(match.Files.Count) is { } over)
+        {
+            problems.Add(over);
         }
 
         foreach (var path in match.Files.Where(path => !IsSafePath(path)))

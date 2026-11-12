@@ -92,8 +92,9 @@ object holding `value`.
   for a source path in an entry: relative to the repository root, forward slashes, no `.` or `..`
   segment. A path a tool wrote as absolute is made relative by removing the repository root. A
   path outside the repository is kept under the key `<outside>/<digest>/<file name>`, where the
-  digest is the first 12 hexadecimal characters of the SHA-256 of the full path as written, so two
-  outside files with the same name do not collide.
+  digest is the first 12 hexadecimal characters of the SHA-256 of the full path as written (for
+  SARIF, the URI with its bases applied, query and fragment included), so two outside files with
+  the same name do not collide.
 
 ### Converter names and versions
 
@@ -129,7 +130,8 @@ Every file a converter reads is untrusted, even when it came from the adopter's 
   is never loaded or expanded, there are no external entities and no resolver. Nesting is at most
   256 deep, and one attribute or text node holds at most 10 million characters.
 - JSON is read with a nesting limit of 256 and no comments or trailing commas, unless the format's
-  own tools write them.
+  own tools write them. SARIF messages filled from their arguments hold at most 64 Mi characters
+  together in one entry.
 - Text formats limit one line to 1 MiB.
 - Archives, when a converter reads one, are expanded at most 100 times their stored size and to
   at most 1 GiB, and a member whose path escapes the archive is rejected.

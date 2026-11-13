@@ -48,41 +48,41 @@ public static class CanonicalHashHelper
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
-            {
-                WriteAscii(output, "{");
-                var properties = element.EnumerateObject()
-                    .Where(p => excludedRootProperty is null || !string.Equals(p.Name, excludedRootProperty, StringComparison.Ordinal))
-                    .OrderBy(p => p.Name, StringComparer.Ordinal)
-                    .ToArray();
-                for (var i = 0; i < properties.Length; i++)
                 {
-                    if (i != 0)
+                    WriteAscii(output, "{");
+                    var properties = element.EnumerateObject()
+                        .Where(p => excludedRootProperty is null || !string.Equals(p.Name, excludedRootProperty, StringComparison.Ordinal))
+                        .OrderBy(p => p.Name, StringComparer.Ordinal)
+                        .ToArray();
+                    for (var i = 0; i < properties.Length; i++)
                     {
-                        WriteAscii(output, ",");
+                        if (i != 0)
+                        {
+                            WriteAscii(output, ",");
+                        }
+                        WriteString(output, properties[i].Name);
+                        WriteAscii(output, ":");
+                        WriteValue(properties[i].Value, output, excludedRootProperty: null);
                     }
-                    WriteString(output, properties[i].Name);
-                    WriteAscii(output, ":");
-                    WriteValue(properties[i].Value, output, excludedRootProperty: null);
+                    WriteAscii(output, "}");
+                    break;
                 }
-                WriteAscii(output, "}");
-                break;
-            }
             case JsonValueKind.Array:
-            {
-                WriteAscii(output, "[");
-                var first = true;
-                foreach (var item in element.EnumerateArray())
                 {
-                    if (!first)
+                    WriteAscii(output, "[");
+                    var first = true;
+                    foreach (var item in element.EnumerateArray())
                     {
-                        WriteAscii(output, ",");
+                        if (!first)
+                        {
+                            WriteAscii(output, ",");
+                        }
+                        WriteValue(item, output, excludedRootProperty: null);
+                        first = false;
                     }
-                    WriteValue(item, output, excludedRootProperty: null);
-                    first = false;
+                    WriteAscii(output, "]");
+                    break;
                 }
-                WriteAscii(output, "]");
-                break;
-            }
             case JsonValueKind.String:
                 WriteString(output, element.GetString()!);
                 break;

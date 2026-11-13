@@ -28,49 +28,49 @@ public static class JsonDiff
         switch (expected.ValueKind)
         {
             case JsonValueKind.Object:
-            {
-                var expectedProps = expected.EnumerateObject().ToDictionary(p => p.Name, p => p.Value, StringComparer.Ordinal);
-                var actualProps = actual.EnumerateObject().ToDictionary(p => p.Name, p => p.Value, StringComparer.Ordinal);
-
-                foreach (var (key, expVal) in expectedProps.OrderBy(k => k.Key, StringComparer.Ordinal))
                 {
-                    var childPointer = $"{jsonPointer}/{Escape(key)}";
-                    if (!actualProps.TryGetValue(key, out var actVal))
-                    {
-                        differences.Add(childPointer);
-                    }
-                    else
-                    {
-                        CollectDifferences(expVal, actVal, childPointer, differences);
-                    }
-                }
+                    var expectedProps = expected.EnumerateObject().ToDictionary(p => p.Name, p => p.Value, StringComparer.Ordinal);
+                    var actualProps = actual.EnumerateObject().ToDictionary(p => p.Name, p => p.Value, StringComparer.Ordinal);
 
-                foreach (var key in actualProps.Keys.OrderBy(k => k, StringComparer.Ordinal))
-                {
-                    if (!expectedProps.ContainsKey(key))
+                    foreach (var (key, expVal) in expectedProps.OrderBy(k => k.Key, StringComparer.Ordinal))
                     {
-                        differences.Add($"{jsonPointer}/{Escape(key)}");
+                        var childPointer = $"{jsonPointer}/{Escape(key)}";
+                        if (!actualProps.TryGetValue(key, out var actVal))
+                        {
+                            differences.Add(childPointer);
+                        }
+                        else
+                        {
+                            CollectDifferences(expVal, actVal, childPointer, differences);
+                        }
                     }
+
+                    foreach (var key in actualProps.Keys.OrderBy(k => k, StringComparer.Ordinal))
+                    {
+                        if (!expectedProps.ContainsKey(key))
+                        {
+                            differences.Add($"{jsonPointer}/{Escape(key)}");
+                        }
+                    }
+                    break;
                 }
-                break;
-            }
 
             case JsonValueKind.Array:
-            {
-                var len1 = expected.GetArrayLength();
-                var len2 = actual.GetArrayLength();
-                var minLen = Math.Min(len1, len2);
-                for (var i = 0; i < minLen; i++)
                 {
-                    CollectDifferences(expected[i], actual[i], $"{jsonPointer}/{i}", differences);
-                }
+                    var len1 = expected.GetArrayLength();
+                    var len2 = actual.GetArrayLength();
+                    var minLen = Math.Min(len1, len2);
+                    for (var i = 0; i < minLen; i++)
+                    {
+                        CollectDifferences(expected[i], actual[i], $"{jsonPointer}/{i}", differences);
+                    }
 
-                if (len1 != len2)
-                {
-                    differences.Add($"{jsonPointer}/[length:{len1}!={len2}]");
+                    if (len1 != len2)
+                    {
+                        differences.Add($"{jsonPointer}/[length:{len1}!={len2}]");
+                    }
+                    break;
                 }
-                break;
-            }
 
             case JsonValueKind.String:
                 if (!string.Equals(expected.GetString(), actual.GetString(), StringComparison.Ordinal))

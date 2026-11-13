@@ -627,205 +627,205 @@ public static class CorpusRunner
                         switch (schema)
                         {
                             case "https://diffra.dev/schemas/evidence-v1.schema.json":
-                            {
-                                if (!TryVerifyEvidenceDocument(bytes, out var evErr))
                                 {
-                                    Console.WriteLine($"FAIL backward-reads ({rel}): {evErr}");
-                                    summary.Failures.Add(("backward-reads", rel, "/id", evErr!));
-                                    break;
-                                }
-
-                                var evId = doc.RootElement.GetProperty("id").GetString()!;
-                                var commit = doc.RootElement.GetProperty("subject").GetProperty("commit").GetString()!;
-                                var tempRefPath = Path.Combine(tempDir, "ref-" + Guid.NewGuid().ToString("N") + ".json");
-                                var unsignedRefObj = new
-                                {
-                                    schema = "https://diffra.dev/schemas/baseline-reference-v1.schema.json",
-                                    role = "merge-base",
-                                    status = "trusted",
-                                    evidenceId = evId,
-                                    subjectCommit = commit,
-                                    manifestDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-                                    resolver = new
+                                    if (!TryVerifyEvidenceDocument(bytes, out var evErr))
                                     {
-                                        id = "org.diffra.regression-resolver",
-                                        version = "1.0",
-                                        resolvedCommit = commit,
-                                        sourceRef = "local-fixture"
-                                    },
-                                    sourceStore = "local-fixture",
-                                    trust = new
-                                    {
-                                        issuer = "fixture-only",
-                                        decisionId = "demonstration"
+                                        Console.WriteLine($"FAIL backward-reads ({rel}): {evErr}");
+                                        summary.Failures.Add(("backward-reads", rel, "/id", evErr!));
+                                        break;
                                     }
-                                };
-                                var unsignedRefBytes = JsonSerializer.SerializeToUtf8Bytes(unsignedRefObj);
-                                var realRefId = CanonicalHashHelper.ComputeDocumentId("baseline-reference", unsignedRefBytes);
-                                var finalRefObj = new
-                                {
-                                    schema = "https://diffra.dev/schemas/baseline-reference-v1.schema.json",
-                                    id = realRefId,
-                                    role = "merge-base",
-                                    status = "trusted",
-                                    evidenceId = evId,
-                                    subjectCommit = commit,
-                                    manifestDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-                                    resolver = new
-                                    {
-                                        id = "org.diffra.regression-resolver",
-                                        version = "1.0",
-                                        resolvedCommit = commit,
-                                        sourceRef = "local-fixture"
-                                    },
-                                    sourceStore = "local-fixture",
-                                    trust = new
-                                    {
-                                        issuer = "fixture-only",
-                                        decisionId = "demonstration"
-                                    }
-                                };
-                                File.WriteAllText(tempRefPath, JsonSerializer.Serialize(finalRefObj) + "\n");
 
-                                var outDelta = Path.Combine(tempDir, "diff-" + Guid.NewGuid().ToString("N") + ".json");
-                                var (code, err) = ToolExecutor.Run(tool, [
-                                    "diff",
+                                    var evId = doc.RootElement.GetProperty("id").GetString()!;
+                                    var commit = doc.RootElement.GetProperty("subject").GetProperty("commit").GetString()!;
+                                    var tempRefPath = Path.Combine(tempDir, "ref-" + Guid.NewGuid().ToString("N") + ".json");
+                                    var unsignedRefObj = new
+                                    {
+                                        schema = "https://diffra.dev/schemas/baseline-reference-v1.schema.json",
+                                        role = "merge-base",
+                                        status = "trusted",
+                                        evidenceId = evId,
+                                        subjectCommit = commit,
+                                        manifestDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                                        resolver = new
+                                        {
+                                            id = "org.diffra.regression-resolver",
+                                            version = "1.0",
+                                            resolvedCommit = commit,
+                                            sourceRef = "local-fixture"
+                                        },
+                                        sourceStore = "local-fixture",
+                                        trust = new
+                                        {
+                                            issuer = "fixture-only",
+                                            decisionId = "demonstration"
+                                        }
+                                    };
+                                    var unsignedRefBytes = JsonSerializer.SerializeToUtf8Bytes(unsignedRefObj);
+                                    var realRefId = CanonicalHashHelper.ComputeDocumentId("baseline-reference", unsignedRefBytes);
+                                    var finalRefObj = new
+                                    {
+                                        schema = "https://diffra.dev/schemas/baseline-reference-v1.schema.json",
+                                        id = realRefId,
+                                        role = "merge-base",
+                                        status = "trusted",
+                                        evidenceId = evId,
+                                        subjectCommit = commit,
+                                        manifestDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                                        resolver = new
+                                        {
+                                            id = "org.diffra.regression-resolver",
+                                            version = "1.0",
+                                            resolvedCommit = commit,
+                                            sourceRef = "local-fixture"
+                                        },
+                                        sourceStore = "local-fixture",
+                                        trust = new
+                                        {
+                                            issuer = "fixture-only",
+                                            decisionId = "demonstration"
+                                        }
+                                    };
+                                    File.WriteAllText(tempRefPath, JsonSerializer.Serialize(finalRefObj) + "\n");
+
+                                    var outDelta = Path.Combine(tempDir, "diff-" + Guid.NewGuid().ToString("N") + ".json");
+                                    var (code, err) = ToolExecutor.Run(tool, [
+                                        "diff",
                                     "--baseline-ref", tempRefPath,
                                     "--baseline-evidence", file,
                                     "--evidence", file,
                                     "-o", outDelta
-                                ], allowPath: allowPath);
-
-                                if (code != 0)
-                                {
-                                    var msg = $"Candidate failed to read Evidence document {rel}: {err.Trim()}";
-                                    Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
-                                    summary.Failures.Add(("backward-reads", rel, null, msg));
-                                }
-                                break;
-                            }
-
-                            case "https://diffra.dev/schemas/delta-v1.schema.json":
-                            {
-                                if (!TryVerifyDeltaDocument(bytes, requireInvariantEnvironment: false, out var deltaErr))
-                                {
-                                    Console.WriteLine($"FAIL backward-reads ({rel}): {deltaErr}");
-                                    summary.Failures.Add(("backward-reads", rel, "/id", deltaErr!));
-                                    break;
-                                }
-
-                                var outReport = Path.Combine(tempDir, "report-" + Guid.NewGuid().ToString("N") + ".json");
-                                var (code, err) = ToolExecutor.Run(tool, [
-                                    "report", file,
-                                    "--format", "json",
-                                    "-o", outReport
-                                ], allowPath: allowPath);
-
-                                if (code != 0)
-                                {
-                                    var msg = $"Candidate failed to read Delta document {rel}: {err.Trim()}";
-                                    Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
-                                    summary.Failures.Add(("backward-reads", rel, null, msg));
-                                }
-                                break;
-                            }
-
-                            case "https://diffra.dev/schemas/assessment-v1.schema.json":
-                            {
-                                string? matchingDelta = null;
-                                if (doc.RootElement.TryGetProperty("deltaId", out var deltaIdProp) && deltaIdProp.ValueKind == JsonValueKind.String)
-                                {
-                                    var deltaId = deltaIdProp.GetString();
-                                    foreach (var candFile in files)
-                                    {
-                                        if (candFile.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
-                                        {
-                                            try
-                                            {
-                                                using var candDoc = JsonDocument.Parse(File.ReadAllBytes(candFile));
-                                                if (candDoc.RootElement.TryGetProperty("schema", out var s) &&
-                                                    s.GetString() == "https://diffra.dev/schemas/delta-v1.schema.json" &&
-                                                    candDoc.RootElement.TryGetProperty("id", out var idProp) &&
-                                                    idProp.GetString() == deltaId)
-                                                {
-                                                    matchingDelta = candFile;
-                                                    break;
-                                                }
-                                            }
-                                            catch (JsonException)
-                                            {
-                                                // Ignore invalid candidate JSON
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if (matchingDelta != null)
-                                {
-                                    var outReport = Path.Combine(tempDir, "report-" + Guid.NewGuid().ToString("N") + ".json");
-                                    var (code, err) = ToolExecutor.Run(tool, [
-                                        "report", matchingDelta,
-                                        "--assessment", file,
-                                        "--format", "json",
-                                        "-o", outReport
                                     ], allowPath: allowPath);
 
                                     if (code != 0)
                                     {
-                                        var msg = $"Candidate failed to read Assessment document {rel}: {err.Trim()}";
+                                        var msg = $"Candidate failed to read Evidence document {rel}: {err.Trim()}";
                                         Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
                                         summary.Failures.Add(("backward-reads", rel, null, msg));
                                     }
+                                    break;
                                 }
-                                break;
-                            }
+
+                            case "https://diffra.dev/schemas/delta-v1.schema.json":
+                                {
+                                    if (!TryVerifyDeltaDocument(bytes, requireInvariantEnvironment: false, out var deltaErr))
+                                    {
+                                        Console.WriteLine($"FAIL backward-reads ({rel}): {deltaErr}");
+                                        summary.Failures.Add(("backward-reads", rel, "/id", deltaErr!));
+                                        break;
+                                    }
+
+                                    var outReport = Path.Combine(tempDir, "report-" + Guid.NewGuid().ToString("N") + ".json");
+                                    var (code, err) = ToolExecutor.Run(tool, [
+                                        "report", file,
+                                    "--format", "json",
+                                    "-o", outReport
+                                    ], allowPath: allowPath);
+
+                                    if (code != 0)
+                                    {
+                                        var msg = $"Candidate failed to read Delta document {rel}: {err.Trim()}";
+                                        Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
+                                        summary.Failures.Add(("backward-reads", rel, null, msg));
+                                    }
+                                    break;
+                                }
+
+                            case "https://diffra.dev/schemas/assessment-v1.schema.json":
+                                {
+                                    string? matchingDelta = null;
+                                    if (doc.RootElement.TryGetProperty("deltaId", out var deltaIdProp) && deltaIdProp.ValueKind == JsonValueKind.String)
+                                    {
+                                        var deltaId = deltaIdProp.GetString();
+                                        foreach (var candFile in files)
+                                        {
+                                            if (candFile.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                try
+                                                {
+                                                    using var candDoc = JsonDocument.Parse(File.ReadAllBytes(candFile));
+                                                    if (candDoc.RootElement.TryGetProperty("schema", out var s) &&
+                                                        s.GetString() == "https://diffra.dev/schemas/delta-v1.schema.json" &&
+                                                        candDoc.RootElement.TryGetProperty("id", out var idProp) &&
+                                                        idProp.GetString() == deltaId)
+                                                    {
+                                                        matchingDelta = candFile;
+                                                        break;
+                                                    }
+                                                }
+                                                catch (JsonException)
+                                                {
+                                                    // Ignore invalid candidate JSON
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if (matchingDelta != null)
+                                    {
+                                        var outReport = Path.Combine(tempDir, "report-" + Guid.NewGuid().ToString("N") + ".json");
+                                        var (code, err) = ToolExecutor.Run(tool, [
+                                            "report", matchingDelta,
+                                        "--assessment", file,
+                                        "--format", "json",
+                                        "-o", outReport
+                                        ], allowPath: allowPath);
+
+                                        if (code != 0)
+                                        {
+                                            var msg = $"Candidate failed to read Assessment document {rel}: {err.Trim()}";
+                                            Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
+                                            summary.Failures.Add(("backward-reads", rel, null, msg));
+                                        }
+                                    }
+                                    break;
+                                }
 
                             case "https://diffra.dev/schemas/baseline-reference-v1.schema.json":
-                            {
-                                if (File.Exists(baselineEv))
                                 {
-                                    var outDelta = Path.Combine(tempDir, "diff-" + Guid.NewGuid().ToString("N") + ".json");
-                                    var (code, err) = ToolExecutor.Run(tool, [
-                                        "diff",
+                                    if (File.Exists(baselineEv))
+                                    {
+                                        var outDelta = Path.Combine(tempDir, "diff-" + Guid.NewGuid().ToString("N") + ".json");
+                                        var (code, err) = ToolExecutor.Run(tool, [
+                                            "diff",
                                         "--baseline-ref", file,
                                         "--baseline-evidence", baselineEv,
                                         "--evidence", baselineEv,
                                         "-o", outDelta
-                                    ], allowPath: allowPath);
+                                        ], allowPath: allowPath);
 
-                                    if (code != 0)
-                                    {
-                                        var msg = $"Candidate failed to read BaselineReference document {rel}: {err.Trim()}";
-                                        Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
-                                        summary.Failures.Add(("backward-reads", rel, null, msg));
+                                        if (code != 0)
+                                        {
+                                            var msg = $"Candidate failed to read BaselineReference document {rel}: {err.Trim()}";
+                                            Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
+                                            summary.Failures.Add(("backward-reads", rel, null, msg));
+                                        }
                                     }
+                                    break;
                                 }
-                                break;
-                            }
 
                             case "https://diffra.dev/schemas/manifest-v1.schema.json":
-                            {
-                                if (File.Exists(validDelta) && File.Exists(validAssessment) && File.Exists(baselineRef) && !quick)
                                 {
-                                    var outBundle = Path.Combine(tempDir, "bundle-" + Guid.NewGuid().ToString("N") + ".zip");
-                                    var (code, err) = ToolExecutor.Run(tool, [
-                                        "bundle", "export",
+                                    if (File.Exists(validDelta) && File.Exists(validAssessment) && File.Exists(baselineRef) && !quick)
+                                    {
+                                        var outBundle = Path.Combine(tempDir, "bundle-" + Guid.NewGuid().ToString("N") + ".zip");
+                                        var (code, err) = ToolExecutor.Run(tool, [
+                                            "bundle", "export",
                                         "--manifest", file,
                                         "--delta", validDelta,
                                         "--assessment", validAssessment,
                                         "--baseline-ref", baselineRef,
                                         "-o", outBundle
-                                    ], allowPath: allowPath);
+                                        ], allowPath: allowPath);
 
-                                    if (code != 0)
-                                    {
-                                        var msg = $"Candidate failed to read Manifest document {rel}: {err.Trim()}";
-                                        Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
-                                        summary.Failures.Add(("backward-reads", rel, null, msg));
+                                        if (code != 0)
+                                        {
+                                            var msg = $"Candidate failed to read Manifest document {rel}: {err.Trim()}";
+                                            Console.WriteLine($"FAIL backward-reads ({rel}): {msg}");
+                                            summary.Failures.Add(("backward-reads", rel, null, msg));
+                                        }
                                     }
+                                    break;
                                 }
-                                break;
-                            }
                         }
                     }
                     catch (Exception ex)

@@ -311,6 +311,9 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Verify code formatting
+        run: dotnet format whitespace Diffra.slnx --verify-no-changes
+
       - name: Build solution
         run: dotnet build Diffra.slnx --configuration Release
 

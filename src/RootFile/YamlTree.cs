@@ -111,37 +111,37 @@ internal static class YamlTree
                 return new YamlScalar(current.Start.Line, current.Start.Column, scalar.Value, scalar.Style == ScalarStyle.Plain);
 
             case SequenceStart:
-            {
-                var items = new List<YamlNode>();
-                for (var next = Next(parser); next is not SequenceEnd; next = Next(parser))
                 {
-                    items.Add(ReadNode(parser, next, depth + 1));
-                }
+                    var items = new List<YamlNode>();
+                    for (var next = Next(parser); next is not SequenceEnd; next = Next(parser))
+                    {
+                        items.Add(ReadNode(parser, next, depth + 1));
+                    }
 
-                return new YamlSequence(current.Start.Line, current.Start.Column, items);
-            }
+                    return new YamlSequence(current.Start.Line, current.Start.Column, items);
+                }
 
             case MappingStart:
-            {
-                var entries = new List<KeyValuePair<YamlScalar, YamlNode>>();
-                var seen = new HashSet<string>(StringComparer.Ordinal);
-                for (var next = Next(parser); next is not MappingEnd; next = Next(parser))
                 {
-                    if (ReadNode(parser, next, depth + 1) is not YamlScalar key)
+                    var entries = new List<KeyValuePair<YamlScalar, YamlNode>>();
+                    var seen = new HashSet<string>(StringComparer.Ordinal);
+                    for (var next = Next(parser); next is not MappingEnd; next = Next(parser))
                     {
-                        throw Reject(next, "A key in the root file must be text.");
+                        if (ReadNode(parser, next, depth + 1) is not YamlScalar key)
+                        {
+                            throw Reject(next, "A key in the root file must be text.");
+                        }
+
+                        if (!seen.Add(key.Value))
+                        {
+                            throw Reject(next, $"The key '{key.Value}' appears twice in the same mapping.");
+                        }
+
+                        entries.Add(new KeyValuePair<YamlScalar, YamlNode>(key, ReadNode(parser, Next(parser), depth + 1)));
                     }
 
-                    if (!seen.Add(key.Value))
-                    {
-                        throw Reject(next, $"The key '{key.Value}' appears twice in the same mapping.");
-                    }
-
-                    entries.Add(new KeyValuePair<YamlScalar, YamlNode>(key, ReadNode(parser, Next(parser), depth + 1)));
+                    return new YamlMapping(current.Start.Line, current.Start.Column, entries);
                 }
-
-                return new YamlMapping(current.Start.Line, current.Start.Column, entries);
-            }
 
             default:
                 throw Reject(current, $"Unexpected YAML event {current.GetType().Name}.");

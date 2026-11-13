@@ -110,22 +110,22 @@ public static class CanonicalJson
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
-            {
-                var names = new HashSet<string>(StringComparer.Ordinal);
-                foreach (var property in element.EnumerateObject())
                 {
-                    var name = property.Name;
-                    ValidateUnicode(name);
-                    if (!names.Add(name))
+                    var names = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (var property in element.EnumerateObject())
                     {
-                        throw new JsonException($"Duplicate JSON object member: {name}");
+                        var name = property.Name;
+                        ValidateUnicode(name);
+                        if (!names.Add(name))
+                        {
+                            throw new JsonException($"Duplicate JSON object member: {name}");
+                        }
+
+                        ValidateValue(property.Value);
                     }
 
-                    ValidateValue(property.Value);
+                    break;
                 }
-
-                break;
-            }
             case JsonValueKind.Array:
                 foreach (var item in element.EnumerateArray())
                 {
@@ -169,47 +169,47 @@ public static class CanonicalJson
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
-            {
-                WriteAscii(output, "{");
-                var properties = element.EnumerateObject()
-                    .Where(property => excludedRootProperty is null
-                        || !string.Equals(property.Name, excludedRootProperty, StringComparison.Ordinal))
-                    .Where(property => includedRootProperties is null || includedRootProperties.Contains(property.Name))
-                    .OrderBy(property => property.Name, StringComparer.Ordinal)
-                    .ToArray();
-                for (var index = 0; index < properties.Length; index++)
                 {
-                    if (index != 0)
+                    WriteAscii(output, "{");
+                    var properties = element.EnumerateObject()
+                        .Where(property => excludedRootProperty is null
+                            || !string.Equals(property.Name, excludedRootProperty, StringComparison.Ordinal))
+                        .Where(property => includedRootProperties is null || includedRootProperties.Contains(property.Name))
+                        .OrderBy(property => property.Name, StringComparer.Ordinal)
+                        .ToArray();
+                    for (var index = 0; index < properties.Length; index++)
                     {
-                        WriteAscii(output, ",");
+                        if (index != 0)
+                        {
+                            WriteAscii(output, ",");
+                        }
+
+                        WriteString(output, properties[index].Name);
+                        WriteAscii(output, ":");
+                        WriteValue(properties[index].Value, output, excludedRootProperty: null);
                     }
 
-                    WriteString(output, properties[index].Name);
-                    WriteAscii(output, ":");
-                    WriteValue(properties[index].Value, output, excludedRootProperty: null);
+                    WriteAscii(output, "}");
+                    break;
                 }
-
-                WriteAscii(output, "}");
-                break;
-            }
             case JsonValueKind.Array:
-            {
-                WriteAscii(output, "[");
-                var first = true;
-                foreach (var item in element.EnumerateArray())
                 {
-                    if (!first)
+                    WriteAscii(output, "[");
+                    var first = true;
+                    foreach (var item in element.EnumerateArray())
                     {
-                        WriteAscii(output, ",");
+                        if (!first)
+                        {
+                            WriteAscii(output, ",");
+                        }
+
+                        WriteValue(item, output, excludedRootProperty: null);
+                        first = false;
                     }
 
-                    WriteValue(item, output, excludedRootProperty: null);
-                    first = false;
+                    WriteAscii(output, "]");
+                    break;
                 }
-
-                WriteAscii(output, "]");
-                break;
-            }
             case JsonValueKind.String:
                 WriteString(output, element.GetString()!);
                 break;

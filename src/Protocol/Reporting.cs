@@ -523,7 +523,11 @@ public static class ReportRenderer
         {
             builder.Append(c switch
             {
-                '&' => "&amp;", '<' => "&lt;", '>' => "&gt;", '`' => "&#96;", '|' => "\\|",
+                '&' => "&amp;",
+                '<' => "&lt;",
+                '>' => "&gt;",
+                '`' => "&#96;",
+                '|' => "\\|",
                 '\\' or '*' or '_' or '{' or '}' or '[' or ']' or '(' or ')' or '#' or '+' or '-' or '.' or '!' => "\\" + c,
                 _ => c.ToString(),
             });

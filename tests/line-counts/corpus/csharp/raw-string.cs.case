@@ -1,0 +1,7 @@
+var json = """
+    {
+      "url": "http://example.org", // not a comment
+      "note": "/* nor this */"
+    }
+    """;
+var a = 1;

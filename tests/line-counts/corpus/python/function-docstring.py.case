@@ -1,0 +1,9 @@
+def f():
+    """A one-line docstring."""
+    return 1
+
+
+def g():
+    """A docstring
+    over two lines."""
+    return 2

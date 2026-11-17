@@ -1,0 +1,6 @@
+const name = "x";
+const text = `first ${name}
+// not a comment inside a template literal
+/* nor this */ ${name /* but this is a comment */}
+end`;
+const a = 1;

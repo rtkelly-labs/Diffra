@@ -1,0 +1,9 @@
+# Title
+
+<!-- a one-line HTML comment -->
+Text. <!-- trailing comment -->
+
+<!--
+a comment
+over lines
+-->

@@ -1,0 +1,3 @@
+var a = 1; /* a block comment after code */
+var b = /* inside */ 2;
+/* a whole-line block comment */

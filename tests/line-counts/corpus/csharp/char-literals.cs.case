@@ -1,0 +1,3 @@
+var quote = '"';
+var slash = '/'; var star = '*';
+var a = 1; // after char literals

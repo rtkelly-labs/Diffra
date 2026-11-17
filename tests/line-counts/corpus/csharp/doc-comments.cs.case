@@ -1,0 +1,11 @@
+/// <summary>
+/// A documented type.
+/// </summary>
+public sealed class Documented
+{
+    /** <summary>A block doc comment.</summary> */
+    public int Value { get; }
+
+    /// <inheritdoc />
+    public override string ToString() => "x"; /// not a doc position
+}

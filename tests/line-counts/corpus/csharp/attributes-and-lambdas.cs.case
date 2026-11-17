@@ -1,0 +1,6 @@
+[Obsolete("use /* the other */ one")]
+public static int F(int x) => x switch
+{
+    0 => 1, // zero
+    _ => x * 2,
+};

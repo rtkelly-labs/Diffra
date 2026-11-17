@@ -1,0 +1,6 @@
+#nullable enable
+#region Members
+#if DEBUG
+var a = 1;
+#endif
+#endregion

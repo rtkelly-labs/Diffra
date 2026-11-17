@@ -1,0 +1,1568 @@
+{
+  "tools": {
+    "cloc": {
+      "version": "2.12",
+      "release": "https://github.com/AlDanial/cloc/releases/download/v2.12/cloc-2.12.pl (sha256 621592d34f835ef178115a1643f15ebc8e73ec1d47b5484c46376fc15b78f03e)",
+      "arguments": [
+        "--json",
+        "--by-file",
+        "--quiet",
+        "--skip-uniqueness"
+      ]
+    },
+    "scc": {
+      "version": "4.1.0",
+      "release": "https://github.com/boyter/scc/releases/tag/v4.1.0 (each archive's sha256 is in its checksums.txt)",
+      "arguments": [
+        "--format",
+        "json",
+        "--by-file",
+        "--no-cocomo",
+        "--no-complexity",
+        "--no-gitignore",
+        "--no-ignore",
+        "--no-scc-ignore"
+      ]
+    },
+    "tokei": {
+      "version": "14.0.0",
+      "release": "https://crates.io/crates/tokei/14.0.0 (cargo install tokei --version 14.0.0 --locked; no release binaries are published)",
+      "arguments": [
+        "--output",
+        "json",
+        "--hidden",
+        "--no-ignore"
+      ]
+    }
+  },
+  "cases": {
+    "csharp/attributes-and-lambdas.cs": {
+      "sha256": "ffa203729523595eebeacedc1d080eb373e229fe6faa734bcba953db3e507e50",
+      "lines": 6,
+      "cloc": {
+        "language": "C#",
+        "code": 6,
+        "comments": 0,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "C#",
+        "code": 6,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 6,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "csharp/block-comment-blank-inside.cs": {
+      "sha256": "5f30645b1f342536a0444c33962f856710b60ff855e5bcf5ee067c6d8372e29a",
+      "lines": 6,
+      "cloc": {
+        "language": "C#",
+        "code": 1,
+        "comments": 4,
+        "blanks": 1
+      },
+      "scc": {
+        "language": "C#",
+        "code": 1,
+        "comments": 5,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 1,
+        "comments": 5,
+        "blanks": 0
+      }
+    },
+    "csharp/block-comment-code-after-close.cs": {
+      "sha256": "0bed584e0dfd99ce54e10241d30ac266f0b540ae3df72c3751f4e492e96e0c1e",
+      "lines": 4,
+      "cloc": {
+        "language": "C#",
+        "code": 2,
+        "comments": 2,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "C#",
+        "code": 2,
+        "comments": 2,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 1,
+        "comments": 3,
+        "blanks": 0
+      }
+    },
+    "csharp/block-open-in-line-comment.cs": {
+      "sha256": "e1df70aabd871d2fb7824ce2bb9b96241bbdb0aa1a48165fb2f025008d967fed",
+      "lines": 3,
+      "cloc": {
+        "language": "C#",
+        "code": 2,
+        "comments": 1,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "C#",
+        "code": 2,
+        "comments": 1,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 2,
+        "comments": 1,
+        "blanks": 0
+      }
+    },
+    "csharp/char-literals.cs": {
+      "sha256": "e8036716fa00576595a1adc13c936eaf5a6e8f4e7cb96df1ea05e298d22c31a8",
+      "lines": 3,
+      "cloc": {
+        "language": "C#",
+        "code": 3,
+        "comments": 0,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "C#",
+        "code": 3,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 3,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "csharp/comment-markers-in-strings.cs": {
+      "sha256": "11a4de045c362001fd93e314ee973ef04da3569871f890f8f8ef0bd47595cb3a",
+      "lines": 4,
+      "cloc": {
+        "language": "C#",
+        "code": 4,
+        "comments": 0,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "C#",
+        "code": 4,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 4,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "csharp/doc-comments.cs": {
+      "sha256": "a2158ed461544000f98b57a2073113e07408f1e9eb51354c9737ff1b82d20d2c",
+      "lines": 11,
+      "cloc": {
+        "language": "C#",
+        "code": 5,
+        "comments": 5,
+        "blanks": 1
+      },
+      "scc": {
+        "language": "C#",
+        "code": 5,
+        "comments": 5,
+        "blanks": 1
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 5,
+        "comments": 5,
+        "blanks": 1
+      }
+    },
+    "csharp/empty.cs": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "lines": 0,
+      "cloc": {
+        "counted": false
+      },
+      "scc": {
+        "language": "C#",
+        "code": 0,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 0,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "csharp/generated.g.cs": {
+      "sha256": "6c79e6effb7da59925b5af58674b918520b7726e834af9b32c78267953a72414",
+      "lines": 9,
+      "cloc": {
+        "language": "C# Generated",
+        "code": 5,
+        "comments": 3,
+        "blanks": 1
+      },
+      "scc": {
+        "language": "C#",
+        "code": 5,
+        "comments": 3,
+        "blanks": 1
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 5,
+        "comments": 3,
+        "blanks": 1
+      }
+    },
+    "csharp/interpolated-string.cs": {
+      "sha256": "9990695f0ac4b7367d478758c2d477d7c3e09d34d82f356e39aecd8ec34856b0",
+      "lines": 5,
+      "cloc": {
+        "language": "C#",
+        "code": 5,
+        "comments": 0,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "C#",
+        "code": 5,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 5,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "csharp/leading-block-comment.cs": {
+      "sha256": "f80086918e0106c8a07c911eceb79b7d8dcea9210346d4808555cd879176f7fc",
+      "lines": 2,
+      "cloc": {
+        "language": "C#",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "C#",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      }
+    },
+    "csharp/line-comment-in-block.cs": {
+      "sha256": "e24cb10a93d7f8049ba4a9e3a9a569f1cc7d2eeb4506ceca902039acb55bd757",
+      "lines": 4,
+      "cloc": {
+        "language": "C#",
+        "code": 1,
+        "comments": 3,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "C#",
+        "code": 1,
+        "comments": 3,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 1,
+        "comments": 3,
+        "blanks": 0
+      }
+    },
+    "csharp/nested-block-comment.cs": {
+      "sha256": "c45e9caa6a5852741199c710068fe94a36fc2e83cf1ad32a9dc5f2ce5fb2d6e7",
+      "lines": 3,
+      "cloc": {
+        "language": "C#",
+        "code": 3,
+        "comments": 0,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "C#",
+        "code": 3,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 2,
+        "comments": 1,
+        "blanks": 0
+      }
+    },
+    "csharp/only-comments.cs": {
+      "sha256": "19def80fe92b8dc5fe1c2a79de71b0a1c0b0ba6d0d26ec995eb17083108c1263",
+      "lines": 4,
+      "cloc": {
+        "language": "C#",
+        "code": 0,
+        "comments": 3,
+        "blanks": 1
+      },
+      "scc": {
+        "language": "C#",
+        "code": 0,
+        "comments": 3,
+        "blanks": 1
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 0,
+        "comments": 3,
+        "blanks": 1
+      }
+    },
+    "csharp/plain-code.cs": {
+      "sha256": "66cc82b80e69ee832fec7f0e9b38f8150873a0d3ed55343b34bd3dfdd42f2c30",
+      "lines": 8,
+      "cloc": {
+        "language": "C#",
+        "code": 6,
+        "comments": 0,
+        "blanks": 2
+      },
+      "scc": {
+        "language": "C#",
+        "code": 6,
+        "comments": 0,
+        "blanks": 2
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 6,
+        "comments": 0,
+        "blanks": 2
+      }
+    },
+    "csharp/preprocessor.cs": {
+      "sha256": "b79c96a1e9e4d2c7e483148c807b42a387592923e7226862226afbd5d2c1eeac",
+      "lines": 6,
+      "cloc": {
+        "language": "C#",
+        "code": 6,
+        "comments": 0,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "C#",
+        "code": 6,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 6,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "csharp/raw-string.cs": {
+      "sha256": "174f46c63c92cabefa5e6e0b680dbfc039a45c50e5537d71ffecf8bbe45dae34",
+      "lines": 7,
+      "cloc": {
+        "language": "C#",
+        "code": 7,
+        "comments": 0,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "C#",
+        "code": 7,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 7,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "csharp/trailing-block-comment.cs": {
+      "sha256": "ade54e4d7158aa686f65db341e25b4e166ff53b8f06839e03c6d4681e68cab98",
+      "lines": 3,
+      "cloc": {
+        "language": "C#",
+        "code": 2,
+        "comments": 1,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "C#",
+        "code": 2,
+        "comments": 1,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 2,
+        "comments": 1,
+        "blanks": 0
+      }
+    },
+    "csharp/trailing-line-comment.cs": {
+      "sha256": "13e3f778b6c38cfad6d4c3798318c0fa478d1b782f2a4219b88940e3da9b0a1d",
+      "lines": 3,
+      "cloc": {
+        "language": "C#",
+        "code": 2,
+        "comments": 1,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "C#",
+        "code": 2,
+        "comments": 1,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 2,
+        "comments": 1,
+        "blanks": 0
+      }
+    },
+    "csharp/verbatim-string.cs": {
+      "sha256": "8168c57a315025bf81257e8c3448dea3f4cc0cc925de65af0cd02039144c0438",
+      "lines": 5,
+      "cloc": {
+        "language": "C#",
+        "code": 3,
+        "comments": 2,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "C#",
+        "code": 5,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 5,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "csharp/whitespace-only-lines.cs": {
+      "sha256": "77da02486a4501f08add886f14f4408c672e8723d502c91f850beeaa2c9f5f53",
+      "lines": 4,
+      "cloc": {
+        "language": "C#",
+        "code": 2,
+        "comments": 0,
+        "blanks": 2
+      },
+      "scc": {
+        "language": "C#",
+        "code": 2,
+        "comments": 0,
+        "blanks": 2
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 2,
+        "comments": 0,
+        "blanks": 2
+      }
+    },
+    "encoding/bom.cs": {
+      "sha256": "4e4550cb8f0998a762d4b80571b5747fda05a0a4e67cfa7d74db85a452ea9c62",
+      "lines": 2,
+      "cloc": {
+        "language": "C#",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "C#",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      }
+    },
+    "encoding/bom.py": {
+      "sha256": "da0d1373fb181d0252d563cb407401e8014b61c835fa009af40eb61ea61319da",
+      "lines": 2,
+      "cloc": {
+        "language": "Python",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "Python",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "Python",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      }
+    },
+    "encoding/crlf.cs": {
+      "sha256": "8c72939ebb97a33dcb74b959417e6bd412902344ea94d849cb27a259be00e9bf",
+      "lines": 6,
+      "cloc": {
+        "language": "C#",
+        "code": 1,
+        "comments": 3,
+        "blanks": 2
+      },
+      "scc": {
+        "language": "C#",
+        "code": 1,
+        "comments": 4,
+        "blanks": 1
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 1,
+        "comments": 4,
+        "blanks": 1
+      }
+    },
+    "encoding/crlf.md": {
+      "sha256": "24111b020a42f599e39d5710be60d6e41b7badc496cf2d63d5a4189ee9a3ea99",
+      "lines": 3,
+      "cloc": {
+        "language": "Markdown",
+        "code": 2,
+        "comments": 0,
+        "blanks": 1
+      },
+      "scc": {
+        "language": "Markdown",
+        "code": 2,
+        "comments": 0,
+        "blanks": 1
+      },
+      "tokei": {
+        "language": "Markdown",
+        "code": 0,
+        "comments": 2,
+        "blanks": 1
+      }
+    },
+    "encoding/crlf.py": {
+      "sha256": "e53711cbc16106406ee8db4b21afdc7127211d31860404d5347ebb917aaa37f8",
+      "lines": 5,
+      "cloc": {
+        "language": "Python",
+        "code": 1,
+        "comments": 3,
+        "blanks": 1
+      },
+      "scc": {
+        "language": "Python",
+        "code": 1,
+        "comments": 3,
+        "blanks": 1
+      },
+      "tokei": {
+        "language": "Python",
+        "code": 3,
+        "comments": 1,
+        "blanks": 1
+      }
+    },
+    "encoding/latin1.cs": {
+      "sha256": "c7ebe1f379386a90940f63a2a73ca498293aaafe4263c8f2d510f4ddcf7a625d",
+      "lines": 2,
+      "cloc": {
+        "language": "C#",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "C#",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      }
+    },
+    "encoding/lone-cr.cs": {
+      "sha256": "7e3b456c84d7221ba6cd9f830582a138f60a1d1ec32ba77b4f9270d59b3dc3d4",
+      "lines": 1,
+      "cloc": {
+        "language": "C#",
+        "code": 1,
+        "comments": 0,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "C#",
+        "code": 1,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 1,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "encoding/no-final-newline-code.cs": {
+      "sha256": "7e677d8dc53fc1036f26adf96620ece1c3c88dbed2638eb5b946dd1402f3e8f6",
+      "lines": 2,
+      "cloc": {
+        "language": "C#",
+        "code": 2,
+        "comments": 0,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "C#",
+        "code": 2,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 2,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "encoding/no-final-newline-comment.cs": {
+      "sha256": "58aff48d2b9df3d058abf936f33c50b407c79791c2be12d6403d26ef112f63bc",
+      "lines": 2,
+      "cloc": {
+        "language": "C#",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "C#",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      }
+    },
+    "encoding/nul-byte.cs": {
+      "sha256": "52de1d7657dada71c301a5574c86acbe57dc91ff45df521eca88f625a24a5575",
+      "lines": 3,
+      "cloc": {
+        "counted": false
+      },
+      "scc": {
+        "language": "C#",
+        "code": 2,
+        "comments": 1,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 2,
+        "comments": 1,
+        "blanks": 0
+      }
+    },
+    "encoding/single-newline.cs": {
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "lines": 1,
+      "cloc": {
+        "language": "C#",
+        "code": 0,
+        "comments": 0,
+        "blanks": 1
+      },
+      "scc": {
+        "language": "C#",
+        "code": 0,
+        "comments": 0,
+        "blanks": 1
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 0,
+        "comments": 0,
+        "blanks": 1
+      }
+    },
+    "encoding/trailing-blank-lines.cs": {
+      "sha256": "1c30c8e74472ab04f78e6c75df88eee894afb5e8ee6a50771192828ef44b5471",
+      "lines": 3,
+      "cloc": {
+        "language": "C#",
+        "code": 1,
+        "comments": 0,
+        "blanks": 2
+      },
+      "scc": {
+        "language": "C#",
+        "code": 1,
+        "comments": 0,
+        "blanks": 2
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 1,
+        "comments": 0,
+        "blanks": 2
+      }
+    },
+    "markdown/empty.md": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "lines": 0,
+      "cloc": {
+        "counted": false
+      },
+      "scc": {
+        "language": "Markdown",
+        "code": 0,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "Markdown",
+        "code": 0,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "markdown/fenced-code-untagged.md": {
+      "sha256": "96fcec109919a7fa64d16abc53f12736cbe082dd76fd9391b7aea66b1fa1e1c4",
+      "lines": 5,
+      "cloc": {
+        "language": "Markdown",
+        "code": 4,
+        "comments": 0,
+        "blanks": 1
+      },
+      "scc": {
+        "language": "Markdown",
+        "code": 4,
+        "comments": 0,
+        "blanks": 1
+      },
+      "tokei": {
+        "language": "Markdown",
+        "code": 0,
+        "comments": 4,
+        "blanks": 1
+      }
+    },
+    "markdown/fenced-code.md": {
+      "sha256": "e05b73ae36db1327483f44260f12a3c2e1c1b905e9be5c9414334224a6f3b121",
+      "lines": 10,
+      "cloc": {
+        "language": "Markdown",
+        "code": 7,
+        "comments": 0,
+        "blanks": 3
+      },
+      "scc": {
+        "language": "Markdown",
+        "code": 7,
+        "comments": 0,
+        "blanks": 3
+      },
+      "tokei": {
+        "language": "Markdown",
+        "code": 0,
+        "comments": 7,
+        "blanks": 3
+      }
+    },
+    "markdown/front-matter.md": {
+      "sha256": "9372915a6e9ab7bc3fca294c1c203656a9e2d54cac0217bbb3fb65e3c1ceef32",
+      "lines": 6,
+      "cloc": {
+        "language": "Markdown",
+        "code": 5,
+        "comments": 0,
+        "blanks": 1
+      },
+      "scc": {
+        "language": "Markdown",
+        "code": 5,
+        "comments": 0,
+        "blanks": 1
+      },
+      "tokei": {
+        "language": "Markdown",
+        "code": 0,
+        "comments": 5,
+        "blanks": 1
+      }
+    },
+    "markdown/html-comment.md": {
+      "sha256": "aa37f9cb13656746c3103e21fdf0f59656339ccbad768069a2b3799ff0a0e986",
+      "lines": 9,
+      "cloc": {
+        "language": "Markdown",
+        "code": 2,
+        "comments": 5,
+        "blanks": 2
+      },
+      "scc": {
+        "language": "Markdown",
+        "code": 7,
+        "comments": 0,
+        "blanks": 2
+      },
+      "tokei": {
+        "language": "Markdown",
+        "code": 0,
+        "comments": 7,
+        "blanks": 2
+      }
+    },
+    "markdown/indented-code.md": {
+      "sha256": "e52e0928af67220431f7f91da051ae9c883a9c79c320497d7b13c4612c543593",
+      "lines": 6,
+      "cloc": {
+        "language": "Markdown",
+        "code": 4,
+        "comments": 0,
+        "blanks": 2
+      },
+      "scc": {
+        "language": "Markdown",
+        "code": 4,
+        "comments": 0,
+        "blanks": 2
+      },
+      "tokei": {
+        "language": "Markdown",
+        "code": 0,
+        "comments": 4,
+        "blanks": 2
+      }
+    },
+    "markdown/lists-and-tables.md": {
+      "sha256": "f095ef6575ae5399825287ecae86c8629e671e1e24662d5ed335e459b891406b",
+      "lines": 9,
+      "cloc": {
+        "language": "Markdown",
+        "code": 7,
+        "comments": 0,
+        "blanks": 2
+      },
+      "scc": {
+        "language": "Markdown",
+        "code": 7,
+        "comments": 0,
+        "blanks": 2
+      },
+      "tokei": {
+        "language": "Markdown",
+        "code": 0,
+        "comments": 7,
+        "blanks": 2
+      }
+    },
+    "markdown/prose.md": {
+      "sha256": "98b31524984d4cbbb5f4256ff5a2f2477becfef313a2a1608eff62d22c251908",
+      "lines": 6,
+      "cloc": {
+        "language": "Markdown",
+        "code": 4,
+        "comments": 0,
+        "blanks": 2
+      },
+      "scc": {
+        "language": "Markdown",
+        "code": 4,
+        "comments": 0,
+        "blanks": 2
+      },
+      "tokei": {
+        "language": "Markdown",
+        "code": 0,
+        "comments": 4,
+        "blanks": 2
+      }
+    },
+    "markdown/tilde-fence.md": {
+      "sha256": "c90b4c080862884b0865e87c6e27498c40e59899c6c578cbe596a8391ed7d5d1",
+      "lines": 4,
+      "cloc": {
+        "language": "Markdown",
+        "code": 4,
+        "comments": 0,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "Markdown",
+        "code": 4,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "Markdown",
+        "code": 0,
+        "comments": 4,
+        "blanks": 0
+      }
+    },
+    "python/comment-block-function.py": {
+      "sha256": "49141b385ae00834b77621c876617c5eb42b4cb11cc44cde69b4c50cbc710ca3",
+      "lines": 5,
+      "cloc": {
+        "language": "Python",
+        "code": 3,
+        "comments": 1,
+        "blanks": 1
+      },
+      "scc": {
+        "language": "Python",
+        "code": 3,
+        "comments": 1,
+        "blanks": 1
+      },
+      "tokei": {
+        "language": "Python",
+        "code": 3,
+        "comments": 1,
+        "blanks": 1
+      }
+    },
+    "python/empty.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "lines": 0,
+      "cloc": {
+        "counted": false
+      },
+      "scc": {
+        "language": "Python",
+        "code": 0,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "Python",
+        "code": 0,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "python/encoding-declaration.py": {
+      "sha256": "8b95a20dac1b24ea570a1f5f167168e6cae3faff731389a380b4239bb74c1740",
+      "lines": 2,
+      "cloc": {
+        "language": "Python",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "Python",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "Python",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      }
+    },
+    "python/fstring.py": {
+      "sha256": "8c7e7565c62f98300678c32d470428faf9454bbe88a8b76654dc9be9e6f4c99b",
+      "lines": 3,
+      "cloc": {
+        "language": "Python",
+        "code": 3,
+        "comments": 0,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "Python",
+        "code": 3,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "Python",
+        "code": 3,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "python/function-docstring.py": {
+      "sha256": "5f7ab68cf994404f1305f2fb355a0569d036427017906c238b93ec39ef32dbb0",
+      "lines": 9,
+      "cloc": {
+        "language": "Python",
+        "code": 4,
+        "comments": 3,
+        "blanks": 2
+      },
+      "scc": {
+        "language": "Python",
+        "code": 4,
+        "comments": 3,
+        "blanks": 2
+      },
+      "tokei": {
+        "language": "Python",
+        "code": 7,
+        "comments": 0,
+        "blanks": 2
+      }
+    },
+    "python/hash-comments.py": {
+      "sha256": "400b83e0815757945b0920e994c5b48f1a8573d07b5815ee6602d899ac973b23",
+      "lines": 4,
+      "cloc": {
+        "language": "Python",
+        "code": 2,
+        "comments": 2,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "Python",
+        "code": 2,
+        "comments": 2,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "Python",
+        "code": 2,
+        "comments": 2,
+        "blanks": 0
+      }
+    },
+    "python/hash-in-string.py": {
+      "sha256": "f02301785e8d02bf29e6b1092a9eb71dd4d17528098c9bfbca4cbb229be0dfc8",
+      "lines": 3,
+      "cloc": {
+        "language": "Python",
+        "code": 3,
+        "comments": 0,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "Python",
+        "code": 3,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "Python",
+        "code": 3,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "python/module-docstring.py": {
+      "sha256": "5248af7228362584eae61cca31cebd5398b57b5b0090178e26954a4a9e74dee4",
+      "lines": 6,
+      "cloc": {
+        "language": "Python",
+        "code": 1,
+        "comments": 3,
+        "blanks": 2
+      },
+      "scc": {
+        "language": "Python",
+        "code": 1,
+        "comments": 4,
+        "blanks": 1
+      },
+      "tokei": {
+        "language": "Python",
+        "code": 5,
+        "comments": 0,
+        "blanks": 1
+      }
+    },
+    "python/plain.py": {
+      "sha256": "f2a1225d7b85e40fecaafd34e2046a1cc2540f7f4def592d91a26cceff3a7110",
+      "lines": 5,
+      "cloc": {
+        "language": "Python",
+        "code": 3,
+        "comments": 0,
+        "blanks": 2
+      },
+      "scc": {
+        "language": "Python",
+        "code": 3,
+        "comments": 0,
+        "blanks": 2
+      },
+      "tokei": {
+        "language": "Python",
+        "code": 3,
+        "comments": 0,
+        "blanks": 2
+      }
+    },
+    "python/shebang.py": {
+      "sha256": "61a00cd0641ba709d8ddbb324429af874ef22536328a2c1914444ae01fcbd899",
+      "lines": 2,
+      "cloc": {
+        "language": "Python",
+        "code": 2,
+        "comments": 0,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "Python",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "Python",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      }
+    },
+    "python/single-quote-docstring.py": {
+      "sha256": "1bcfaf0c71f74268dc81685e4bf2d7967a873db75e19db35298af9720e8cbd0b",
+      "lines": 6,
+      "cloc": {
+        "language": "Python",
+        "code": 2,
+        "comments": 3,
+        "blanks": 1
+      },
+      "scc": {
+        "language": "Python",
+        "code": 2,
+        "comments": 4,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "Python",
+        "code": 6,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "python/triple-quoted-argument.py": {
+      "sha256": "da4646ffd978ec42e69bcc6750fab6b3b95340ea46caf209cc268a4fc17b2e32",
+      "lines": 3,
+      "cloc": {
+        "language": "Python",
+        "code": 1,
+        "comments": 2,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "Python",
+        "code": 3,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "Python",
+        "code": 3,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "python/triple-quoted-assigned.py": {
+      "sha256": "854d4617d1f578eda53be45c91fff3fe626b2618d5a9178b72bbb850479abec1",
+      "lines": 5,
+      "cloc": {
+        "language": "Python",
+        "code": 2,
+        "comments": 3,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "Python",
+        "code": 5,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "Python",
+        "code": 5,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "real/FileGlob.cs": {
+      "sha256": "3247b062b3823140e9aa8aa91cf034249ae29eb8fff6f402b8695a76f75a1154",
+      "lines": 285,
+      "cloc": {
+        "language": "C#",
+        "code": 217,
+        "comments": 36,
+        "blanks": 32
+      },
+      "scc": {
+        "language": "C#",
+        "code": 217,
+        "comments": 36,
+        "blanks": 32
+      },
+      "tokei": {
+        "language": "C#",
+        "code": 217,
+        "comments": 36,
+        "blanks": 32
+      }
+    },
+    "real/generate_fixture_reference.py": {
+      "sha256": "16984be9f7c8db73d7d5338d69ca3b4c4973c8a94012f578ad82ef493bcb8842",
+      "lines": 84,
+      "cloc": {
+        "language": "Python",
+        "code": 62,
+        "comments": 5,
+        "blanks": 17
+      },
+      "scc": {
+        "language": "Python",
+        "code": 62,
+        "comments": 6,
+        "blanks": 16
+      },
+      "tokei": {
+        "language": "Python",
+        "code": 68,
+        "comments": 0,
+        "blanks": 16
+      }
+    },
+    "real/glossary.md": {
+      "sha256": "c480de2db7d3df0d2539510a28bc96a9e6a9b69cc00864113c416a5f807ab2b1",
+      "lines": 20,
+      "cloc": {
+        "language": "Markdown",
+        "code": 18,
+        "comments": 0,
+        "blanks": 2
+      },
+      "scc": {
+        "language": "Markdown",
+        "code": 18,
+        "comments": 0,
+        "blanks": 2
+      },
+      "tokei": {
+        "language": "Markdown",
+        "code": 0,
+        "comments": 18,
+        "blanks": 2
+      }
+    },
+    "typescript/comment-markers-in-strings.ts": {
+      "sha256": "52a9d3689fe1360683061b70ed6ef475810958a06b7668cc1e1df51df85de56d",
+      "lines": 3,
+      "cloc": {
+        "language": "TypeScript",
+        "code": 3,
+        "comments": 0,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "TypeScript",
+        "code": 3,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "TypeScript",
+        "code": 3,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "typescript/component.tsx": {
+      "sha256": "9e6ccf874b957b01413e393e4073ffe8a19ca70c7686d7b366f12d5e22f206a3",
+      "lines": 8,
+      "cloc": {
+        "language": "TypeScript",
+        "code": 8,
+        "comments": 0,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "TypeScript",
+        "code": 8,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "TSX",
+        "code": 8,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "typescript/declaration.d.ts": {
+      "sha256": "263de8daa1e807b740bc387c5187ac8b20eff948ee007caebd83db8199b60206",
+      "lines": 4,
+      "cloc": {
+        "language": "TypeScript",
+        "code": 3,
+        "comments": 1,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "TypeScript Typings",
+        "code": 3,
+        "comments": 1,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "TypeScript",
+        "code": 3,
+        "comments": 1,
+        "blanks": 0
+      }
+    },
+    "typescript/jsdoc.ts": {
+      "sha256": "2487c9a18269e3c81a76f6fb6019a0e23e9e4e1082af4ce5e38df6b73210859e",
+      "lines": 8,
+      "cloc": {
+        "language": "TypeScript",
+        "code": 3,
+        "comments": 5,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "TypeScript",
+        "code": 3,
+        "comments": 5,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "TypeScript",
+        "code": 3,
+        "comments": 5,
+        "blanks": 0
+      }
+    },
+    "typescript/minified.ts": {
+      "sha256": "ec7fe69ae9df453cf18e9802ed4863d87904e1ade1bb2e7d7e4299da86b8b5f1",
+      "lines": 1,
+      "cloc": {
+        "language": "TypeScript",
+        "code": 1,
+        "comments": 0,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "TypeScript",
+        "code": 1,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "TypeScript",
+        "code": 1,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "typescript/nested-block-comment.ts": {
+      "sha256": "5ea9b01b299de8bf5a894b4947ff2e99fb35c6e5273bcc54bffaeff73a1c70ab",
+      "lines": 2,
+      "cloc": {
+        "language": "TypeScript",
+        "code": 2,
+        "comments": 0,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "TypeScript",
+        "code": 2,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "TypeScript",
+        "code": 2,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "typescript/plain.ts": {
+      "sha256": "6492cfdf01a3cade18f44b01ef455f885e70746682b6f68c4d45be01cfd0304d",
+      "lines": 6,
+      "cloc": {
+        "language": "TypeScript",
+        "code": 5,
+        "comments": 0,
+        "blanks": 1
+      },
+      "scc": {
+        "language": "TypeScript",
+        "code": 5,
+        "comments": 0,
+        "blanks": 1
+      },
+      "tokei": {
+        "language": "TypeScript",
+        "code": 5,
+        "comments": 0,
+        "blanks": 1
+      }
+    },
+    "typescript/regex-literal.ts": {
+      "sha256": "fd06d8e2150b617931a46aa00881f671938541bc3a9e410d8449778a6ea9d630",
+      "lines": 3,
+      "cloc": {
+        "language": "TypeScript",
+        "code": 3,
+        "comments": 0,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "TypeScript",
+        "code": 3,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "TypeScript",
+        "code": 3,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "typescript/shebang.ts": {
+      "sha256": "92f0d4e72507f1e4f16692578cc6c8d6476bc5fa04591c4fdf5c25235d040b70",
+      "lines": 2,
+      "cloc": {
+        "language": "TypeScript",
+        "code": 2,
+        "comments": 0,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "TypeScript",
+        "code": 2,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "TypeScript",
+        "code": 2,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "typescript/template-literal.ts": {
+      "sha256": "fd671a6e064da1e833f44d08fef39964752f04939cd65789ac36344cca1f88dc",
+      "lines": 6,
+      "cloc": {
+        "language": "TypeScript",
+        "code": 5,
+        "comments": 1,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "TypeScript",
+        "code": 6,
+        "comments": 0,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "TypeScript",
+        "code": 6,
+        "comments": 0,
+        "blanks": 0
+      }
+    },
+    "typescript/trailing-comments.ts": {
+      "sha256": "5a563be5af2da5b6a396ce9648f9994c85edf58b543fa667c83fc0f65062d376",
+      "lines": 4,
+      "cloc": {
+        "language": "TypeScript",
+        "code": 2,
+        "comments": 2,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "TypeScript",
+        "code": 2,
+        "comments": 2,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "TypeScript",
+        "code": 2,
+        "comments": 2,
+        "blanks": 0
+      }
+    },
+    "typescript/triple-slash-directive.ts": {
+      "sha256": "d02ad49ab57ce2366a2099a6b7d3f47636ba8c9236d1efea092b91b6336ccba2",
+      "lines": 2,
+      "cloc": {
+        "language": "TypeScript",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      },
+      "scc": {
+        "language": "TypeScript",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      },
+      "tokei": {
+        "language": "TypeScript",
+        "code": 1,
+        "comments": 1,
+        "blanks": 0
+      }
+    }
+  }
+}

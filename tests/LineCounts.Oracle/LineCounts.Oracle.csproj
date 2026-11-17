@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Differential harness for line counts (docs/adr/0010-line-counts.md). It runs pinned releases
+    of scc, tokei and cloc over the conformance corpus in tests/line-counts/corpus and freezes
+    their counts in tests/line-counts/oracle.json, so that no other test needs the tools. Only
+    `verify`, which needs no tool, runs in CI. Not part of Diffra.slnx.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Diffra.LineCounts.Oracle</AssemblyName>
+    <RootNamespace>Diffra.LineCounts.Oracle</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+</Project>

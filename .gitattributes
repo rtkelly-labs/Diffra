@@ -14,3 +14,7 @@ tests/Protocol.Fuzz/regressions/** binary
 
 # Regression corpus files are exact byte fixtures and must not undergo line-ending normalization.
 tests/regression/0.0.1-alpha.1/** -text
+
+# Line-count conformance cases are exact bytes: CRLF, lone CR, BOM, Latin-1 and NUL cases must
+# survive checkout unchanged, and each case's SHA-256 is frozen in the oracle fixtures.
+tests/line-counts/corpus/** -text

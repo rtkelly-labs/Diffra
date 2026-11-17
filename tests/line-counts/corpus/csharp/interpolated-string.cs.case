@@ -1,0 +1,5 @@
+var name = "x";
+var a = $"{name} // not a comment";
+var b = $@"{name}
+/* not a comment */";
+var c = $"{(name.Length > 0 ? "/*" : "*/")}";

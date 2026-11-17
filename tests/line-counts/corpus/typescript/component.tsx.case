@@ -1,0 +1,8 @@
+export function View() {
+  return (
+    <div>
+      {/* a comment inside JSX */}
+      <span>// text, not a comment</span>
+    </div>
+  );
+}

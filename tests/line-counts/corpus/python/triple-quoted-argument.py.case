@@ -1,0 +1,3 @@
+print("""
+a string passed as an argument
+""")

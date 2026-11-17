@@ -1,0 +1,4 @@
+var a = "// not a comment";
+var b = "/* not a block";
+var c = "a \" // still in the string";
+var d = 1;

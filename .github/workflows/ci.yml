@@ -354,7 +354,8 @@ jobs:
           path: dogfood-run/review-bundle
           if-no-files-found: ignore
 
-  # Compile-only verification for deep-tier test harnesses (Protocol.Fuzz and Protocol.Tests.Stryker).
+  # Compile-only verification for deep-tier test harnesses (Protocol.Fuzz and Protocol.Tests.Stryker),
+  # and the line-count oracle's verify, which needs no external tool.
   # Not part of the required check gate, but catches harness breakage on PRs early.
   compile-harnesses:
     name: compile-harnesses
@@ -374,6 +375,12 @@ jobs:
         run: |
           dotnet build tests/Protocol.Fuzz/Protocol.Fuzz.csproj --configuration Release
           dotnet build tests/Protocol.Tests.Stryker/Protocol.Tests.Stryker.csproj --configuration Release
+
+      # The frozen line-count oracle needs no tool to verify: every corpus case has a result from
+      # each tool and a ruling, no case changed since it was frozen, and the conformance table is
+      # current (docs/adr/0010-line-counts.md).
+      - name: Verify the line-count oracle
+        run: dotnet run --project tests/LineCounts.Oracle/LineCounts.Oracle.csproj --configuration Release -- verify
 
   # The required check. It passes only when every shallow-tier job passes, so a new
   # shallow job is added to this list rather than to the repository ruleset.

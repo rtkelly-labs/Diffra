@@ -1,0 +1,72 @@
+name: Line-count oracle
+
+# Re-runs the pinned scc, tokei and cloc over tests/line-counts/corpus and reports any count that
+# differs from the frozen tests/line-counts/oracle.json (docs/adr/0010-line-counts.md). It runs on
+# demand, and on a change to this workflow so that the workflow itself is checked; normal CI only
+# runs the harness's `verify`, which needs no tool. Set `allow-version-drift` to run newer tools
+# than the pinned ones and see what a new release would change.
+
+on:
+  workflow_dispatch:
+    inputs:
+      allow-version-drift:
+        description: Run even when an installed tool is not the pinned version
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - .github/workflows/line-counts-oracle.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: line-counts-oracle
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SCC_VERSION: 4.1.0
+      SCC_SHA256: c7328436d3027f4357d3d7853f7dc3ac2bbcb4ca08f1adad91a27c593884079b
+      CLOC_VERSION: "2.12"
+      CLOC_SHA256: 621592d34f835ef178115a1643f15ebc8e73ec1d47b5484c46376fc15b78f03e
+      TOKEI_VERSION: 14.0.0
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          global-json-file: global.json
+
+      - name: Install the pinned scc and cloc
+        run: |
+          mkdir -p "$RUNNER_TEMP/tools"
+          cd "$RUNNER_TEMP/tools"
+          curl -fsSLo scc.tar.gz "https://github.com/boyter/scc/releases/download/v${SCC_VERSION}/scc_Linux_x86_64.tar.gz"
+          echo "${SCC_SHA256}  scc.tar.gz" | sha256sum --check
+          tar xzf scc.tar.gz scc
+          curl -fsSLo "cloc-${CLOC_VERSION}.pl" "https://github.com/AlDanial/cloc/releases/download/v${CLOC_VERSION}/cloc-${CLOC_VERSION}.pl"
+          echo "${CLOC_SHA256}  cloc-${CLOC_VERSION}.pl" | sha256sum --check
+
+      - name: Install the pinned tokei
+        # tokei publishes no release binaries; crates.io holds each version, and --locked builds it
+        # with the dependency versions it was released with.
+        run: cargo install tokei --version "${TOKEI_VERSION}" --locked --root "$RUNNER_TEMP/tools/tokei"
+
+      - name: Compare the tools with the frozen oracle
+        env:
+          DRIFT: ${{ inputs.allow-version-drift && '--allow-version-drift' || '' }}
+        run: |
+          dotnet run --project tests/LineCounts.Oracle/LineCounts.Oracle.csproj --configuration Release -- check \
+            --scc "$RUNNER_TEMP/tools/scc" \
+            --tokei "$RUNNER_TEMP/tools/tokei/bin/tokei" \
+            --cloc "$RUNNER_TEMP/tools/cloc-${CLOC_VERSION}.pl" \
+            --work "$RUNNER_TEMP/work" $DRIFT

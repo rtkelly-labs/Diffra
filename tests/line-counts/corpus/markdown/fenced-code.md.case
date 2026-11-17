@@ -1,0 +1,10 @@
+# Example
+
+```csharp
+// a C# comment inside a fence
+var a = 1;
+
+var b = 2;
+```
+
+Text after.

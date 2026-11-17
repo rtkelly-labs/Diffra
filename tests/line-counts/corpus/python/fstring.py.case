@@ -1,0 +1,3 @@
+name = "x"
+a = f"{name} # not a comment"
+b = f"{'#'}"

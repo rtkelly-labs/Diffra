@@ -1,0 +1,6 @@
+def f():
+    '''A docstring in single quotes.
+
+    With a blank line.
+    '''
+    return 1

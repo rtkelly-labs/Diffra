@@ -202,7 +202,10 @@ Oracle Run()
         }
     }
 
-    var work = options.TryGetValue("work", out var given) ? Path.GetFullPath(given) : Path.Combine(root, "temp", "line-counts-oracle");
+    // The harness owns only its own child folder of --work, so that a --work naming a folder with
+    // other contents (the checkout, a shared temp folder) never loses them.
+    var workBase = options.TryGetValue("work", out var given) ? Path.GetFullPath(given) : Path.Combine(root, "temp");
+    var work = Path.Combine(workBase, "line-counts-oracle");
     if (Directory.Exists(work))
     {
         Directory.Delete(work, recursive: true);
@@ -216,7 +219,8 @@ Oracle Run()
         index++;
         Directory.CreateDirectory(folder);
         var name = Path.GetFileName(path);
-        File.Copy(file, Path.Combine(folder, name));
+        var staged = Path.Combine(folder, name);
+        File.Copy(file, staged);
         var results = new SortedDictionary<string, ToolResult>(StringComparer.Ordinal);
         foreach (var tool in Tools.All)
         {
@@ -224,7 +228,8 @@ Oracle Run()
             results[tool.Name] = tool.Parse(run.Output, name);
         }
 
-        cases.Add(new CaseResult(path, Sha256(file), CountLines(file), results));
+        // Hash the staged copy the tools counted, not the original, which may have changed since.
+        cases.Add(new CaseResult(path, Sha256(staged), CountLines(staged), results));
     }
 
     return new Oracle(versions, cases);

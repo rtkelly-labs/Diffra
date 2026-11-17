@@ -1,0 +1,4 @@
+/* opens here
+   closes here */ var a = 1;
+var b = 2; /* opens after code
+   closes alone */

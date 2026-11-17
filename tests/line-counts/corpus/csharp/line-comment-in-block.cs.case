@@ -1,0 +1,4 @@
+/*
+// a line comment marker inside a block comment
+*/
+var a = 1;

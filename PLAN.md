@@ -73,6 +73,10 @@ Each step is a set of small pull requests, each with tests. Smaller changes go f
   job; the partial record it writes and the transport between jobs come with the Action.
 - Built-in converters for every standard dataset type before the first installation, each tested
   from the tool's validator and synthetic values.
+- The `lines` converter for `diffra/table@1` ([0010](docs/adr/0010-line-counts.md)): first the
+  conformance corpus, the frozen oracle and its harness (done), then the owner's rulings on the
+  open cases, then the converter, tested against the oracle. rtkelly13/rig is its first user and
+  retires its own `tools/loc-report`.
 - CI timing and the job graph, with wait, queue and execution time recorded. Rules apply to
   execution time only.
 

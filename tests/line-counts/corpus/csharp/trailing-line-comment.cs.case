@@ -1,0 +1,3 @@
+var a = 1; // a code line that ends in a comment
+var b = 2;// no space before the marker
+// a whole-line comment

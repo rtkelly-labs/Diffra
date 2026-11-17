@@ -1,0 +1,6 @@
+/*
+   first line of the comment
+
+   after a blank line inside the comment
+*/
+var a = 1;

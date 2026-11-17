@@ -1,0 +1,5 @@
+var text = @"first line
+// not a comment inside a verbatim string
+/* nor this */
+""quoted"" end";
+var a = 1;

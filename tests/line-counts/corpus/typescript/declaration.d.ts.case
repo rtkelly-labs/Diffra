@@ -1,0 +1,4 @@
+// Type declarations.
+declare module "corpus" {
+  export function f(): void;
+}

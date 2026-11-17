@@ -1,0 +1,8 @@
+namespace Corpus;
+
+public sealed class Plain
+{
+    public int Value { get; }
+
+    public Plain(int value) => Value = value;
+}

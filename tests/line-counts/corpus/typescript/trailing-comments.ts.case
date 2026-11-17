@@ -1,0 +1,4 @@
+const a = 1; // trailing line comment
+const b = /* inline */ 2;
+// whole line
+/* whole block */

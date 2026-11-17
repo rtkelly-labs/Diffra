@@ -56,7 +56,8 @@ build, so it counts as `fail` and fails the step under either setting.
 
 Diffra is to read the formats tools already write: test results, coverage, lint findings, sizes,
 tables such as benchmark results and OpenMetrics, with declared columns, and flame graphs as
-collapsed stacks. Readers that need a large library, such as Parquet, ship as separate packages
+collapsed stacks. It is also to count lines of code itself, per area, by rules that emulate the
+majority of scc, tokei and cloc, so that no CI job needs those tools. Readers that need a large library, such as Parquet, ship as separate packages
 outside the core. [Dataset types and converters](datasets.md) specifies each type and the
 converters that fill it. History is to be stored in a branch of the repository by default, one
 record per commit, and the adopter can choose another store. On GitHub, provider work starts as
@@ -99,7 +100,9 @@ planned datasets no job collected. Nothing yet carries the jobs' files to a coll
 writes the merged entries to history. One converter exists: `files`, with which `record` reads
 the files a `diffra/size@1` dataset's `from` names and records each file's length and the total.
 No converter for a tool's own format exists, so `record` cannot yet read the files `from` names
-for any other type. The names Evidence, Delta and Assessment come from the earlier design; the
+for any other type. A line counter is proposed ([0010](adr/0010-line-counts.md)): its
+conformance corpus and the frozen counts of scc, tokei and cloc on it exist, with the harness that
+records them, but the counter itself does not. The names Evidence, Delta and Assessment come from the earlier design; the
 glossary gives the words that replace them. The [sample
 workflow](../examples/sample-project/workflow/) contains inputs and checked-in outputs, the
 [protocol](protocol.md) describes the current document shapes, and the [CLI reference](cli.md)

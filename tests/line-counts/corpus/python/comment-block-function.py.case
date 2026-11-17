@@ -1,0 +1,5 @@
+class A:
+    # comment in a class body
+
+    def f(self):
+        pass  # trailing

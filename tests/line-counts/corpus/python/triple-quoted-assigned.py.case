@@ -1,0 +1,5 @@
+text = """first line
+# not a comment
+second line
+"""
+y = 1

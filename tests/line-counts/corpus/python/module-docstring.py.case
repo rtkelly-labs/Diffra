@@ -1,0 +1,6 @@
+"""A module docstring.
+
+It spans several lines, with a blank one above.
+"""
+
+x = 1

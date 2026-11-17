@@ -1,0 +1,3 @@
+const a = "// not a comment";
+const b = '/* not a block';
+const c = "a \" // still a string";

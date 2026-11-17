@@ -374,6 +374,7 @@ several jobs.
 | `benchmarkdotnet` | BenchmarkDotNet's JSON exporter, brief or full | The exporter's output from 0.13 onwards (to confirm) | Core |
 | `openmetrics` | OpenMetrics text exposition | 1.0 | Core |
 | `parquet` | Apache Parquet files | Those Parquet.Net reads | `diffra-parquet` |
+| `lines` | Any source files a glob matches, counted line by line | | Core |
 
 ### Default columns
 
@@ -384,6 +385,7 @@ several jobs.
 | | `gen0PerKOps`, `gen1PerKOps`, `gen2PerKOps` | decimal, `count/1000-ops` | lower | `Memory.Gen0Collections` (and so on) per 1,000 of `Memory.TotalOperations` |
 | `openmetrics` | One per gauge or counter family | decimal, with the family's `UNIT` if it has one | none | The sample's value; a counter's `_total` sample |
 | `parquet` | None | | | Columns must be declared |
+| `lines` | `code`, `comments`, `blanks`, `files` | count, in `lines` (`files` in `files`) | none | Each line of each file, classified by the converter's language table |
 
 The BenchmarkDotNet field names above are to confirm against the exporter's current output, and
 match the earlier `diffra/benchmark@1` fields and units. The BenchmarkDotNet case is the
@@ -407,6 +409,15 @@ Other OpenMetrics content is treated as follows (proposed):
 - `info` and `stateset` families have no default column; their samples can be declared as
   columns. `gaugehistogram` is treated like a histogram, and `unknown` like a gauge.
 - `_created` samples, timestamps and exemplars are ignored.
+
+### Line counts
+
+The `lines` converter is proposed in [0010](adr/0010-line-counts.md) and not built. Its rows are
+the areas the root file declares, optionally split by language, and each line of each matched
+file is counted as code, comment or blank by a language table the converter holds. Its rules
+emulate scc, tokei and cloc: for each case of a conformance corpus it agrees with the majority of
+the three, or diverges on purpose, as the [conformance table](line-counts-conformance.md) records.
+The tools' counts are frozen in `tests/line-counts/oracle.json`, so its tests never need them.
 
 ### Comparison
 
@@ -647,12 +658,13 @@ empty frames, repeated stacks, counts that are not whole numbers (rejected), and
 | `benchmarkdotnet` | `diffra/table@1` | BenchmarkDotNet JSON | Core |
 | `openmetrics` | `diffra/table@1` | OpenMetrics text | Core |
 | `parquet` | `diffra/table@1` | Apache Parquet | `diffra-parquet` |
+| `lines` | `diffra/table@1` | Any source file, counted | Core |
 | `files` | `diffra/size@1`, `diffra/files@1` | Any file | Core |
 | `ci-run` | `diffra/ci-timing@1` | The provider's run file | Core |
 | `collapsed` | `diffra/flamegraph@1` | Collapsed stacks | Core |
 
 Proposed beyond the decisions: the type names `diffra/ci-timing@1` and `diffra/files@1`, the
-converter names `openmetrics`, `parquet`, `ci-run` and `collapsed`, none of which the root file
+converter names `openmetrics`, `parquet`, `lines`, `ci-run` and `collapsed`, none of which the root file
 schema's `from` names list yet, and Parquet filling `diffra/table@1`. Each converter is
 also benchmarked in this repository on real input (see the [plan](../PLAN.md), step 6).
 
@@ -687,3 +699,6 @@ also benchmarked in this repository on real input (see the [plan](../PLAN.md), s
   proposed, or as `success` with its failures noted.
 - How a BenchmarkDotNet file that runs one benchmark under several jobs is recorded; until it is
   settled, the duplicate-case rule rejects it.
+- The rulings [0010](adr/0010-line-counts.md) lists for the `lines` converter: Python docstrings,
+  Markdown, doc comments, how many files one entry may read, very long lines, where the counter's
+  version and language table digest are recorded, and the shape of areas.

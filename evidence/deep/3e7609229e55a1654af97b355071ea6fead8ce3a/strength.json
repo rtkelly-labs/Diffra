@@ -1,0 +1,35 @@
+{
+  "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
+  "id": "sha256:4bc1ed240fca05a5178978d731bffc99332f08ac9256d9a8854bfce0eb592d9f",
+  "status": "produced",
+  "typeId": "diffra.metrics.deep-strength",
+  "typeVersion": "1.0",
+  "typeResolution": "recognized",
+  "subject": {
+    "kind": "git-repository",
+    "id": "diffra/deep",
+    "commit": "3e7609229e55a1654af97b355071ea6fead8ce3a"
+  },
+  "producer": {
+    "id": "diffra.deep",
+    "version": "1.0.0",
+    "configDigest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "environment": {
+    "platform": "Ubuntu 26.04.1 LTS",
+    "runtime": ".NET 10.0.15",
+    "tools": [
+      {
+        "id": "dotnet-sdk",
+        "version": "10.0.403"
+      }
+    ]
+  },
+  "provenance": {
+    "source": "git:3e7609229e55a1654af97b355071ea6fead8ce3a",
+    "artifactDigests": []
+  },
+  "payloadDigest": "sha256:65c4a18cfd2443bbf8e50e84cb1d10a8702ced05b4531f913a24604e620c947a",
+  "payload": {"methodology":"deep-v1","metrics":{"coverage":{"uncoveredBranchBasisPoints":{"unit":"basis-points","value":2150},"uncoveredLineBasisPoints":{"unit":"basis-points","value":1013}},"fuzz":{"findings":{"unit":"findings","value":0}},"tests":{"negatedCount":{"unit":"tests","value":-35}}},"scope":"diffra/deep/strength"},
+  "artifactRefs": []
+}

@@ -1,0 +1,35 @@
+{
+  "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
+  "id": "sha256:894b19795451fbbc6b5a4d7da507bcb4a547c6055f0a495097ffe63e18d25b6b",
+  "status": "produced",
+  "typeId": "diffra.metrics.deep-size",
+  "typeVersion": "1.0",
+  "typeResolution": "recognized",
+  "subject": {
+    "kind": "git-repository",
+    "id": "diffra/deep",
+    "commit": "3e7609229e55a1654af97b355071ea6fead8ce3a"
+  },
+  "producer": {
+    "id": "diffra.deep",
+    "version": "1.0.0",
+    "configDigest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "environment": {
+    "platform": "Ubuntu 26.04.1 LTS",
+    "runtime": ".NET 10.0.15",
+    "tools": [
+      {
+        "id": "dotnet-sdk",
+        "version": "10.0.403"
+      }
+    ]
+  },
+  "provenance": {
+    "source": "git:3e7609229e55a1654af97b355071ea6fead8ce3a",
+    "artifactDigests": []
+  },
+  "payloadDigest": "sha256:ae784e12e5b957e322aaba130a51d7ac16ec92dcec7492f655eb4739c33a4d05",
+  "payload": {"methodology":"deep-v1","metrics":{"archives":{"linux-arm64":{"unit":"bytes","value":42400000},"linux-x64":{"unit":"bytes","value":44600000},"macos-arm64":{"unit":"bytes","value":42600000},"macos-x64":{"unit":"bytes","value":44800000},"win-x64":{"unit":"bytes","value":44900000}},"cliToolPackage":{"unit":"bytes","value":431000}},"scope":"diffra/deep/size"},
+  "artifactRefs": []
+}

@@ -1,0 +1,35 @@
+{
+  "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
+  "id": "sha256:1b1b285f72c50ea20ff8d3541aed66b8df6968f372667e8cf5f38c30c1648684",
+  "status": "produced",
+  "typeId": "diffra.metrics.deep-mutation",
+  "typeVersion": "1.0",
+  "typeResolution": "recognized",
+  "subject": {
+    "kind": "git-repository",
+    "id": "diffra/deep",
+    "commit": "3e7609229e55a1654af97b355071ea6fead8ce3a"
+  },
+  "producer": {
+    "id": "diffra.deep",
+    "version": "1.0.0",
+    "configDigest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "environment": {
+    "platform": "Ubuntu 26.04.1 LTS",
+    "runtime": ".NET 10.0.15",
+    "tools": [
+      {
+        "id": "dotnet-sdk",
+        "version": "10.0.403"
+      }
+    ]
+  },
+  "provenance": {
+    "source": "git:3e7609229e55a1654af97b355071ea6fead8ce3a",
+    "artifactDigests": []
+  },
+  "payloadDigest": "sha256:3f33f79c8d84b2a304b8927bf0c24bac12ce2fdacb195715050e4c6f0170ba92",
+  "payload": {"methodology":"deep-v1","metrics":{"mutation":{"assessmentSurvivedBasisPoints":{"unit":"basis-points","value":1636},"comparisonSurvivedBasisPoints":{"unit":"basis-points","value":1462},"protocolSurvivedBasisPoints":{"unit":"basis-points","value":3750}}},"scope":"diffra/deep/mutation"},
+  "artifactRefs": []
+}

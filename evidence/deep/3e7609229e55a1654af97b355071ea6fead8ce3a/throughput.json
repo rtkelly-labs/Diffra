@@ -1,0 +1,35 @@
+{
+  "schema": "https://diffra.dev/schemas/evidence-v1.schema.json",
+  "id": "sha256:2b511b833a42d29f6f5d4d7ed0e6d80c622f99d2cefa97d741769168733d40c0",
+  "status": "produced",
+  "typeId": "diffra.metrics.deep-throughput",
+  "typeVersion": "1.0",
+  "typeResolution": "recognized",
+  "subject": {
+    "kind": "git-repository",
+    "id": "diffra/deep",
+    "commit": "3e7609229e55a1654af97b355071ea6fead8ce3a"
+  },
+  "producer": {
+    "id": "diffra.deep",
+    "version": "1.0.0",
+    "configDigest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "environment": {
+    "platform": "Ubuntu 26.04.1 LTS",
+    "runtime": ".NET 10.0.15",
+    "tools": [
+      {
+        "id": "dotnet-sdk",
+        "version": "10.0.403"
+      }
+    ]
+  },
+  "provenance": {
+    "source": "git:3e7609229e55a1654af97b355071ea6fead8ce3a",
+    "artifactDigests": []
+  },
+  "payloadDigest": "sha256:7c777b80020083bfb8b91274212dbf68e693b96eac4bd900d0a6421dc052d6af",
+  "payload": {"methodology":"deep-v1; fuzz budget 1800s per target","metrics":{"fuzz":{"bundle":{"nanosecondsPerExecution":{"unit":"ns","value":658000}},"bundle-zip":{"nanosecondsPerExecution":{"unit":"ns","value":549000}},"canonical":{"nanosecondsPerExecution":{"unit":"ns","value":35600}},"delivery-index":{"nanosecondsPerExecution":{"unit":"ns","value":37500}},"document":{"nanosecondsPerExecution":{"unit":"ns","value":53900}},"evidence":{"nanosecondsPerExecution":{"unit":"ns","value":28500}},"line-ranges":{"nanosecondsPerExecution":{"unit":"ns","value":95400}},"payloads":{"nanosecondsPerExecution":{"unit":"ns","value":33700}}}},"scope":"diffra/deep/throughput"},
+  "artifactRefs": []
+}

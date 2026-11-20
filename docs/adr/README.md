@@ -17,6 +17,7 @@ table says what exists today.
 | [0007](0007-packaging-providers-and-the-action.md) | Packaging, providers and the Action |
 | [0008](0008-optional-events-and-telemetry.md) | Optional event and telemetry output |
 | [0009](0009-dependencies-and-extensions.md) | Dependencies and extensions |
+| [0010](0010-gate-changes-releases-and-api-versions.md) | Gate changes, release comparison and API versions (proposed) |
 
 The terms used here (dataset, project, record, bundle, history, comparison, rule, finding,
 attention level) are defined in the [glossary](../glossary.md).

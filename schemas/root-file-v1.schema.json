@@ -1535,6 +1535,7 @@
         },
         "type": {
           "enum": [
+            "diffra/arch-graph@1",
             "diffra/benchmark@1",
             "diffra/coverage@1",
             "diffra/findings@1",
@@ -2215,6 +2216,25 @@
                     }
                   },
                   "required": ["fields"]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "diffra/arch-graph@1"
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {
+              "from": {
+                "propertyNames": {
+                  "enum": ["jgf-arch", "scip", "depcruise", "go-list"]
                 }
               }
             }

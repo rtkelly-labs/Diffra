@@ -96,10 +96,9 @@ recorded as failed when it is `fail` or `warn`; and `diffra record` records a nu
 checked against the root file, and `diffra merge` merges the entries files of every job,
 reporting every disagreement in values or statuses, naming each job involved, and listing the
 planned datasets no job collected. Nothing yet carries the jobs' files to a collecting job or
-writes the merged entries to history. One converter exists: `files`, with which `record` reads
-the files a `diffra/size@1` dataset's `from` names and records each file's length and the total.
-No converter for a tool's own format exists, so `record` cannot yet read the files `from` names
-for any other type. The names Evidence, Delta and Assessment come from the earlier design; the
+writes the merged entries to history. Two dataset types have built-in converters: `diffra/size@1` (`files`, with which `record` reads the files a dataset's `from` names and records each file's length and the total), and `diffra/arch-graph@1` (`jgf-arch`, `scip`, `depcruise` and `go-list`, which normalize module dependency graphs into a JGF v2.1 + SCIP profile with deterministic Tarjan SCC cycles, layer crossings and instability metrics). `diffra arch` (`convert`, `view`, `diff`) converts those formats, renders current system state, and diffs project shape across commits in static-safe HTML (system state + diff overlay SVG), SVG, Markdown, PR Comment, Agent Markdown and verified Delta v1.
+No converter exists yet for test results, coverage, lint findings, tables or flame graphs, so `record` cannot yet read the files `from` names
+for those types. The names Evidence, Delta and Assessment come from the earlier design; the
 glossary gives the words that replace them. The [sample
 workflow](../examples/sample-project/workflow/) contains inputs and checked-in outputs, the
 [protocol](protocol.md) describes the current document shapes, and the [CLI reference](cli.md)

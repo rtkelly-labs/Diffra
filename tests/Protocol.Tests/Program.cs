@@ -44,6 +44,7 @@ RootFileTests.RunAll();
 RecordEntryTests.RunAll();
 CloudEventsTests.RunAll();
 GraphTests.RunAll();
+ArchGraphTests.RunAll();
 PackageReferenceTests.RunAll();
 ExternalCommandAdapterTests.RunAll();
 BaselineTrustTests.RunAll();

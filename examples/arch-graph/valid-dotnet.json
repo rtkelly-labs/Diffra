@@ -1,0 +1,90 @@
+{
+  "graph": {
+    "directed": true,
+    "edges": [
+      {
+        "directed": true,
+        "id": "Core.Estate->Core.Text",
+        "metadata": {
+          "cyclic": false,
+          "evidence": [
+            {
+              "line": 42,
+              "relationship": "reference",
+              "relativePath": "src/Core/Estate/Sync.cs",
+              "roles": ["ReadAccess"],
+              "sourceSymbol": "Core.Estate.Sync",
+              "targetSymbol": "Core.Text.Slug"
+            }
+          ],
+          "evidenceTruncated": false,
+          "layerRelation": "down",
+          "sameFeatureSlice": false,
+          "typeOnly": false,
+          "weight": 1
+        },
+        "relation": "symbol",
+        "source": "Core.Estate",
+        "target": "Core.Text"
+      }
+    ],
+    "id": "dotnet",
+    "label": "example/repo (dotnet)",
+    "metadata": {
+      "analyzer": {
+        "id": "dotnet-archunit",
+        "language": "CSharp",
+        "resolution": "il-symbol",
+        "tool": "TngTech.ArchUnitNET",
+        "toolVersion": "0.13.5"
+      },
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "cycles": {},
+      "granularity": "namespace",
+      "layers": ["features", "leaves"],
+      "repo": "example/repo",
+      "summary": {
+        "cycleCount": 0,
+        "edgeCount": 1,
+        "featureCrossEdgeCount": 0,
+        "layerViolationCount": 0,
+        "nodeCount": 2,
+        "unassignedNodeCount": 0
+      }
+    },
+    "nodes": {
+      "Core.Estate": {
+        "label": "Estate",
+        "metadata": {
+          "fanIn": 0,
+          "fanOut": 1,
+          "fileCount": 4,
+          "instability": "1",
+          "kind": "namespace",
+          "language": "CSharp",
+          "layer": "features",
+          "path": "src/Core/Estate",
+          "project": "Core",
+          "slice": "Estate",
+          "symbolCount": 8
+        }
+      },
+      "Core.Text": {
+        "label": "Text",
+        "metadata": {
+          "fanIn": 1,
+          "fanOut": 0,
+          "fileCount": 2,
+          "instability": "0",
+          "kind": "namespace",
+          "language": "CSharp",
+          "layer": "leaves",
+          "path": "src/Core/Text",
+          "project": "Core",
+          "symbolCount": 3
+        }
+      }
+    },
+    "type": "diffra/arch-graph@1"
+  }
+}

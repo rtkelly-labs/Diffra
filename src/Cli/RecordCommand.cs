@@ -497,15 +497,33 @@ internal static partial class RecordCommand
     // from names. Globs are relative to the repository root.
     private static ConverterResult? ReadFiles(RootDataset dataset, string? from, int? maximumKeys, List<string> problems)
     {
-        if (dataset.TypeName != SizeConverter.DatasetType)
+        string? converterName;
+        string? glob;
+        if (dataset.TypeName == SizeConverter.DatasetType)
+        {
+            if (!dataset.From.TryGetValue(SizeConverter.Name, out glob))
+            {
+                problems.Add($"Dataset '{dataset.Name}' does not read from '{SizeConverter.Name}', the converter for {SizeConverter.DatasetType}.");
+                return null;
+            }
+
+            converterName = SizeConverter.Name;
+        }
+        else if (dataset.TypeName == ArchGraphConverter.DatasetType)
+        {
+            var matched = dataset.From.FirstOrDefault(kv => ArchGraphConverter.SupportedFormats.Contains(kv.Key, StringComparer.Ordinal));
+            if (matched.Key is null)
+            {
+                problems.Add($"Dataset '{dataset.Name}' does not read from a supported converter ({string.Join(", ", ArchGraphConverter.SupportedFormats)}) for {ArchGraphConverter.DatasetType}.");
+                return null;
+            }
+
+            converterName = matched.Key;
+            glob = matched.Value;
+        }
+        else
         {
             problems.Add($"No converter is built yet for dataset type '{dataset.TypeName}', so its files cannot be read; give the number with --value.");
-            return null;
-        }
-
-        if (!dataset.From.TryGetValue(SizeConverter.Name, out var glob))
-        {
-            problems.Add($"Dataset '{dataset.Name}' does not read from '{SizeConverter.Name}', the converter for {SizeConverter.DatasetType}.");
             return null;
         }
 
@@ -526,7 +544,9 @@ internal static partial class RecordCommand
             return null;
         }
 
-        var result = SizeConverter.Read(root, from ?? glob, maximumKeys);
+        var result = dataset.TypeName == SizeConverter.DatasetType
+            ? SizeConverter.Read(root, from ?? glob, maximumKeys)
+            : ArchGraphConverter.Read(root, converterName, from ?? glob, maximumKeys);
         problems.AddRange(result.Problems);
         return result;
     }

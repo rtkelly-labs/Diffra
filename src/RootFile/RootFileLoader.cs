@@ -25,7 +25,7 @@ public static partial class RootFileLoader
         new(["count", "integer", "decimal", "bytes", "duration", "ratio", "datetime", "enum", "digest", "text"], StringComparer.Ordinal);
 
     private static readonly HashSet<string> StandardTypes =
-        new(["diffra/benchmark@1", "diffra/coverage@1", "diffra/findings@1", "diffra/size@1", "diffra/test-results@1"], StringComparer.Ordinal);
+        new(["diffra/arch-graph@1", "diffra/benchmark@1", "diffra/coverage@1", "diffra/findings@1", "diffra/size@1", "diffra/test-results@1"], StringComparer.Ordinal);
 
     private static readonly string[] OutputKeys = ["lines", "findings", "columns", "agentTokens"];
     private static readonly string[] HistoryKeys = ["commits"];

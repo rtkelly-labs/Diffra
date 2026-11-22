@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diffra.dev/schemas/arch-graph-v1.schema.json",
+  "title": "Diffra Architecture Graph v1 (JGF v2.1 + SCIP Profile)",
+  "description": "Strict JSON Graph Format v2.1 profile for language-agnostic module dependency graphs, using SCIP vocabulary for languages, symbol roles, relationships and repository-relative paths.",
+  "type": "object",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "required": ["graph"],
+      "properties": {
+        "graph": { "$ref": "#/$defs/archGraph" }
+      }
+    },
+    {
+      "additionalProperties": false,
+      "required": ["graphs"],
+      "properties": {
+        "graphs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/archGraph" }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "archGraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "directed", "type", "metadata", "nodes", "edges"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "label": { "type": "string", "maxLength": 400 },
+        "directed": { "const": true },
+        "type": { "const": "diffra/arch-graph@1" },
+        "metadata": { "$ref": "#/$defs/graphMetadata" },
+        "nodes": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/archNode" }
+        },
+        "edges": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/archEdge" }
+        }
+      }
+    },
+    "graphMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["analyzer", "granularity", "cycles", "summary"],
+      "properties": {
+        "repo": { "type": "string", "maxLength": 400 },
+        "commit": { "type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$" },
+        "analyzer": { "$ref": "#/$defs/analyzer" },
+        "granularity": { "enum": ["namespace", "module", "package", "crate", "assembly", "file"] },
+        "layers": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "uniqueItems": true
+        },
+        "cycles": {
+          "type": "object",
+          "propertyNames": { "pattern": "^cycle:[0-9a-f]{12}$" },
+          "additionalProperties": { "$ref": "#/$defs/cycle" }
+        },
+        "summary": { "$ref": "#/$defs/summary" },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 1000 }
+        }
+      }
+    },
+    "analyzer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "tool", "language", "resolution"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "tool": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "toolVersion": { "type": "string", "maxLength": 120 },
+        "language": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "resolution": {
+          "enum": ["scip-symbol", "il-symbol", "hir-symbol", "compiler-package", "compiler-module", "import-ast"]
+        }
+      }
+    },
+    "cycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["members", "edgeIds"],
+      "properties": {
+        "members": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "edgeIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeCount", "edgeCount", "cycleCount", "featureCrossEdgeCount", "layerViolationCount", "unassignedNodeCount"],
+      "properties": {
+        "nodeCount": { "type": "integer", "minimum": 0 },
+        "edgeCount": { "type": "integer", "minimum": 0 },
+        "cycleCount": { "type": "integer", "minimum": 0 },
+        "featureCrossEdgeCount": { "type": "integer", "minimum": 0 },
+        "layerViolationCount": { "type": "integer", "minimum": 0 },
+        "unassignedNodeCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "archNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "metadata"],
+      "properties": {
+        "label": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "metadata": { "$ref": "#/$defs/nodeMetadata" }
+      }
+    },
+    "nodeMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "language", "fanIn", "fanOut", "instability"],
+      "properties": {
+        "kind": { "enum": ["namespace", "module", "package", "crate", "assembly", "file"] },
+        "language": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "project": { "type": "string", "maxLength": 200 },
+        "layer": { "type": ["string", "null"], "maxLength": 120 },
+        "slice": { "type": ["string", "null"], "maxLength": 200 },
+        "path": { "$ref": "#/$defs/relativePath" },
+        "fileCount": { "type": "integer", "minimum": 0 },
+        "symbolCount": { "type": "integer", "minimum": 0 },
+        "fanIn": { "type": "integer", "minimum": 0 },
+        "fanOut": { "type": "integer", "minimum": 0 },
+        "instability": { "$ref": "#/$defs/decimalString" }
+      }
+    },
+    "archEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "target", "relation", "directed", "metadata"],
+      "properties": {
+        "id": { "type": "string", "minLength": 3, "maxLength": 1000 },
+        "source": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "target": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "relation": { "enum": ["symbol", "import", "type-only", "test-import", "project-ref"] },
+        "directed": { "const": true },
+        "label": { "type": "string", "maxLength": 400 },
+        "metadata": { "$ref": "#/$defs/edgeMetadata" }
+      }
+    },
+    "edgeMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["weight", "layerRelation", "sameFeatureSlice", "cyclic", "typeOnly", "evidence", "evidenceTruncated"],
+      "properties": {
+        "weight": { "type": "integer", "minimum": 1 },
+        "layerRelation": { "enum": ["down", "same", "up", "unassigned"] },
+        "sameFeatureSlice": { "type": "boolean" },
+        "cyclic": { "type": "boolean" },
+        "typeOnly": { "type": "boolean" },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence" }
+        },
+        "evidenceTruncated": { "type": "boolean" }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relativePath"],
+      "properties": {
+        "relativePath": { "$ref": "#/$defs/relativePath" },
+        "line": { "type": ["integer", "null"], "minimum": 1 },
+        "sourceSymbol": { "type": ["string", "null"], "maxLength": 1000 },
+        "targetSymbol": { "type": ["string", "null"], "maxLength": 1000 },
+        "roles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": ["Definition", "Import", "WriteAccess", "ReadAccess", "Generated", "Test", "ForwardDefinition"]
+          }
+        },
+        "relationship": {
+          "enum": ["reference", "implementation", "type_definition", "definition", "import"]
+        }
+      }
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000,
+      "pattern": "^(?!/)(?!.*\\\\)(?!\\.\\.(?:/|$))(?!.*/\\.\\.(?:/|$))(?!\\.(?:/|$))(?!.*/\\.(?:/|$)).+$"
+    },
+    "decimalString": {
+      "type": "string",
+      "pattern": "^(?:0|1|0\\.[0-9]{1,6}|1\\.0{1,6})$"
+    }
+  }
+}

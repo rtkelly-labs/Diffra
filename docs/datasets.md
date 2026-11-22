@@ -635,6 +635,32 @@ dropped. `total` still counts every sample, so every kept share stays exact.
 There is no published validator for collapsed stacks. Synthetic files cover frames with spaces,
 empty frames, repeated stacks, counts that are not whole numbers (rejected), and very deep stacks.
 
+## Architecture graph: `diffra/arch-graph@1`
+
+Formalises a strict JSON Graph Format v2.1 + SCIP profile (`schemas/arch-graph-v1.schema.json`, issue #162) so module dependency graphs can be recorded per commit and diffed across pull requests.
+
+### What it holds
+
+| Field | Key | Value |
+| --- | --- | --- |
+| `nodes` | Canonical module/namespace/package ID | `{ "kind", "project", "layer", "slice", "path", "fileCount", "symbolCount", "fanIn", "fanOut", "instability" }` |
+| `edges` | `<from>-><to>` | `{ "from", "to", "relation", "weight", "layerRelation", "sameFeatureSlice", "cyclic", "typeOnly", "sampleEvidence" }` |
+| `cycles` | `cycle:<sha256[..12]>` | `{ "members": [...], "edgeCount" }` |
+| `nodeCount`, `edgeCount`, `cycleCount`, `layerViolationCount`, `featureCrossEdgeCount`, `unassignedNodeCount` | | Exact canonical decimal-string counts (preserved even under `maxKeys` truncation). |
+
+### Converters
+
+| Converter | Format | Resolution |
+| --- | --- | --- |
+| `jgf-arch` | Strict JGF v2.1 + SCIP profile (`schemas/arch-graph-v1.schema.json`) | Declared by producer (`il-symbol`, `hir-symbol`, etc.) |
+| `scip` | Binary SCIP Protobuf index (`scip.proto`, zero-dependency wire decoder) | `scip-symbol` |
+| `depcruise` | `dependency-cruiser --output-type json` (`cruise-result.schema.json`) | `compiler-module` |
+| `go-list` | `go list -json ./...` concatenated JSON package stream | `compiler-package` |
+
+### Limits and budgets
+
+Safety limits follow the common rules (64 MiB per file, 256 MiB total, no symlinks or escaping paths). When `maxKeys` caps `edges`, cyclic edges are kept first, then upward layer violations, then cross-feature edges, then highest-weight edges; all scalar totals stay exact.
+
 ## Converters at a glance
 
 | Converter | Type | Format | Package |
@@ -650,6 +676,10 @@ empty frames, repeated stacks, counts that are not whole numbers (rejected), and
 | `files` | `diffra/size@1`, `diffra/files@1` | Any file | Core |
 | `ci-run` | `diffra/ci-timing@1` | The provider's run file | Core |
 | `collapsed` | `diffra/flamegraph@1` | Collapsed stacks | Core |
+| `jgf-arch` | `diffra/arch-graph@1` | JGF v2.1 + SCIP profile (`schemas/arch-graph-v1.schema.json`) | Core |
+| `scip` | `diffra/arch-graph@1` | SCIP binary Protobuf (`scip.proto`) | Core |
+| `depcruise` | `diffra/arch-graph@1` | `dependency-cruiser --output-type json` | Core |
+| `go-list` | `diffra/arch-graph@1` | `go list -json ./...` | Core |
 
 Proposed beyond the decisions: the type names `diffra/ci-timing@1` and `diffra/files@1`, the
 converter names `openmetrics`, `parquet`, `ci-run` and `collapsed`, none of which the root file

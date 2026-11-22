@@ -13,6 +13,9 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../Protocol/Diffra.Protocol.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="Diffra.Protocol.Tests" />
     <InternalsVisibleTo Include="Diffra.Protocol.Tests.Stryker" />
   </ItemGroup>

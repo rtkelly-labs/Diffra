@@ -1,0 +1,27 @@
+{
+  "graph": {
+    "directed": true,
+    "edges": [],
+    "id": "bad",
+    "metadata": {
+      "analyzer": {
+        "id": "bad",
+        "language": "CSharp",
+        "resolution": "regex-scrape",
+        "tool": "bad"
+      },
+      "cycles": {},
+      "granularity": "namespace",
+      "summary": {
+        "cycleCount": 0,
+        "edgeCount": 0,
+        "featureCrossEdgeCount": 0,
+        "layerViolationCount": 0,
+        "nodeCount": 0,
+        "unassignedNodeCount": 0
+      }
+    },
+    "nodes": {},
+    "type": "diffra/arch-graph@1"
+  }
+}

@@ -244,6 +244,20 @@ and `index.html`); a previous output is replaced, so do not keep inputs inside i
 `serve` listens on `127.0.0.1` only (port 5055 by default), rejects requests for any other host,
 and sends a strict Content-Security-Policy.
 
+## `arch`
+
+Converts, renders, and diffs language-agnostic architecture graphs (`diffra/arch-graph@1`, JGF v2.1 + SCIP profile).
+
+```sh
+diffra arch convert --format <jgf-arch|scip|depcruise|go-list> --input <file> [--target <id>] [--layers <a,b,c>] [--slice-depth <n>] [-o <file>]
+diffra arch view --input <file> [--format html|svg|markdown|json] [--input-format <fmt>] [--layers <a,b,c>] [--slice-depth <n>] [-o <file>]
+diffra arch diff --baseline <file> --candidate <file> [--baseline-format <fmt>] [--candidate-format <fmt>] [--layers <a,b,c>] [--slice-depth <n>] [--format html|svg|markdown|comment|agent|delta] [-o <file>]
+```
+
+- `convert` normalizes SCIP binary Protobuf indexes (`.scip`), `dependency-cruiser --output-type json`, `go list -json ./...`, or JGF v2.1 JSON into canonical `schemas/arch-graph-v1.schema.json` output, computing deterministic Tarjan SCC cycles (`cycle:<sha256[..12]>`) and Robert Martin instability.
+- `view` renders the current system state as a static-safe HTML page (with embedded layered-DAG SVG), standalone SVG, Markdown summary, or canonical JGF v2.1 JSON.
+- `diff` compares baseline and candidate graphs and renders both **System + Diff overlay** and **Current system state** views in zero-JS HTML (`@rtkelly-labs/design-system` tokens), SVG, Markdown, PR Comment (`comment`), token-budgeted Agent Markdown (`agent`), or a verified `delta-v1.schema.json` document (`delta`).
+
 ## Self-verification
 
 Diffra runs this CLI on itself in CI. `dotnet run scripts/RunDogfood.cs` collects metrics about the

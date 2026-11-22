@@ -1,0 +1,39 @@
+{
+  "graph": {
+    "directed": true,
+    "edges": [],
+    "id": "bad-path",
+    "metadata": {
+      "analyzer": {
+        "id": "scip",
+        "language": "Python",
+        "resolution": "scip-symbol",
+        "tool": "scip-python"
+      },
+      "cycles": {},
+      "granularity": "module",
+      "summary": {
+        "cycleCount": 0,
+        "edgeCount": 0,
+        "featureCrossEdgeCount": 0,
+        "layerViolationCount": 0,
+        "nodeCount": 1,
+        "unassignedNodeCount": 0
+      }
+    },
+    "nodes": {
+      "app.core": {
+        "label": "core",
+        "metadata": {
+          "fanIn": 0,
+          "fanOut": 0,
+          "instability": "0",
+          "kind": "module",
+          "language": "Python",
+          "path": "../outside/core.py"
+        }
+      }
+    },
+    "type": "diffra/arch-graph@1"
+  }
+}
